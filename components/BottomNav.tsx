@@ -1,12 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import type { Tab } from '@/app/page'
 
-type Tab = 'hoje' | 'series' | 'oracao' | 'oferta'
+type BottomNavProps = {
+  activeTab: Tab
+  onTabChange: (tab: Tab) => void
+}
 
-export default function BottomNav() {
-  const [activeTab, setActiveTab] = useState<Tab>('hoje')
-
+export default function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
   const tabs = [
     { id: 'hoje' as Tab, icon: '🏠', label: 'Hoje' },
     { id: 'series' as Tab, icon: '📚', label: 'Séries' },
@@ -20,7 +21,7 @@ export default function BottomNav() {
         {tabs.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => onTabChange(tab.id)}
             className={`flex-1 py-3 px-2 flex flex-col items-center gap-1 transition-colors ${
               activeTab === tab.id
                 ? 'text-blue-600'
