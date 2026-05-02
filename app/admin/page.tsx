@@ -163,6 +163,12 @@ export default function Admin() {
             🎙️ Novo Episódio
           </Link>
           <Link
+            href="/admin/episodios"
+            className="block bg-purple-600 text-white font-bold py-4 rounded-xl text-center hover:bg-purple-700 transition-colors"
+          >
+            📚 Gerenciar Episódios
+          </Link>
+          <Link
             href="/"
             className="block bg-gray-200 text-gray-700 font-bold py-4 rounded-xl text-center hover:bg-gray-300 transition-colors"
           >
