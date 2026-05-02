@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useRef, ReactNode, useEffect } from 'react'
+import { createContext, useContext, useState, useRef, useEffect } from 'react'
 
 type Episode = {
   id: string
@@ -8,8 +8,8 @@ type Episode = {
   bible_reference: string
   audio_url: string
   duration_seconds: number
-  series_title?: string
   icon_emoji?: string
+  series_title?: string
 }
 
 type AudioContextType = {
@@ -31,7 +31,7 @@ type AudioContextType = {
 
 const AudioContext = createContext<AudioContextType | undefined>(undefined)
 
-export function AudioProvider({ children }: { children: ReactNode }) {
+export function AudioProvider({ children }: { children: React.ReactNode }) {
   const [currentEpisode, setCurrentEpisode] = useState<Episode | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -39,50 +39,91 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const [volume, setVolumeState] = useState(1)
   const [playbackRate, setPlaybackRateState] = useState(1)
   const [isExpanded, setIsExpanded] = useState(false)
-  
+
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
-    // Criar elemento de áudio
-    const audio = new Audio()
-    audioRef.current = audio
+  const audio = new Audio()
+  audioRef.current = audio
 
-    audio.addEventListener('timeupdate', () => {
-      setCurrentTime(audio.currentTime)
-    })
-
-    audio.addEventListener('loadedmetadata', () => {
-      setDuration(audio.duration)
-    })
-
-    audio.addEventListener('ended', () => {
-      setIsPlaying(false)
-      setCurrentTime(0)
-    })
-
-    return () => {
-      audio.pause()
-      audio.src = ''
+  audio.addEventListener('timeupdate', () => {
+    setCurrentTime(audio.currentTime)
+    
+    // Se duração é Infinity, tentar pegar do currentTime máximo
+    if (!isFinite(audio.duration) || audio.duration === 0) {
+      if (audio.seekable.length > 0) {
+        const seekableDuration = audio.seekable.end(0)
+        if (isFinite(seekableDuration) && seekableDuration > 0) {
+          setDuration(seekableDuration)
+        }
+      }
     }
-  }, [])
+  })
+
+  audio.addEventListener('loadedmetadata', () => {
+    console.log('📊 Metadata carregado!')
+    console.log('⏱️ Duração do arquivo:', audio.duration)
+    
+    const audioDuration = audio.duration
+    
+    // Validar duração
+    if (isFinite(audioDuration) && audioDuration > 0) {
+      console.log('✅ Duração válida:', audioDuration)
+      setDuration(audioDuration)
+    } else {
+      console.log('❌ Duração inválida (Infinity ou 0)')
+      // Tentar pegar de seekable
+      if (audio.seekable.length > 0) {
+        const seekableDuration = audio.seekable.end(0)
+        console.log('🔍 Tentando seekable.end:', seekableDuration)
+        if (isFinite(seekableDuration) && seekableDuration > 0) {
+          setDuration(seekableDuration)
+        }
+      }
+    }
+  })
+
+  audio.addEventListener('durationchange', () => {
+    console.log('🔄 Duração mudou:', audio.duration)
+    if (isFinite(audio.duration) && audio.duration > 0) {
+      setDuration(audio.duration)
+    }
+  })
+
+  audio.addEventListener('ended', () => {
+    setIsPlaying(false)
+    setCurrentTime(0)
+  })
+
+  return () => {
+    audio.pause()
+    audio.src = ''
+  }
+}, [])
 
   const play = (episode: Episode) => {
-    if (!audioRef.current) return
+  if (!audioRef.current) return
 
-    // Se é o mesmo episódio, só retoma
-    if (currentEpisode?.id === episode.id) {
-      audioRef.current.play()
-      setIsPlaying(true)
-      return
-    }
-
-    // Novo episódio
-    setCurrentEpisode(episode)
+  if (currentEpisode?.id !== episode.id) {
     audioRef.current.src = episode.audio_url
-    audioRef.current.play()
-    setIsPlaying(true)
+    setCurrentEpisode(episode)
     setCurrentTime(0)
+    
+    // IMPORTANTE: Usar duration_seconds do banco SEMPRE
+    console.log('🎵 Tocando episódio:', episode.title)
+    console.log('⏱️ Duração do banco:', episode.duration_seconds, 'segundos')
+    
+    if (episode.duration_seconds && episode.duration_seconds > 0) {
+      setDuration(episode.duration_seconds)
+    } else {
+      console.warn('⚠️ Episódio sem duração no banco!')
+      setDuration(0)
+    }
   }
+
+  audioRef.current.play()
+  setIsPlaying(true)
+}
 
   const pause = () => {
     if (!audioRef.current) return
@@ -100,8 +141,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
   const seek = (time: number) => {
     if (!audioRef.current) return
-    audioRef.current.currentTime = time
-    setCurrentTime(time)
+    // Validar tempo antes de aplicar
+    if (isFinite(time) && time >= 0) {
+      audioRef.current.currentTime = time
+      setCurrentTime(time)
+    }
   }
 
   const setVolume = (vol: number) => {
@@ -144,9 +188,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   )
 }
 
-export const useAudio = () => {
+export function useAudio() {
   const context = useContext(AudioContext)
-  if (!context) {
+  if (context === undefined) {
     throw new Error('useAudio must be used within AudioProvider')
   }
   return context

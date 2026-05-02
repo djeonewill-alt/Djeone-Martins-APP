@@ -11,11 +11,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Nenhum arquivo enviado' }, { status: 400 })
     }
 
-    // Validar tipo de arquivo
-    const allowedTypes = ['audio/mpeg', 'audio/mp3', 'audio/m4a', 'audio/ogg', 'audio/wav']
+    // Validar tipo de arquivo (incluindo webm da gravação)
+    const allowedTypes = ['audio/mpeg', 'audio/mp3', 'audio/m4a', 'audio/ogg', 'audio/wav', 'audio/webm']
     if (!allowedTypes.includes(file.type)) {
       return NextResponse.json({ 
-        error: 'Tipo de arquivo inválido. Use MP3, M4A, OGG ou WAV' 
+        error: 'Tipo de arquivo inválido. Use MP3, M4A, OGG, WAV ou WEBM' 
       }, { status: 400 })
     }
 
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     await r2Client.send(command)
 
     // URL do arquivo
-    const fileUrl = `${process.env.R2_PUBLIC_URL}/${R2_BUCKET_NAME}/${fileName}`
+    const fileUrl = `${process.env.R2_PUBLIC_URL}/${fileName}`
 
     return NextResponse.json({
       success: true,
