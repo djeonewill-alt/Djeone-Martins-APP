@@ -1,6 +1,9 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
+import { AudioProvider } from '@/components/audio/AudioProvider'
+import MiniPlayer from '@/components/audio/MiniPlayer'
+import ExpandedPlayer from '@/components/audio/ExpandedPlayer'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -19,7 +22,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR">
-      <body className={inter.className}>{children}</body>
+      <body className={inter.className}>
+        <AudioProvider>
+          {children}
+          <MiniPlayer />
+          <ExpandedPlayer />
+        </AudioProvider>
+      </body>
     </html>
   )
 }

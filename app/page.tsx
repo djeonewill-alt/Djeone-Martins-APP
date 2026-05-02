@@ -7,24 +7,36 @@ import TabHoje from '@/components/tabs/TabHoje'
 import TabSeries from '@/components/tabs/TabSeries'
 import TabOracao from '@/components/tabs/TabOracao'
 import TabOferta from '@/components/tabs/TabOferta'
-
-export type Tab = 'hoje' | 'series' | 'oracao' | 'oferta'
+import TabFavoritos from '@/components/tabs/favorites/TabFavoritos'
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<Tab>('hoje')
+  const [activeTab, setActiveTab] = useState('hoje')
+
+  const tabs = [
+    { id: 'hoje', label: 'Hoje', icon: '🎙️' },
+    { id: 'series', label: 'Séries', icon: '📚' },
+    { id: 'favoritos', label: 'Favoritos', icon: '❤️' },
+    { id: 'oracao', label: 'Oração', icon: '🙏' },
+    { id: 'oferta', label: 'Oferta', icon: '💚' },
+  ]
 
   return (
-    <div className="min-h-screen bg-gray-50 max-w-md mx-auto">
+    <div className="min-h-screen bg-gray-50">
       <Header />
       
-      <main className="p-5 pb-24">
+      <main className="pt-16">
         {activeTab === 'hoje' && <TabHoje />}
         {activeTab === 'series' && <TabSeries />}
+        {activeTab === 'favoritos' && <TabFavoritos />}
         {activeTab === 'oracao' && <TabOracao />}
         {activeTab === 'oferta' && <TabOferta />}
       </main>
 
-      <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
+      <BottomNav 
+        tabs={tabs}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+      />
     </div>
   )
 }
