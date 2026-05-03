@@ -35,3 +35,12 @@ export type Series = {
   created_at: string
   cover_image_url: string | null
 }
+
+export type PrayerRequest = {
+  id: string
+  user_id: string
+  request: string
+  is_answered: boolean
+  created_at: string
+  praying_count?: number
+}
