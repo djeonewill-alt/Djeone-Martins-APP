@@ -34,6 +34,7 @@ export type Series = {
   is_current: boolean
   created_at: string
   cover_image_url: string | null
+  total_episodes?: number
 }
 
 export type PrayerRequest = {
@@ -41,8 +42,10 @@ export type PrayerRequest = {
   user_id: string
   author_name: string | null
   request: string
+  content: string
   is_answered: boolean
   is_private: boolean
+  testimony_text: string | null
   created_at: string
   praying_count?: number
 }
