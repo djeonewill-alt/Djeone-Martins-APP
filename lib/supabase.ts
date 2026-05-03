@@ -39,6 +39,7 @@ export type Series = {
 export type PrayerRequest = {
   id: string
   user_id: string
+  author_name: string | null
   request: string
   is_answered: boolean
   is_private: boolean
