@@ -1,65 +1,52 @@
-import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-export async function GET(request: NextRequest) {
-  try {
-    // Verificar se tem authorization header (segurança)
-    const authHeader = request.headers.get('authorization')
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-    const now = new Date().toISOString()
-
-    // Buscar episódios agendados que já passaram da hora
-    const { data: scheduledEpisodes, error: fetchError } = await supabase
-      .from('episodes')
-      .select('id, title, scheduled_publish_at')
-      .eq('status', 'draft')
-      .not('scheduled_publish_at', 'is', null)
-      .lte('scheduled_publish_at', now)
-
-    if (fetchError) throw fetchError
-
-    if (!scheduledEpisodes || scheduledEpisodes.length === 0) {
-      return NextResponse.json({ 
-        message: 'No episodes to publish',
-        count: 0 
-      })
-    }
-
-    // Publicar todos os episódios
-    const ids = scheduledEpisodes.map(ep => ep.id)
-    
-    const { error: updateError } = await supabase
-      .from('episodes')
-      .update({ 
-        status: 'published',
-        scheduled_publish_at: null 
-      })
-      .in('id', ids)
-
-    if (updateError) throw updateError
-
-    console.log(`Published ${scheduledEpisodes.length} episode(s):`, 
-      scheduledEpisodes.map(ep => ep.title))
-
-    return NextResponse.json({
-      message: 'Episodes published successfully',
-      count: scheduledEpisodes.length,
-      episodes: scheduledEpisodes
-    })
-
-  } catch (error) {
-    console.error('Error publishing scheduled episodes:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+export type Episode = {
+  id: string
+  series_id: string
+  episode_number: number
+  title: string
+  bible_reference: string | null
+  description: string | null
+  audio_url: string
+  duration_seconds: number | null
+  created_at: string
+  cover_image_url: string | null
+  status: string | null
+  scheduled_publish_at: string | null
+  series?: {
+    title: string
+    icon_emoji: string
+    cover_image_url: string | null
   }
+}
+
+export type Series = {
+  id: string
+  title: string
+  bible_book: string
+  icon_emoji: string
+  description: string | null
+  is_free: boolean
+  is_current: boolean
+  created_at: string
+  cover_image_url: string | null
+  total_episodes?: number
+}
+
+export type PrayerRequest = {
+  id: string
+  user_id: string
+  author_name: string | null
+  request: string
+  content: string
+  is_answered: boolean
+  is_private: boolean
+  testimony_text: string | null
+  created_at: string
+  praying_count?: number
 }
