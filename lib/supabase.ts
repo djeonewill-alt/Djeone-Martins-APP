@@ -17,6 +17,7 @@ export type Episode = {
   created_at: string
   cover_image_url: string | null
   status: string | null
+  scheduled_publish_at: string | null
   series?: {
     title: string
     icon_emoji: string
