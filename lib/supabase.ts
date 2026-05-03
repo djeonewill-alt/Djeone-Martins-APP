@@ -41,6 +41,7 @@ export type PrayerRequest = {
   user_id: string
   request: string
   is_answered: boolean
+  is_private: boolean
   created_at: string
   praying_count?: number
 }
