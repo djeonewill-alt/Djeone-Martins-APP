@@ -62,28 +62,28 @@ export default function Admin() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center p-5">
-        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8">
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-950 flex items-center justify-center p-5">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-8">
           <div className="text-center mb-8">
             <div className="text-6xl mb-4">🔐</div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            <h1 className="text-3xl font-bold text-white mb-2">
               Painel Admin
             </h1>
-            <p className="text-gray-600">
+            <p className="text-slate-400">
               Digite a senha para acessar
             </p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
+              <label className="block text-sm font-semibold text-slate-300 mb-2">
                 Senha
               </label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-500 outline-none"
+                className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-3 focus:border-blue-500 outline-none"
                 placeholder="Digite a senha..."
                 autoFocus
               />
@@ -98,7 +98,7 @@ export default function Admin() {
 
             <Link
               href="/"
-              className="block text-center text-sm text-gray-600 hover:text-gray-900"
+              className="block text-center text-sm text-slate-400 hover:text-white"
             >
               ← Voltar para o app
             </Link>
@@ -109,19 +109,19 @@ export default function Admin() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-950">
       {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
+      <div className="bg-slate-900 border-b border-slate-800">
+        <div className="max-w-4xl mx-auto p-6 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">⚙️ Painel Admin</h1>
-            <p className="text-blue-100 text-sm mt-1">
+            <h1 className="text-2xl font-bold text-white">⚙️ Painel Admin</h1>
+            <p className="text-slate-400 text-sm mt-1">
               Gerenciar conteúdo
             </p>
           </div>
           <button
             onClick={handleLogout}
-            className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+            className="bg-slate-800 hover:bg-slate-700 border border-slate-700 px-4 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:text-white transition-colors"
           >
             🚪 Sair
           </button>
@@ -131,20 +131,28 @@ export default function Admin() {
       {/* Stats */}
       <div className="max-w-4xl mx-auto p-5">
         <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="bg-white rounded-xl p-5 shadow text-center">
+          <Link
+            href="/admin/series"
+            className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl p-5 text-center transition-colors group"
+          >
             <div className="text-3xl mb-2">📚</div>
-            <div className="text-2xl font-bold text-gray-900">{stats.totalSeries}</div>
-            <div className="text-sm text-gray-600">Séries</div>
-          </div>
-          <div className="bg-white rounded-xl p-5 shadow text-center">
+            <div className="text-2xl font-bold text-white">{stats.totalSeries}</div>
+            <div className="text-sm text-slate-400 group-hover:text-slate-300">Séries</div>
+          </Link>
+          
+          <Link
+            href="/admin/episodios"
+            className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl p-5 text-center transition-colors group"
+          >
             <div className="text-3xl mb-2">🎙️</div>
-            <div className="text-2xl font-bold text-gray-900">{stats.totalEpisodes}</div>
-            <div className="text-sm text-gray-600">Episódios</div>
-          </div>
-          <div className="bg-white rounded-xl p-5 shadow text-center">
+            <div className="text-2xl font-bold text-white">{stats.totalEpisodes}</div>
+            <div className="text-sm text-slate-400 group-hover:text-slate-300">Episódios</div>
+          </Link>
+          
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 text-center">
             <div className="text-3xl mb-2">👥</div>
-            <div className="text-2xl font-bold text-gray-900">{stats.totalUsers}</div>
-            <div className="text-sm text-gray-600">Usuários</div>
+            <div className="text-2xl font-bold text-white">{stats.totalUsers}</div>
+            <div className="text-sm text-slate-400">Usuários</div>
           </div>
         </div>
 
@@ -152,25 +160,25 @@ export default function Admin() {
         <div className="space-y-3">
           <Link
             href="/admin/nova-serie"
-            className="block bg-blue-600 text-white font-bold py-4 rounded-xl text-center hover:bg-blue-700 transition-colors"
+            className="block bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl text-center transition-colors"
           >
             📚 Nova Série
           </Link>
           <Link
             href="/admin/novo-episodio"
-            className="block bg-green-600 text-white font-bold py-4 rounded-xl text-center hover:bg-green-700 transition-colors"
+            className="block bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl text-center transition-colors"
           >
             🎙️ Novo Episódio
           </Link>
           <Link
             href="/admin/episodios"
-            className="block bg-purple-600 text-white font-bold py-4 rounded-xl text-center hover:bg-purple-700 transition-colors"
+            className="block bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 rounded-xl text-center transition-colors"
           >
             📚 Gerenciar Episódios
           </Link>
           <Link
             href="/"
-            className="block bg-gray-200 text-gray-700 font-bold py-4 rounded-xl text-center hover:bg-gray-300 transition-colors"
+            className="block bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white font-bold py-4 rounded-xl text-center transition-colors"
           >
             👁️ Ver App
           </Link>

@@ -1,63 +1,76 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PutObjectCommand } from '@aws-sdk/client-s3'
-import { r2Client, R2_BUCKET_NAME } from '@/lib/r2/client'
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+
+const s3Client = new S3Client({
+  region: 'auto',
+  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+  },
+})
 
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
     const file = formData.get('file') as File
-    
+    const type = formData.get('type') as string || 'audio'
+
     if (!file) {
       return NextResponse.json({ error: 'Nenhum arquivo enviado' }, { status: 400 })
     }
 
-    // Validar tipo de arquivo (incluindo webm da gravação)
-    const allowedTypes = ['audio/mpeg', 'audio/mp3', 'audio/m4a', 'audio/ogg', 'audio/wav', 'audio/webm']
-    if (!allowedTypes.includes(file.type)) {
-      return NextResponse.json({ 
-        error: 'Tipo de arquivo inválido. Use MP3, M4A, OGG, WAV ou WEBM' 
-      }, { status: 400 })
+    // Validação de tipo
+    const validAudioTypes = ['audio/mpeg', 'audio/mp4', 'audio/ogg', 'audio/wav', 'audio/webm']
+    const validImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+    
+    if (type === 'audio' && !validAudioTypes.includes(file.type)) {
+      return NextResponse.json(
+        { error: 'Tipo de arquivo inválido. Use MP3, M4A, OGG, WAV ou WEBM' },
+        { status: 400 }
+      )
     }
 
-    // Gerar nome único para o arquivo
+    if (type === 'cover' && !validImageTypes.includes(file.type)) {
+      return NextResponse.json(
+        { error: 'Tipo de imagem inválido. Use JPG, PNG ou WEBP' },
+        { status: 400 }
+      )
+    }
+
+    const bytes = await file.arrayBuffer()
+    const buffer = Buffer.from(bytes)
+
+    // Nome único do arquivo
     const timestamp = Date.now()
-    const randomString = Math.random().toString(36).substring(2, 8)
     const extension = file.name.split('.').pop()
-    const fileName = `audio-${timestamp}-${randomString}.${extension}`
+    const fileName = `${type}-${timestamp}.${extension}`
 
-    // Converter File para Buffer
-    const arrayBuffer = await file.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
-
-    // Upload para R2
+    // Upload para Cloudflare R2
     const command = new PutObjectCommand({
-      Bucket: R2_BUCKET_NAME,
+      Bucket: process.env.R2_BUCKET_NAME!,
       Key: fileName,
       Body: buffer,
       ContentType: file.type,
     })
 
-    await r2Client.send(command)
+    await s3Client.send(command)
 
-    // URL do arquivo
-    const fileUrl = `${process.env.R2_PUBLIC_URL}/${fileName}`
+    // URL pública
+    const publicUrl = `${process.env.R2_PUBLIC_URL}/${fileName}`
 
-    return NextResponse.json({
-      success: true,
-      url: fileUrl,
-      fileName,
+    return NextResponse.json({ 
+      url: publicUrl,
+      fileName: fileName,
       size: file.size,
+      type: file.type
     })
+
   } catch (error) {
     console.error('Erro no upload:', error)
-    return NextResponse.json({ 
-      error: 'Erro ao fazer upload do arquivo' 
-    }, { status: 500 })
+    return NextResponse.json(
+      { error: 'Erro ao fazer upload do arquivo' },
+      { status: 500 }
+    )
   }
-}
-
-export const config = {
-  api: {
-    bodyParser: false,
-  },
 }

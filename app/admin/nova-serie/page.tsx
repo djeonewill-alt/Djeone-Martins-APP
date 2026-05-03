@@ -1,62 +1,89 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, FormEvent } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+
+const BIBLE_BOOKS = [
+  'Gênesis', 'Êxodo', 'Levítico', 'Números', 'Deuteronômio',
+  'Josué', 'Juízes', 'Rute', '1 Samuel', '2 Samuel',
+  '1 Reis', '2 Reis', '1 Crônicas', '2 Crônicas', 'Esdras',
+  'Neemias', 'Ester', 'Jó', 'Salmos', 'Provérbios',
+  'Eclesiastes', 'Cantares', 'Isaías', 'Jeremias', 'Lamentações',
+  'Ezequiel', 'Daniel', 'Oséias', 'Joel', 'Amós',
+  'Obadias', 'Jonas', 'Miquéias', 'Naum', 'Habacuque',
+  'Sofonias', 'Ageu', 'Zacarias', 'Malaquias',
+  'Mateus', 'Marcos', 'Lucas', 'João', 'Atos',
+  'Romanos', '1 Coríntios', '2 Coríntios', 'Gálatas', 'Efésios',
+  'Filipenses', 'Colossenses', '1 Tessalonicenses', '2 Tessalonicenses',
+  '1 Timóteo', '2 Timóteo', 'Tito', 'Filemom', 'Hebreus',
+  'Tiago', '1 Pedro', '2 Pedro', '1 João', '2 João',
+  '3 João', 'Judas', 'Apocalipse'
+]
 
 export default function NovaSerie() {
   const router = useRouter()
-  const [saving, setSaving] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [imageUrl, setImageUrl] = useState('')
+  
   const [formData, setFormData] = useState({
     title: '',
+    bible_book: '',
     description: '',
-    book_name: '',
-    icon_emoji: '📖',
     is_free: true,
     is_current: false,
   })
 
-  const bookIcons: Record<string, string> = {
-    'João': '💧',
-    'Salmos': '🎵',
-    'Romanos': '⚖️',
-    'Gênesis': '🌍',
-    'Apocalipse': '🔥',
-    'Provérbios': '💡',
-    'Mateus': '📜',
-    'Marcos': '✝️',
-    'Lucas': '📖',
-    'Atos': '⚡',
-    'Coríntios': '💌',
-    'Hebreus': '🏛️',
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('type', 'cover')
+
+      const response = await fetch('/api/upload-audio', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const data = await response.json()
+
+      if (data.url) {
+        setImageUrl(data.url)
+        alert('✅ Imagem carregada!')
+      } else {
+        throw new Error(data.error || 'Erro ao fazer upload')
+      }
+    } catch (error) {
+      console.error('Erro no upload:', error)
+      alert('❌ Erro ao fazer upload da imagem. Tente novamente.')
+    } finally {
+      setUploading(false)
+    }
   }
 
-  const handleBookChange = (book: string) => {
-    setFormData({
-      ...formData,
-      book_name: book,
-      icon_emoji: bookIcons[book] || '📖'
-    })
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    setSaving(true)
+    
+    if (!formData.title.trim()) {
+      alert('❌ Digite o nome da série!')
+      return
+    }
+
+    setLoading(true)
 
     try {
       const { error } = await supabase
         .from('series')
-        .insert({
-          title: formData.title,
-          description: formData.description,
-          book_name: formData.book_name,
-          icon_emoji: formData.icon_emoji,
-          is_free: formData.is_free,
-          is_current: formData.is_current,
-          total_episodes: 0,
-          order_index: 0,
-        })
+        .insert([{
+          ...formData,
+          cover_image_url: imageUrl || null,
+        }])
 
       if (error) throw error
 
@@ -66,93 +93,98 @@ export default function NovaSerie() {
       console.error('Erro ao criar série:', error)
       alert('❌ Erro ao criar série. Tente novamente.')
     } finally {
-      setSaving(false)
+      setLoading(false)
     }
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6">
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-4xl mx-auto">
           <Link href="/admin" className="text-blue-100 hover:text-white mb-2 inline-block">
             ← Voltar
           </Link>
           <h1 className="text-2xl font-bold">📚 Nova Série</h1>
-          <p className="text-blue-100 text-sm mt-1">
-            Criar série de devocionais
-          </p>
+          <p className="text-blue-100 text-sm mt-1">Criar série de devocionais</p>
         </div>
       </div>
 
-      {/* Form */}
-      <div className="max-w-2xl mx-auto p-5">
-        <form onSubmit={handleSubmit} className="bg-white rounded-xl p-6 shadow space-y-5">
+      <div className="max-w-4xl mx-auto p-5">
+        <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow p-6 space-y-5">
           
-          {/* Título */}
           <div>
-            <label className="block font-semibold text-gray-900 mb-2">
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
               Nome da Série *
             </label>
             <input
               type="text"
               value={formData.title}
-              onChange={(e) => setFormData({...formData, title: e.target.value})}
-              placeholder="Ex: Evangelho de João"
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               className="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-500 outline-none"
+              placeholder="Ex: Evangelho de João"
               required
             />
           </div>
 
-          {/* Livro Bíblico */}
           <div>
-            <label className="block font-semibold text-gray-900 mb-2">
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
               Livro Bíblico *
             </label>
             <select
-              value={formData.book_name}
-              onChange={(e) => handleBookChange(e.target.value)}
+              value={formData.bible_book}
+              onChange={(e) => setFormData({ ...formData, bible_book: e.target.value })}
               className="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-500 outline-none"
               required
             >
               <option value="">Selecione...</option>
-              {Object.keys(bookIcons).map(book => (
+              {BIBLE_BOOKS.map((book) => (
                 <option key={book} value={book}>
-                  {bookIcons[book]} {book}
+                  {book}
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Ícone Preview */}
-          {formData.icon_emoji && (
-            <div className="bg-gray-50 rounded-lg p-4 text-center">
-              <div className="text-6xl mb-2">{formData.icon_emoji}</div>
-              <p className="text-sm text-gray-600">Ícone da série</p>
-            </div>
-          )}
-
-          {/* Descrição */}
           <div>
-            <label className="block font-semibold text-gray-900 mb-2">
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Imagem da Série
+            </label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              disabled={uploading}
+              className="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-500 outline-none disabled:opacity-50"
+            />
+            {uploading && <p className="text-sm text-gray-600 mt-2">⏳ Fazendo upload...</p>}
+            {imageUrl && (
+              <div className="mt-3">
+                <img src={imageUrl} alt="Preview" className="w-32 h-40 object-cover rounded-lg" />
+                <p className="text-sm text-green-600 mt-1">✅ Imagem carregada!</p>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
               Descrição (opcional)
             </label>
             <textarea
               value={formData.description}
-              onChange={(e) => setFormData({...formData, description: e.target.value})}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              className="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-500 outline-none"
+              rows={3}
               placeholder="Breve descrição da série..."
-              className="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-500 outline-none min-h-[80px]"
             />
           </div>
 
-          {/* Opções */}
           <div className="space-y-3">
-            <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer">
+            <label className="flex items-start gap-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={formData.is_free}
-                onChange={(e) => setFormData({...formData, is_free: e.target.checked})}
-                className="w-5 h-5"
+                onChange={(e) => setFormData({ ...formData, is_free: e.target.checked })}
+                className="mt-1"
               />
               <div>
                 <div className="font-semibold text-gray-900">Série Gratuita</div>
@@ -160,12 +192,12 @@ export default function NovaSerie() {
               </div>
             </label>
 
-            <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer">
+            <label className="flex items-start gap-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={formData.is_current}
-                onChange={(e) => setFormData({...formData, is_current: e.target.checked})}
-                className="w-5 h-5"
+                onChange={(e) => setFormData({ ...formData, is_current: e.target.checked })}
+                className="mt-1"
               />
               <div>
                 <div className="font-semibold text-gray-900">Série Atual</div>
@@ -174,7 +206,6 @@ export default function NovaSerie() {
             </label>
           </div>
 
-          {/* Botões */}
           <div className="flex gap-3 pt-4">
             <Link
               href="/admin"
@@ -184,10 +215,10 @@ export default function NovaSerie() {
             </Link>
             <button
               type="submit"
-              disabled={saving}
-              className="flex-1 bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={loading}
+              className="flex-1 bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
-              {saving ? '⏳ Salvando...' : '💾 Criar Série'}
+              {loading ? '⏳ Criando...' : '📚 Criar Série'}
             </button>
           </div>
         </form>

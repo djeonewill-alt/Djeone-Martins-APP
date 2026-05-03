@@ -2,33 +2,61 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 
 export default function Header() {
   const [isAdmin, setIsAdmin] = useState(false)
 
   useEffect(() => {
-    // Verifica se está logado como admin
     const adminToken = localStorage.getItem('admin_logged_in')
     setIsAdmin(adminToken === 'true')
   }, [])
 
   return (
-    <header className="fixed top-0 left-0 right-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg z-50">
-      <div className="max-w-md mx-auto px-5 py-4 flex items-center justify-between">
-        {/* Logo/Título */}
-        <div>
-          <h1 className="text-xl font-bold">Djeone Martins</h1>
-          <p className="text-xs text-blue-100">Devocional Diário</p>
+    <header className="fixed top-0 left-0 right-0 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 z-50">
+      <div className="max-w-2xl mx-auto px-5 py-3 flex items-center justify-between">
+        {/* Logo/Foto */}
+        <div className="flex items-center gap-3">
+          <div className="relative w-10 h-10 rounded-full overflow-hidden ring-2 ring-slate-700">
+            <Image
+              src="/pastor.png"
+              alt="Djeone Martins"
+              fill
+              className="object-cover"
+            />
+          </div>
+          <div>
+            <h2 className="font-semibold text-white text-sm">Djeone Martins</h2>
+            <p className="text-xs text-slate-400">Devocional Diário</p>
+          </div>
         </div>
 
         {/* Botão Admin (só aparece se logado) */}
         {isAdmin && (
           <Link
             href="/admin"
-            className="text-white/80 hover:text-white transition-colors"
+            className="text-slate-400 hover:text-white transition-colors p-2"
             title="Painel Admin"
           >
-            <span className="text-2xl">⚙️</span>
+            <svg 
+              className="w-6 h-6" 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                strokeWidth={2} 
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" 
+              />
+              <path 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                strokeWidth={2} 
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" 
+              />
+            </svg>
           </Link>
         )}
       </div>
