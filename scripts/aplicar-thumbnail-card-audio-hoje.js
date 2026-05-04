@@ -1,214 +1,43 @@
-'use client'
+const fs = require('fs')
+const path = require('path')
 
-import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
-import type { Episode } from '@/lib/supabase'
-import { useAudio } from '@/components/audio/AudioProvider'
-import { usePushNotifications } from '@/lib/notifications/usePushNotifications'
-import DailyQuoteCard from '@/components/daily-quote/DailyQuoteCard'
+const filePath = path.join(
+  process.cwd(),
+  'components',
+  'tabs',
+  'TabHoje.tsx'
+)
 
-function formatDuration(seconds?: number | null) {
-  if (!seconds || seconds <= 0) {
-    return 'Áudio devocional'
+let content = fs.readFileSync(filePath, 'utf8')
+
+function replaceOrFail(from, to, label) {
+  if (!content.includes(from)) {
+    console.error(`❌ Não encontrei o trecho: ${label}`)
+    process.exit(1)
   }
 
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = seconds % 60
-
-  if (minutes <= 0) {
-    return `${remainingSeconds}s`
-  }
-
-  return `${minutes}:${String(remainingSeconds).padStart(2, '0')} min`
+  content = content.replace(from, to)
+  console.log(`✅ ${label}`)
 }
 
-export default function TabHoje() {
-  const { play, currentEpisode, isPlaying } = useAudio()
-  const { isSubscribed, loading: notifLoading, subscribe, unsubscribe } = usePushNotifications()
-
-  const [todayEpisode, setTodayEpisode] = useState<Episode | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [isFavorite, setIsFavorite] = useState(false)
-  const [sharingEpisode, setSharingEpisode] = useState(false)
-
-  useEffect(() => {
-    loadTodayEpisode()
-  }, [])
-
-  const loadTodayEpisode = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('episodes')
-        .select(`
-          *,
-          series:series (
-            title,
-            icon_emoji,
-            cover_image_url
-          )
-        `)
-        .or('status.eq.published,status.is.null')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      if (error) {
-        console.error('Erro Supabase:', error)
-        throw error
-      }
-
-      if (data) {
-        setTodayEpisode(data as Episode)
-        checkFavorite(data.id)
-      } else {
-        setTodayEpisode(null)
-      }
-    } catch (error) {
-      console.error('Erro ao carregar episódio:', error)
-      setTodayEpisode(null)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const checkFavorite = async (episodeId: string) => {
-    const userId = localStorage.getItem('user_id')
-    if (!userId) return
-
-    try {
-      const { data } = await supabase
-        .from('user_favorites')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('episode_id', episodeId)
-        .single()
-
-      setIsFavorite(!!data)
-    } catch (error) {
-      setIsFavorite(false)
-    }
-  }
-
-  const handleFavorite = async () => {
-    if (!todayEpisode) return
-
-    const userId = localStorage.getItem('user_id')
-
-    if (!userId) {
-      alert('❌ Faça login para salvar favoritos!')
-      return
-    }
-
-    try {
-      if (isFavorite) {
-        await supabase
-          .from('user_favorites')
-          .delete()
-          .eq('user_id', userId)
-          .eq('episode_id', todayEpisode.id)
-
-        setIsFavorite(false)
-      } else {
-        await supabase
-          .from('user_favorites')
-          .insert({
-            user_id: userId,
-            episode_id: todayEpisode.id,
-          })
-
-        setIsFavorite(true)
-      }
-    } catch (error) {
-      console.error('Erro ao favoritar:', error)
-    }
-  }
-
-  const handlePlay = () => {
-    if (!todayEpisode) return
-
-    play({
-      id: todayEpisode.id,
-      title: todayEpisode.title,
-      bible_reference: todayEpisode.bible_reference || '',
-      audio_url: todayEpisode.audio_url,
-      duration_seconds: todayEpisode.duration_seconds || 0,
-    })
-  }
-
-  const handleShareEpisode = async () => {
-    if (!todayEpisode) return
-
-    try {
-      setSharingEpisode(true)
-
-      const shareText = `🎧 Áudio devocional de hoje
-
-${todayEpisode.title}
-
-${todayEpisode.bible_reference || 'Devocional Diário'}
-
-Pr. Djeone Martins`
-
-      if (navigator.share) {
-        await navigator.share({
-          title: todayEpisode.title,
-          text: shareText,
-        })
-      } else {
-        await navigator.clipboard.writeText(shareText)
-        alert('✅ Texto do áudio copiado para compartilhar!')
-      }
-    } catch (error) {
-      console.error('Erro ao compartilhar áudio:', error)
-    } finally {
-      setSharingEpisode(false)
-    }
-  }
-  const coverImage =
+if (!content.includes('const coverImage =')) {
+  replaceOrFail(
+    `  const isCurrentEpisodePlaying =
+    currentEpisode?.id === todayEpisode?.id && isPlaying`,
+    `  const coverImage =
     todayEpisode?.cover_image_url ||
     todayEpisode?.series?.cover_image_url ||
     ''
 
   const isCurrentEpisodePlaying =
-    currentEpisode?.id === todayEpisode?.id && isPlaying
+    currentEpisode?.id === todayEpisode?.id && isPlaying`,
+    'coverImage adicionado'
+  )
+} else {
+  console.log('ℹ️ coverImage já existe.')
+}
 
-  const durationLabel = formatDuration(todayEpisode?.duration_seconds || 0)
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950">
-        <div className="text-center">
-          <div className="mb-2 text-4xl">⏳</div>
-          <p className="text-slate-400">Carregando...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (!todayEpisode) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950">
-        <div className="p-5 text-center">
-          <div className="mb-4 text-6xl">📭</div>
-
-          <h3 className="mb-2 text-xl font-bold text-white">
-            Nenhum devocional publicado
-          </h3>
-
-          <p className="text-slate-400">
-            Aguarde o próximo episódio!
-          </p>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="min-h-screen bg-slate-950 pb-32 pt-16">
-      <div className="mx-auto max-w-2xl p-5">
-        {/* Palavra do Dia */}
-        <DailyQuoteCard className="mb-6" />
-
+const newAudioSection = `
         {/* Áudio do Dia */}
         <section className="relative overflow-hidden rounded-[30px] border border-white/10 bg-slate-900/80 p-4 shadow-[0_18px_55px_rgba(0,0,0,0.32)] backdrop-blur-sm">
           <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-blue-500/20 blur-3xl" />
@@ -253,7 +82,7 @@ Pr. Djeone Martins`
                   <div
                     className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
                     style={{
-                      backgroundImage: `url(${coverImage})`,
+                      backgroundImage: \`url(\${coverImage})\`,
                     }}
                   />
                 ) : (
@@ -336,8 +165,18 @@ Pr. Djeone Martins`
             </div>
           </div>
         </section>
+`
 
-</div>
-    </div>
-  )
+const audioSectionRegex =
+  /\s*{\/\* Áudio do Dia \*\/}\s*<section[\s\S]*?<\/section>\s*/
+
+if (!audioSectionRegex.test(content)) {
+  console.error('❌ Não encontrei o bloco do Áudio do Dia em TabHoje.tsx.')
+  process.exit(1)
 }
+
+content = content.replace(audioSectionRegex, `\n${newAudioSection}\n`)
+
+fs.writeFileSync(filePath, content, 'utf8')
+
+console.log('✅ Card do Áudio de Hoje agora usa thumbnail do episódio.')

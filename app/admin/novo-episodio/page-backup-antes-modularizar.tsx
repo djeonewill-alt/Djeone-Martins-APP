@@ -6,7 +6,6 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import AudioRecorder from '@/components/recorder/AudioRecorder'
 import type { DailyQuoteSuggestion } from '@/lib/supabase'
-import { CARD_TEMPLATES, dataUrlToBlob, generateCardDataUrl, type CardTemplate } from '@/lib/daily-quote-card-generator'
 
 type Series = {
   id: string
@@ -29,6 +28,8 @@ type BackgroundImage = {
   pexels_photo_id?: string | null
 }
 
+type CardTemplate = 'devotional' | 'modern' | 'cinematic'
+
 type CardOption = {
   id: string
   template: CardTemplate
@@ -44,6 +45,24 @@ type CardOption = {
   pexels_photo_id?: string | null
   query_used?: string | null
 }
+
+const CARD_TEMPLATES: {
+  template: CardTemplate
+  label: string
+}[] = [
+  {
+    template: 'devotional',
+    label: 'Devocional elegante',
+  },
+  {
+    template: 'modern',
+    label: 'Moderno premium',
+  },
+  {
+    template: 'cinematic',
+    label: 'Cinematográfico',
+  },
+]
 
 function getLocalDateString() {
   const now = new Date()
@@ -110,6 +129,300 @@ function normalizeBasicPortuguese(text: string) {
   return value
 }
 
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.crossOrigin = 'anonymous'
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error('Erro ao carregar imagem.'))
+    image.src = src
+  })
+}
+
+function wrapText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number
+) {
+  const words = text.split(' ')
+  const lines: string[] = []
+  let currentLine = ''
+
+  words.forEach((word) => {
+    const testLine = currentLine ? `${currentLine} ${word}` : word
+    const metrics = ctx.measureText(testLine)
+
+    if (metrics.width > maxWidth && currentLine) {
+      lines.push(currentLine)
+      currentLine = word
+    } else {
+      currentLine = testLine
+    }
+  })
+
+  if (currentLine) {
+    lines.push(currentLine)
+  }
+
+  return lines
+}
+
+function drawCoverImage(
+  ctx: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  width: number,
+  height: number
+) {
+  const scale = Math.max(width / image.width, height / image.height)
+  const scaledWidth = image.width * scale
+  const scaledHeight = image.height * scale
+  const x = (width - scaledWidth) / 2
+  const y = (height - scaledHeight) / 2
+
+  ctx.drawImage(image, x, y, scaledWidth, scaledHeight)
+}
+
+function drawMultilineText(params: {
+  ctx: CanvasRenderingContext2D
+  lines: string[]
+  x: number
+  y: number
+  lineHeight: number
+  align: CanvasTextAlign
+  maxLines?: number
+}) {
+  const { ctx, lines, x, y, lineHeight, align, maxLines = 7 } = params
+
+  ctx.textAlign = align
+
+  lines.slice(0, maxLines).forEach((line, index) => {
+    ctx.fillText(line, x, y + index * lineHeight)
+  })
+}
+
+function getCenteredTextStartY(params: {
+  linesCount: number
+  lineHeight: number
+  maxLines: number
+  areaTop: number
+  areaBottom: number
+}) {
+  const visibleLines = Math.min(params.linesCount, params.maxLines)
+  const textBlockHeight = (visibleLines - 1) * params.lineHeight
+  const areaCenter = (params.areaTop + params.areaBottom) / 2
+
+  return areaCenter - textBlockHeight / 2
+}
+
+async function generateCardDataUrl(params: {
+  quoteText: string
+  bibleReference: string
+  episodeTitle: string
+  imageUrl: string
+  template: CardTemplate
+}) {
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')
+
+  if (!ctx) {
+    throw new Error('Canvas não suportado neste navegador.')
+  }
+
+  const size = 1080
+  canvas.width = size
+  canvas.height = size
+
+  const image = await loadImage(params.imageUrl)
+
+  drawCoverImage(ctx, image, size, size)
+
+  const gradient = ctx.createLinearGradient(0, 0, 0, size)
+
+  if (params.template === 'devotional') {
+    gradient.addColorStop(0, 'rgba(0,0,0,0.40)')
+    gradient.addColorStop(0.45, 'rgba(0,0,0,0.48)')
+    gradient.addColorStop(1, 'rgba(0,0,0,0.76)')
+  }
+
+  if (params.template === 'modern') {
+    gradient.addColorStop(0, 'rgba(0,0,0,0.22)')
+    gradient.addColorStop(0.45, 'rgba(0,0,0,0.40)')
+    gradient.addColorStop(1, 'rgba(0,0,0,0.84)')
+  }
+
+  if (params.template === 'cinematic') {
+    gradient.addColorStop(0, 'rgba(0,0,0,0.66)')
+    gradient.addColorStop(0.55, 'rgba(0,0,0,0.43)')
+    gradient.addColorStop(1, 'rgba(0,0,0,0.82)')
+  }
+
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, size, size)
+
+  ctx.shadowColor = 'rgba(0,0,0,0.68)'
+  ctx.shadowBlur = 18
+  ctx.shadowOffsetX = 0
+  ctx.shadowOffsetY = 4
+
+  if (params.template === 'devotional') {
+    ctx.fillStyle = 'rgba(255,255,255,0.88)'
+    ctx.font = '700 27px Georgia, serif'
+    ctx.textAlign = 'center'
+    ctx.fillText('PALAVRA DO DIA', size / 2, 145)
+
+    ctx.fillStyle = 'rgba(255,255,255,0.96)'
+    ctx.font = '700 60px Georgia, serif'
+
+    let lines = wrapText(ctx, params.quoteText, 820)
+
+    if (lines.length > 6) {
+      ctx.font = '700 52px Georgia, serif'
+      lines = wrapText(ctx, params.quoteText, 840)
+    }
+
+    const lineHeight = lines.length > 4 ? 66 : 72
+    const startY = getCenteredTextStartY({
+      linesCount: lines.length,
+      lineHeight,
+      maxLines: 6,
+      areaTop: 225,
+      areaBottom: 760,
+    })
+
+    drawMultilineText({
+      ctx,
+      lines,
+      x: size / 2,
+      y: startY,
+      lineHeight,
+      align: 'center',
+      maxLines: 6,
+    })
+
+    ctx.font = '600 34px Arial, sans-serif'
+    ctx.fillStyle = '#dbeafe'
+    ctx.fillText(params.bibleReference || 'Devocional', size / 2, 805)
+
+    ctx.font = '400 26px Arial, sans-serif'
+    ctx.fillStyle = 'rgba(255,255,255,0.76)'
+    ctx.fillText('Pr. Djeone Martins', size / 2, 858)
+  }
+
+  if (params.template === 'modern') {
+    const left = 88
+
+    ctx.textAlign = 'left'
+    ctx.fillStyle = 'rgba(147,197,253,0.95)'
+    ctx.font = '800 28px Arial, sans-serif'
+    ctx.fillText('PALAVRA DO DIA', left, 145)
+
+    ctx.fillStyle = 'rgba(255,255,255,0.98)'
+    ctx.font = '800 56px Arial, sans-serif'
+
+    let lines = wrapText(ctx, params.quoteText, 850)
+
+    if (lines.length > 7) {
+      ctx.font = '800 48px Arial, sans-serif'
+      lines = wrapText(ctx, params.quoteText, 860)
+    }
+
+    const lineHeight = lines.length > 5 ? 60 : 66
+    const startY = getCenteredTextStartY({
+      linesCount: lines.length,
+      lineHeight,
+      maxLines: 7,
+      areaTop: 225,
+      areaBottom: 740,
+    })
+
+    drawMultilineText({
+      ctx,
+      lines,
+      x: left,
+      y: startY,
+      lineHeight,
+      align: 'left',
+      maxLines: 7,
+    })
+
+    ctx.fillStyle = 'rgba(255,255,255,0.16)'
+    ctx.fillRect(left, 770, 320, 3)
+
+    ctx.fillStyle = '#bfdbfe'
+    ctx.font = '700 34px Arial, sans-serif'
+    ctx.fillText(params.bibleReference || 'Devocional', left, 825)
+
+    ctx.fillStyle = 'rgba(255,255,255,0.72)'
+    ctx.font = '400 25px Arial, sans-serif'
+    ctx.fillText('Pr. Djeone Martins', left, 878)
+  }
+
+  if (params.template === 'cinematic') {
+    ctx.fillStyle = 'rgba(255,255,255,0.86)'
+    ctx.font = '800 26px Arial, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText('PALAVRA DO DIA', size / 2, 125)
+
+    ctx.fillStyle = 'rgba(255,255,255,0.98)'
+    ctx.font = '900 58px Arial, sans-serif'
+
+    let lines = wrapText(ctx, params.quoteText.toUpperCase(), 850)
+
+    if (lines.length > 6) {
+      ctx.font = '900 48px Arial, sans-serif'
+      lines = wrapText(ctx, params.quoteText.toUpperCase(), 860)
+    }
+
+    const lineHeight = lines.length > 4 ? 62 : 68
+    const startY = getCenteredTextStartY({
+      linesCount: lines.length,
+      lineHeight,
+      maxLines: 6,
+      areaTop: 220,
+      areaBottom: 750,
+    })
+
+    drawMultilineText({
+      ctx,
+      lines,
+      x: size / 2,
+      y: startY,
+      lineHeight,
+      align: 'center',
+      maxLines: 6,
+    })
+
+    ctx.fillStyle = 'rgba(255,255,255,0.20)'
+    ctx.fillRect(240, 770, 600, 3)
+
+    ctx.fillStyle = '#fde68a'
+    ctx.font = '800 34px Arial, sans-serif'
+    ctx.fillText(params.bibleReference || 'Devocional', size / 2, 825)
+
+    ctx.fillStyle = 'rgba(255,255,255,0.75)'
+    ctx.font = '400 26px Arial, sans-serif'
+    ctx.fillText('Pr. Djeone Martins', size / 2, 878)
+  }
+
+  ctx.shadowColor = 'transparent'
+
+  return canvas.toDataURL('image/png', 0.92)
+}
+
+function dataUrlToBlob(dataUrl: string) {
+  const [header, base64] = dataUrl.split(',')
+  const mimeMatch = header.match(/:(.*?);/)
+  const mime = mimeMatch ? mimeMatch[1] : 'image/png'
+  const binary = atob(base64)
+  const array = new Uint8Array(binary.length)
+
+  for (let i = 0; i < binary.length; i += 1) {
+    array[i] = binary.charCodeAt(i)
+  }
+
+  return new Blob([array], { type: mime })
+}
+
 export default function NovoEpisodio() {
   const router = useRouter()
 
@@ -129,13 +442,8 @@ export default function NovoEpisodio() {
   const [episodeImageUrl, setEpisodeImageUrl] = useState('')
   const [useSeriesImage, setUseSeriesImage] = useState(true)
   const [selectedSeriesImage, setSelectedSeriesImage] = useState<string | null>(null)
-  const [episodeThumbnailOptions, setEpisodeThumbnailOptions] = useState<BackgroundImage[]>([])
-  const [selectedEpisodeThumbnailIndex, setSelectedEpisodeThumbnailIndex] = useState<number | null>(null)
-  const [generatingEpisodeThumbnails, setGeneratingEpisodeThumbnails] = useState(false)
 
   const [useDefaultTime, setUseDefaultTime] = useState(false)
-  const [autoGenerateEpisodeMetadata, setAutoGenerateEpisodeMetadata] = useState(true)
-  const [generatingEpisodeMetadata, setGeneratingEpisodeMetadata] = useState(false)
 
   const [enableDailyQuote, setEnableDailyQuote] = useState(true)
   const [transcriptionText, setTranscriptionText] = useState('')
@@ -304,68 +612,6 @@ export default function NovoEpisodio() {
     }
   }
 
-  const handleGenerateEpisodeThumbnails = async () => {
-    const sourceText = [
-      formData.title,
-      formData.description,
-      formData.bible_reference,
-      selectedDailyQuote,
-      transcriptionText.slice(0, 900),
-    ]
-      .filter(Boolean)
-      .join('\n')
-      .trim()
-
-    if (sourceText.length < 20) {
-      alert('❌ Preencha pelo menos o título, descrição ou transcrição para buscar thumbnails.')
-      return
-    }
-
-    setGeneratingEpisodeThumbnails(true)
-
-    try {
-      const response = await fetch('/api/images/search-backgrounds', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          quoteText: sourceText,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok && !data.images) {
-        throw new Error(data.error || 'Erro ao buscar thumbnails.')
-      }
-
-      const images = ((data.images || []) as BackgroundImage[]).slice(0, 3)
-
-      if (!images.length) {
-        throw new Error('Nenhuma imagem encontrada.')
-      }
-
-      setEpisodeThumbnailOptions(images)
-      setSelectedEpisodeThumbnailIndex(0)
-      setEpisodeImageUrl(images[0].url)
-      setUseSeriesImage(false)
-
-      alert('✅ 3 thumbnails foram sugeridas. Escolha a melhor para o episódio.')
-    } catch (error) {
-      console.error('Erro ao gerar thumbnails:', error)
-      alert('❌ ' + getErrorMessage(error))
-    } finally {
-      setGeneratingEpisodeThumbnails(false)
-    }
-  }
-
-  const handleSelectEpisodeThumbnail = (image: BackgroundImage, index: number) => {
-    setSelectedEpisodeThumbnailIndex(index)
-    setEpisodeImageUrl(image.url)
-    setUseSeriesImage(false)
-  }
-
   const handleTranscribeAudio = async () => {
     if (!audioUrl) {
       alert('❌ Envie ou grave um áudio primeiro.')
@@ -398,57 +644,6 @@ export default function NovoEpisodio() {
       alert(`❌ ${getErrorMessage(error)}`)
     } finally {
       setTranscribing(false)
-    }
-  }
-
-  const handleGenerateEpisodeMetadataFromTranscription = async (sourceText: string) => {
-    const cleanedTranscription = sourceText.trim()
-
-    if (cleanedTranscription.length < 100) {
-      return null
-    }
-
-    setGeneratingEpisodeMetadata(true)
-
-    try {
-      const response = await fetch('/api/ai/generate-episode-metadata', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          transcriptionText: cleanedTranscription,
-          bibleReference: formData.bible_reference,
-          currentTitle: formData.title,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Erro ao gerar título e descrição.')
-      }
-
-      const generatedTitle = String(data.title || '').trim()
-      const generatedDescription = String(data.description || '').trim()
-
-      setFormData((current) => ({
-        ...current,
-        title: generatedTitle || current.title,
-        description: generatedDescription || current.description,
-      }))
-
-      return {
-        title: generatedTitle,
-        description: generatedDescription,
-        themeKeywords: data.theme_keywords || [],
-      }
-    } catch (error) {
-      console.error('Erro ao gerar título e descrição:', error)
-      alert('⚠️ Não consegui gerar título e descrição automaticamente. Vou continuar gerando as frases.')
-      return null
-    } finally {
-      setGeneratingEpisodeMetadata(false)
     }
   }
 
@@ -503,93 +698,6 @@ export default function NovoEpisodio() {
       console.error('Erro ao gerar Palavra do Dia:', error)
       alert(`❌ ${getErrorMessage(error)}`)
     } finally {
-      setGeneratingQuote(false)
-    }
-  }
-
-  const handleTranscribeAndGenerateQuote = async () => {
-    if (!audioUrl) {
-      alert('❌ Envie ou grave um áudio primeiro.')
-      return
-    }
-
-    setTranscribing(true)
-    setGeneratingQuote(true)
-
-    try {
-      const transcribeResponse = await fetch('/api/ai/transcribe-audio', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          audioUrl,
-        }),
-      })
-
-      const transcribeData = await transcribeResponse.json()
-
-      if (!transcribeResponse.ok) {
-        throw new Error(transcribeData.error || 'Erro ao transcrever áudio.')
-      }
-
-      const generatedTranscription = String(
-        transcribeData.transcriptionText || ''
-      ).trim()
-
-      if (generatedTranscription.length < 100) {
-        throw new Error(
-          'A transcrição gerada ficou muito curta. Verifique se o áudio foi enviado corretamente.'
-        )
-      }
-
-      setTranscriptionText(generatedTranscription)
-
-      if (autoGenerateEpisodeMetadata) {
-        await handleGenerateEpisodeMetadataFromTranscription(generatedTranscription)
-      }
-
-      const quoteResponse = await fetch('/api/ai/generate-daily-quote', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          transcriptionText: generatedTranscription,
-          title: formData.title,
-          bibleReference: formData.bible_reference,
-        }),
-      })
-
-      const quoteData = await quoteResponse.json()
-
-      if (!quoteResponse.ok) {
-        throw new Error(quoteData.error || 'Erro ao gerar sugestões.')
-      }
-
-      const suggestions = (quoteData.suggestions || []) as DailyQuoteSuggestion[]
-
-      if (!suggestions.length) {
-        throw new Error('Nenhuma sugestão foi gerada.')
-      }
-
-      setQuoteSuggestions(suggestions)
-      setSelectedSuggestionIndex(0)
-      setSelectedDailyQuote(suggestions[0].quote_text)
-      setCorrectionNote('')
-      resetCardData()
-
-      const providerMessage =
-        quoteData.provider === 'openai'
-          ? 'com IA'
-          : 'com modo local'
-
-      alert('✅ Transcrição e sugestões geradas ' + providerMessage + '!')
-    } catch (error) {
-      console.error('Erro no fluxo automático:', error)
-      alert('❌ ' + getErrorMessage(error))
-    } finally {
-      setTranscribing(false)
       setGeneratingQuote(false)
     }
   }
@@ -877,66 +985,43 @@ export default function NovoEpisodio() {
           query_used: option.query_used || null,
         }))
 
-        const quotePayload = {
-          episode_id: newEpisode.id,
-          quote_text: selectedDailyQuote.trim(),
-          background_image_url:
-            selectedCard?.source_image_url || finalImageUrl || selectedSeriesImage || null,
-          card_image_url: finalCardImageUrl,
-          date: quoteDate,
-          status: quoteStatus,
-          scheduled_publish_at: scheduledPublishAt,
-          published_at: quoteStatus === 'published' ? new Date().toISOString() : null,
-          source_type: hasQuoteSuggestions ? 'ai_suggested' : 'manual',
-          ai_suggestions: hasQuoteSuggestions ? quoteSuggestions : null,
-          selected_suggestion_index: selectedSuggestionIndex,
-          share_count: 0,
-          like_count: 0,
-
-          theme_keywords: selectedCard?.theme_keywords || null,
-          source_image_provider: selectedCard?.source_image_provider || null,
-          source_image_url: selectedCard?.source_image_url || null,
-          selected_template: selectedCard?.template || null,
-          generated_card_options:
-            generatedCardOptionsForDb.length > 0 ? generatedCardOptionsForDb : null,
-          card_generation_status: finalCardImageUrl
-            ? 'completed'
-            : cardOptions.length > 0
-            ? 'completed'
-            : 'not_started',
-          card_generation_error: null,
-          card_generated_at: finalCardImageUrl ? new Date().toISOString() : null,
-          quote_background_id: selectedCard?.quote_background_id || null,
-        }
-
-        const { data: existingDailyQuote, error: existingDailyQuoteError } = await supabase
+        const { error: quoteError } = await supabase
           .from('daily_quotes')
-          .select('id, date, quote_text')
-          .eq('date', quoteDate)
-          .maybeSingle()
+          .insert([
+            {
+              episode_id: newEpisode.id,
+              quote_text: selectedDailyQuote.trim(),
+              background_image_url:
+                selectedCard?.source_image_url || finalImageUrl || selectedSeriesImage || null,
+              card_image_url: finalCardImageUrl,
+              date: quoteDate,
+              status: quoteStatus,
+              scheduled_publish_at: scheduledPublishAt,
+              published_at: quoteStatus === 'published' ? new Date().toISOString() : null,
+              source_type: hasQuoteSuggestions ? 'ai_suggested' : 'manual',
+              ai_suggestions: hasQuoteSuggestions ? quoteSuggestions : null,
+              selected_suggestion_index: selectedSuggestionIndex,
+              share_count: 0,
+              like_count: 0,
 
-        if (existingDailyQuoteError) throw existingDailyQuoteError
+              theme_keywords: selectedCard?.theme_keywords || null,
+              source_image_provider: selectedCard?.source_image_provider || null,
+              source_image_url: selectedCard?.source_image_url || null,
+              selected_template: selectedCard?.template || null,
+              generated_card_options:
+                generatedCardOptionsForDb.length > 0 ? generatedCardOptionsForDb : null,
+              card_generation_status: finalCardImageUrl
+                ? 'completed'
+                : cardOptions.length > 0
+                ? 'completed'
+                : 'not_started',
+              card_generation_error: null,
+              card_generated_at: finalCardImageUrl ? new Date().toISOString() : null,
+              quote_background_id: selectedCard?.quote_background_id || null,
+            },
+          ])
 
-        if (existingDailyQuote?.id) {
-          const shouldReplace = window.confirm(
-            'Já existe uma Palavra do Dia para esta data. Deseja substituir pela nova?'
-          )
-
-          if (shouldReplace) {
-            const { error: updateQuoteError } = await supabase
-              .from('daily_quotes')
-              .update(quotePayload)
-              .eq('id', existingDailyQuote.id)
-
-            if (updateQuoteError) throw updateQuoteError
-          }
-        } else {
-          const { error: quoteError } = await supabase
-            .from('daily_quotes')
-            .insert([quotePayload])
-
-          if (quoteError) throw quoteError
-        }
+        if (quoteError) throw quoteError
       }
 
       const message = scheduledPublishAt
@@ -1177,34 +1262,9 @@ export default function NovoEpisodio() {
               <div className="space-y-4 bg-slate-950 border border-slate-800 rounded-xl p-4">
                 <div className="bg-blue-950/40 border border-blue-900/60 rounded-lg p-3">
                   <p className="text-xs text-blue-100 leading-relaxed">
-                    Fluxo recomendado: envie o áudio → transcreva → gere título/descrição → gere frases → escolha a frase → corrija se necessário → gere 3 cards → escolha o card final.
+                    Fluxo recomendado: envie o áudio → transcreva → gere frases → escolha a frase → corrija se necessário → gere 3 cards → escolha o card final.
                   </p>
                 </div>
-
-                <label className="flex items-start gap-3 rounded-lg border border-slate-800 bg-slate-900/70 p-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={autoGenerateEpisodeMetadata}
-                    onChange={(e) => setAutoGenerateEpisodeMetadata(e.target.checked)}
-                    className="mt-1"
-                  />
-
-                  <div>
-                    <p className="text-sm font-semibold text-slate-200">
-                      Gerar título e descrição automaticamente
-                    </p>
-
-                    <p className="text-xs text-slate-500 mt-1">
-                      Use nos áudios novos do dia. Para séries antigas com título pronto, desmarque esta opção.
-                    </p>
-
-                    {generatingEpisodeMetadata && (
-                      <p className="text-xs text-blue-300 mt-2">
-                        ⏳ Gerando título e descrição...
-                      </p>
-                    )}
-                  </div>
-                </label>
 
                 <div className="flex flex-col sm:flex-row gap-3">
                   <button
@@ -1225,17 +1285,6 @@ export default function NovoEpisodio() {
                     {generatingQuote ? '⏳ Gerando...' : '✨ Gerar frases'}
                   </button>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={handleTranscribeAndGenerateQuote}
-                  disabled={!audioUrl || transcribing || generatingQuote || generatingEpisodeMetadata}
-                  className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                >
-                  {transcribing || generatingQuote
-                    ? '⏳ Processando áudio, título e frases...'
-                    : '🚀 Transcrever e gerar frases'}
-                </button>
 
                 {!audioUrl && (
                   <p className="text-xs text-yellow-400">
@@ -1462,66 +1511,6 @@ export default function NovoEpisodio() {
             </h4>
 
             <div className="space-y-3">
-              <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h5 className="text-sm font-bold text-white">
-                      🎧 Thumbnail do Áudio
-                    </h5>
-
-                    <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                      Gere 3 opções com base no título, descrição e transcrição. A imagem escolhida será usada no card do áudio.
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleGenerateEpisodeThumbnails}
-                  disabled={generatingEpisodeThumbnails}
-                  className="mt-4 w-full rounded-lg bg-blue-600 py-3 text-sm font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {generatingEpisodeThumbnails
-                    ? '⏳ Buscando thumbnails...'
-                    : '🎨 Sugerir 3 thumbnails com Pexels'}
-                </button>
-
-                {episodeThumbnailOptions.length > 0 && (
-                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    {episodeThumbnailOptions.map((image, index) => (
-                      <button
-                        key={image.id || image.url}
-                        type="button"
-                        onClick={() => handleSelectEpisodeThumbnail(image, index)}
-                        className={
-                          selectedEpisodeThumbnailIndex === index
-                            ? 'overflow-hidden rounded-xl border-2 border-blue-400 bg-slate-900 text-left'
-                            : 'overflow-hidden rounded-xl border-2 border-slate-700 bg-slate-900 text-left hover:border-slate-500'
-                        }
-                      >
-                        <img
-                          src={image.preview_url || image.url}
-                          alt={image.alt || 'Thumbnail sugerida'}
-                          className="h-28 w-full object-cover"
-                        />
-
-                        <div className="p-3">
-                          <p className="text-xs font-semibold text-white">
-                            Opção {index + 1}
-                          </p>
-
-                          <p className="mt-1 text-[11px] text-slate-500">
-                            {selectedEpisodeThumbnailIndex === index
-                              ? '✅ Thumbnail escolhida'
-                              : 'Clique para escolher'}
-                          </p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="radio"

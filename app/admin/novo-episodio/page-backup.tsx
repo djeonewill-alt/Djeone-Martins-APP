@@ -6,43 +6,11 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import AudioRecorder from '@/components/recorder/AudioRecorder'
 import type { DailyQuoteSuggestion } from '@/lib/supabase'
-import { CARD_TEMPLATES, dataUrlToBlob, generateCardDataUrl, type CardTemplate } from '@/lib/daily-quote-card-generator'
 
 type Series = {
   id: string
   title: string
   cover_image_url: string | null
-}
-
-type BackgroundImage = {
-  id: string
-  provider: string
-  url: string
-  preview_url: string
-  photographer?: string
-  photographer_url?: string
-  source_page_url?: string
-  alt?: string
-  query: string
-  theme_keywords: string[]
-  quote_background_id?: string | null
-  pexels_photo_id?: string | null
-}
-
-type CardOption = {
-  id: string
-  template: CardTemplate
-  label: string
-  source_image_url: string
-  source_image_provider: string
-  theme_keywords: string[]
-  preview_data_url: string
-  photographer?: string | null
-  photographer_url?: string | null
-  source_page_url?: string | null
-  quote_background_id?: string | null
-  pexels_photo_id?: string | null
-  query_used?: string | null
 }
 
 function getLocalDateString() {
@@ -52,62 +20,6 @@ function getLocalDateString() {
   const day = String(now.getDate()).padStart(2, '0')
 
   return `${year}-${month}-${day}`
-}
-
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  try {
-    return JSON.stringify(error)
-  } catch {
-    return 'Erro desconhecido'
-  }
-}
-
-function normalizeBasicPortuguese(text: string) {
-  let value = text
-    .replace(/\s+/g, ' ')
-    .replace(/[“”]/g, '"')
-    .replace(/[‘’]/g, "'")
-    .trim()
-
-  const replacements: [RegExp, string][] = [
-    [/\bjesus\b/gi, 'Jesus'],
-    [/\bdeus\b/gi, 'Deus'],
-    [/\bsenhor\b/gi, 'Senhor'],
-    [/\bespirito santo\b/gi, 'Espírito Santo'],
-    [/\bespirito\b/gi, 'Espírito'],
-    [/\bnao\b/gi, 'não'],
-    [/\bvoce\b/gi, 'você'],
-    [/\bagua\b/gi, 'água'],
-    [/\bgraca\b/gi, 'graça'],
-    [/\bfe\b/gi, 'fé'],
-    [/\bcoracao\b/gi, 'coração'],
-    [/\boracao\b/gi, 'oração'],
-    [/\bprotecao\b/gi, 'proteção'],
-    [/\blibertacao\b/gi, 'libertação'],
-    [/\bsalvacao\b/gi, 'salvação'],
-    [/\bperdao\b/gi, 'perdão'],
-  ]
-
-  replacements.forEach(([regex, replacement]) => {
-    value = value.replace(regex, replacement)
-  })
-
-  value = value.replace(/\s+([,.!?;:])/g, '$1')
-  value = value.replace(/([,.!?;:])([^\s])/g, '$1 $2')
-
-  if (value.length > 0) {
-    value = value.charAt(0).toUpperCase() + value.slice(1)
-  }
-
-  if (value && !/[.!?…]$/.test(value)) {
-    value += '.'
-  }
-
-  return value
 }
 
 export default function NovoEpisodio() {
@@ -120,8 +32,6 @@ export default function NovoEpisodio() {
   const [uploading, setUploading] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
   const [generatingQuote, setGeneratingQuote] = useState(false)
-  const [generatingCards, setGeneratingCards] = useState(false)
-  const [correctingQuote, setCorrectingQuote] = useState(false)
 
   const [audioUrl, setAudioUrl] = useState('')
   const [audioDuration, setAudioDuration] = useState(0)
@@ -129,23 +39,14 @@ export default function NovoEpisodio() {
   const [episodeImageUrl, setEpisodeImageUrl] = useState('')
   const [useSeriesImage, setUseSeriesImage] = useState(true)
   const [selectedSeriesImage, setSelectedSeriesImage] = useState<string | null>(null)
-  const [episodeThumbnailOptions, setEpisodeThumbnailOptions] = useState<BackgroundImage[]>([])
-  const [selectedEpisodeThumbnailIndex, setSelectedEpisodeThumbnailIndex] = useState<number | null>(null)
-  const [generatingEpisodeThumbnails, setGeneratingEpisodeThumbnails] = useState(false)
 
   const [useDefaultTime, setUseDefaultTime] = useState(false)
-  const [autoGenerateEpisodeMetadata, setAutoGenerateEpisodeMetadata] = useState(true)
-  const [generatingEpisodeMetadata, setGeneratingEpisodeMetadata] = useState(false)
 
   const [enableDailyQuote, setEnableDailyQuote] = useState(true)
   const [transcriptionText, setTranscriptionText] = useState('')
   const [quoteSuggestions, setQuoteSuggestions] = useState<DailyQuoteSuggestion[]>([])
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState<number | null>(null)
   const [selectedDailyQuote, setSelectedDailyQuote] = useState('')
-  const [correctionNote, setCorrectionNote] = useState('')
-
-  const [cardOptions, setCardOptions] = useState<CardOption[]>([])
-  const [selectedCardIndex, setSelectedCardIndex] = useState<number | null>(null)
 
   const [formData, setFormData] = useState({
     series_id: '',
@@ -169,18 +70,11 @@ export default function NovoEpisodio() {
     }
   }, [formData.series_id, series])
 
-  const resetCardData = () => {
-    setCardOptions([])
-    setSelectedCardIndex(null)
-  }
-
   const resetAutomationData = () => {
     setTranscriptionText('')
     setQuoteSuggestions([])
     setSelectedSuggestionIndex(null)
     setSelectedDailyQuote('')
-    setCorrectionNote('')
-    resetCardData()
   }
 
   const loadSeries = async () => {
@@ -304,68 +198,6 @@ export default function NovoEpisodio() {
     }
   }
 
-  const handleGenerateEpisodeThumbnails = async () => {
-    const sourceText = [
-      formData.title,
-      formData.description,
-      formData.bible_reference,
-      selectedDailyQuote,
-      transcriptionText.slice(0, 900),
-    ]
-      .filter(Boolean)
-      .join('\n')
-      .trim()
-
-    if (sourceText.length < 20) {
-      alert('❌ Preencha pelo menos o título, descrição ou transcrição para buscar thumbnails.')
-      return
-    }
-
-    setGeneratingEpisodeThumbnails(true)
-
-    try {
-      const response = await fetch('/api/images/search-backgrounds', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          quoteText: sourceText,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok && !data.images) {
-        throw new Error(data.error || 'Erro ao buscar thumbnails.')
-      }
-
-      const images = ((data.images || []) as BackgroundImage[]).slice(0, 3)
-
-      if (!images.length) {
-        throw new Error('Nenhuma imagem encontrada.')
-      }
-
-      setEpisodeThumbnailOptions(images)
-      setSelectedEpisodeThumbnailIndex(0)
-      setEpisodeImageUrl(images[0].url)
-      setUseSeriesImage(false)
-
-      alert('✅ 3 thumbnails foram sugeridas. Escolha a melhor para o episódio.')
-    } catch (error) {
-      console.error('Erro ao gerar thumbnails:', error)
-      alert('❌ ' + getErrorMessage(error))
-    } finally {
-      setGeneratingEpisodeThumbnails(false)
-    }
-  }
-
-  const handleSelectEpisodeThumbnail = (image: BackgroundImage, index: number) => {
-    setSelectedEpisodeThumbnailIndex(index)
-    setEpisodeImageUrl(image.url)
-    setUseSeriesImage(false)
-  }
-
   const handleTranscribeAudio = async () => {
     if (!audioUrl) {
       alert('❌ Envie ou grave um áudio primeiro.')
@@ -395,60 +227,15 @@ export default function NovoEpisodio() {
       alert('✅ Transcrição gerada com sucesso!')
     } catch (error) {
       console.error('Erro ao transcrever:', error)
-      alert(`❌ ${getErrorMessage(error)}`)
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Erro ao transcrever áudio.'
+
+      alert(`❌ ${message}`)
     } finally {
       setTranscribing(false)
-    }
-  }
-
-  const handleGenerateEpisodeMetadataFromTranscription = async (sourceText: string) => {
-    const cleanedTranscription = sourceText.trim()
-
-    if (cleanedTranscription.length < 100) {
-      return null
-    }
-
-    setGeneratingEpisodeMetadata(true)
-
-    try {
-      const response = await fetch('/api/ai/generate-episode-metadata', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          transcriptionText: cleanedTranscription,
-          bibleReference: formData.bible_reference,
-          currentTitle: formData.title,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Erro ao gerar título e descrição.')
-      }
-
-      const generatedTitle = String(data.title || '').trim()
-      const generatedDescription = String(data.description || '').trim()
-
-      setFormData((current) => ({
-        ...current,
-        title: generatedTitle || current.title,
-        description: generatedDescription || current.description,
-      }))
-
-      return {
-        title: generatedTitle,
-        description: generatedDescription,
-        themeKeywords: data.theme_keywords || [],
-      }
-    } catch (error) {
-      console.error('Erro ao gerar título e descrição:', error)
-      alert('⚠️ Não consegui gerar título e descrição automaticamente. Vou continuar gerando as frases.')
-      return null
-    } finally {
-      setGeneratingEpisodeMetadata(false)
     }
   }
 
@@ -490,8 +277,6 @@ export default function NovoEpisodio() {
       setQuoteSuggestions(suggestions)
       setSelectedSuggestionIndex(0)
       setSelectedDailyQuote(suggestions[0].quote_text)
-      setCorrectionNote('')
-      resetCardData()
 
       const providerMessage =
         data.provider === 'openai'
@@ -501,95 +286,14 @@ export default function NovoEpisodio() {
       alert(`✅ Sugestões geradas ${providerMessage}!`)
     } catch (error) {
       console.error('Erro ao gerar Palavra do Dia:', error)
-      alert(`❌ ${getErrorMessage(error)}`)
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Erro ao gerar Palavra do Dia.'
+
+      alert(`❌ ${message}`)
     } finally {
-      setGeneratingQuote(false)
-    }
-  }
-
-  const handleTranscribeAndGenerateQuote = async () => {
-    if (!audioUrl) {
-      alert('❌ Envie ou grave um áudio primeiro.')
-      return
-    }
-
-    setTranscribing(true)
-    setGeneratingQuote(true)
-
-    try {
-      const transcribeResponse = await fetch('/api/ai/transcribe-audio', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          audioUrl,
-        }),
-      })
-
-      const transcribeData = await transcribeResponse.json()
-
-      if (!transcribeResponse.ok) {
-        throw new Error(transcribeData.error || 'Erro ao transcrever áudio.')
-      }
-
-      const generatedTranscription = String(
-        transcribeData.transcriptionText || ''
-      ).trim()
-
-      if (generatedTranscription.length < 100) {
-        throw new Error(
-          'A transcrição gerada ficou muito curta. Verifique se o áudio foi enviado corretamente.'
-        )
-      }
-
-      setTranscriptionText(generatedTranscription)
-
-      if (autoGenerateEpisodeMetadata) {
-        await handleGenerateEpisodeMetadataFromTranscription(generatedTranscription)
-      }
-
-      const quoteResponse = await fetch('/api/ai/generate-daily-quote', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          transcriptionText: generatedTranscription,
-          title: formData.title,
-          bibleReference: formData.bible_reference,
-        }),
-      })
-
-      const quoteData = await quoteResponse.json()
-
-      if (!quoteResponse.ok) {
-        throw new Error(quoteData.error || 'Erro ao gerar sugestões.')
-      }
-
-      const suggestions = (quoteData.suggestions || []) as DailyQuoteSuggestion[]
-
-      if (!suggestions.length) {
-        throw new Error('Nenhuma sugestão foi gerada.')
-      }
-
-      setQuoteSuggestions(suggestions)
-      setSelectedSuggestionIndex(0)
-      setSelectedDailyQuote(suggestions[0].quote_text)
-      setCorrectionNote('')
-      resetCardData()
-
-      const providerMessage =
-        quoteData.provider === 'openai'
-          ? 'com IA'
-          : 'com modo local'
-
-      alert('✅ Transcrição e sugestões geradas ' + providerMessage + '!')
-    } catch (error) {
-      console.error('Erro no fluxo automático:', error)
-      alert('❌ ' + getErrorMessage(error))
-    } finally {
-      setTranscribing(false)
       setGeneratingQuote(false)
     }
   }
@@ -597,184 +301,10 @@ export default function NovoEpisodio() {
   const handleSelectSuggestion = (suggestion: DailyQuoteSuggestion, index: number) => {
     setSelectedSuggestionIndex(index)
     setSelectedDailyQuote(suggestion.quote_text)
-    setCorrectionNote('')
-    resetCardData()
-  }
-
-  const handleDailyQuoteChange = (text: string) => {
-    setSelectedDailyQuote(text)
-    setCorrectionNote('')
-    resetCardData()
-  }
-
-  const handleCorrectDailyQuote = async () => {
-    const currentText = selectedDailyQuote.trim()
-
-    if (!currentText) {
-      alert('❌ Escreva ou escolha uma frase primeiro.')
-      return
-    }
-
-    setCorrectingQuote(true)
-
-    try {
-      const response = await fetch('/api/ai/correct-daily-quote', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: currentText,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Erro ao corrigir frase.')
-      }
-
-      const correctedText = String(data.correctedText || '').trim()
-
-      if (!correctedText) {
-        throw new Error('A correção retornou uma frase vazia.')
-      }
-
-      setSelectedDailyQuote(correctedText)
-      setCorrectionNote(
-        data.provider === 'openai'
-          ? data.notes || 'Frase revisada com IA.'
-          : data.notes || 'Frase revisada com correção local.'
-      )
-      resetCardData()
-
-      alert(
-        data.changed
-          ? '✅ Frase corrigida. Revise antes de gerar os cards.'
-          : '✅ A frase já parecia correta.'
-      )
-    } catch (error) {
-      console.error('Erro ao corrigir frase:', error)
-
-      const correctedText = normalizeBasicPortuguese(currentText)
-      setSelectedDailyQuote(correctedText)
-      setCorrectionNote('A correção com IA falhou. Foi aplicada uma correção local básica.')
-      resetCardData()
-
-      alert(`⚠️ ${getErrorMessage(error)} Correção local aplicada.`)
-    } finally {
-      setCorrectingQuote(false)
-    }
-  }
-
-  const handleGenerateCardOptions = async () => {
-    const quoteText = selectedDailyQuote.trim()
-
-    if (!quoteText) {
-      alert('❌ Escolha ou escreva uma frase primeiro.')
-      return
-    }
-
-    setGeneratingCards(true)
-
-    try {
-      const response = await fetch('/api/images/search-backgrounds', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          quoteText,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok && !data.images) {
-        throw new Error(data.error || 'Erro ao buscar imagens.')
-      }
-
-      const images = ((data.images || []) as BackgroundImage[]).slice(0, 3)
-
-      if (!images.length) {
-        throw new Error('Nenhuma imagem encontrada.')
-      }
-
-      const options: CardOption[] = []
-
-      for (let index = 0; index < CARD_TEMPLATES.length; index += 1) {
-        const template = CARD_TEMPLATES[index]
-        const image = images[index] || images[0]
-
-        const previewDataUrl = await generateCardDataUrl({
-          quoteText,
-          bibleReference: formData.bible_reference,
-          episodeTitle: formData.title,
-          imageUrl: image.url,
-          template: template.template,
-        })
-
-        options.push({
-          id: `${template.template}-${Date.now()}-${index}`,
-          template: template.template,
-          label: template.label,
-          source_image_url: image.url,
-          source_image_provider: image.provider,
-          theme_keywords: image.theme_keywords || data.theme_keywords || [],
-          preview_data_url: previewDataUrl,
-          photographer: image.photographer || null,
-          photographer_url: image.photographer_url || null,
-          source_page_url: image.source_page_url || null,
-          quote_background_id: image.quote_background_id || null,
-          pexels_photo_id: image.pexels_photo_id || null,
-          query_used: image.query || data.query || null,
-        })
-      }
-
-      setCardOptions(options)
-      setSelectedCardIndex(0)
-      alert('✅ 3 opções de card foram geradas!')
-    } catch (error) {
-      console.error('Erro ao gerar cards:', error)
-      alert(`❌ ${getErrorMessage(error)}`)
-    } finally {
-      setGeneratingCards(false)
-    }
-  }
-
-  const uploadGeneratedCard = async (dataUrl: string) => {
-    const blob = dataUrlToBlob(dataUrl)
-    const uploadFormData = new FormData()
-
-    uploadFormData.append(
-      'file',
-      blob,
-      `palavra-do-dia-${Date.now()}.png`
-    )
-    uploadFormData.append('type', 'cover')
-
-    const response = await fetch('/api/upload-audio', {
-      method: 'POST',
-      body: uploadFormData,
-    })
-
-    const data = await response.json()
-
-    if (!response.ok || !data.url) {
-      throw new Error(data.error || 'Erro ao salvar card no R2.')
-    }
-
-    return data.url as string
   }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-
-    const safeEpisodeNumber =
-      Number.isFinite(Number(formData.episode_number)) &&
-      Number(formData.episode_number) > 0
-        ? Number(formData.episode_number)
-        : 1
 
     if (!formData.series_id || !formData.bible_reference || !formData.title) {
       alert('❌ Preencha todos os campos obrigatórios!')
@@ -817,7 +347,7 @@ export default function NovoEpisodio() {
         .insert([
           {
             series_id: formData.series_id,
-            episode_number: safeEpisodeNumber,
+            episode_number: formData.episode_number,
             bible_reference: formData.bible_reference,
             title: formData.title,
             description: formData.description,
@@ -843,17 +373,6 @@ export default function NovoEpisodio() {
       if (error) throw error
 
       if (hasDailyQuote && newEpisode?.id) {
-        const selectedCard =
-          selectedCardIndex !== null
-            ? cardOptions[selectedCardIndex]
-            : null
-
-        let finalCardImageUrl: string | null = null
-
-        if (selectedCard?.preview_data_url) {
-          finalCardImageUrl = await uploadGeneratedCard(selectedCard.preview_data_url)
-        }
-
         const quoteStatus = scheduledPublishAt
           ? 'scheduled'
           : formData.status === 'published'
@@ -862,81 +381,27 @@ export default function NovoEpisodio() {
 
         const quoteDate = formData.scheduled_date || getLocalDateString()
 
-        const generatedCardOptionsForDb = cardOptions.map((option) => ({
-          id: option.id,
-          template: option.template,
-          label: option.label,
-          source_image_url: option.source_image_url,
-          source_image_provider: option.source_image_provider,
-          theme_keywords: option.theme_keywords,
-          photographer: option.photographer || null,
-          photographer_url: option.photographer_url || null,
-          source_page_url: option.source_page_url || null,
-          quote_background_id: option.quote_background_id || null,
-          pexels_photo_id: option.pexels_photo_id || null,
-          query_used: option.query_used || null,
-        }))
-
-        const quotePayload = {
-          episode_id: newEpisode.id,
-          quote_text: selectedDailyQuote.trim(),
-          background_image_url:
-            selectedCard?.source_image_url || finalImageUrl || selectedSeriesImage || null,
-          card_image_url: finalCardImageUrl,
-          date: quoteDate,
-          status: quoteStatus,
-          scheduled_publish_at: scheduledPublishAt,
-          published_at: quoteStatus === 'published' ? new Date().toISOString() : null,
-          source_type: hasQuoteSuggestions ? 'ai_suggested' : 'manual',
-          ai_suggestions: hasQuoteSuggestions ? quoteSuggestions : null,
-          selected_suggestion_index: selectedSuggestionIndex,
-          share_count: 0,
-          like_count: 0,
-
-          theme_keywords: selectedCard?.theme_keywords || null,
-          source_image_provider: selectedCard?.source_image_provider || null,
-          source_image_url: selectedCard?.source_image_url || null,
-          selected_template: selectedCard?.template || null,
-          generated_card_options:
-            generatedCardOptionsForDb.length > 0 ? generatedCardOptionsForDb : null,
-          card_generation_status: finalCardImageUrl
-            ? 'completed'
-            : cardOptions.length > 0
-            ? 'completed'
-            : 'not_started',
-          card_generation_error: null,
-          card_generated_at: finalCardImageUrl ? new Date().toISOString() : null,
-          quote_background_id: selectedCard?.quote_background_id || null,
-        }
-
-        const { data: existingDailyQuote, error: existingDailyQuoteError } = await supabase
+        const { error: quoteError } = await supabase
           .from('daily_quotes')
-          .select('id, date, quote_text')
-          .eq('date', quoteDate)
-          .maybeSingle()
+          .insert([
+            {
+              episode_id: newEpisode.id,
+              quote_text: selectedDailyQuote.trim(),
+              background_image_url: finalImageUrl || selectedSeriesImage || null,
+              card_image_url: null,
+              date: quoteDate,
+              status: quoteStatus,
+              scheduled_publish_at: scheduledPublishAt,
+              published_at: quoteStatus === 'published' ? new Date().toISOString() : null,
+              source_type: hasQuoteSuggestions ? 'ai_suggested' : 'manual',
+              ai_suggestions: hasQuoteSuggestions ? quoteSuggestions : null,
+              selected_suggestion_index: selectedSuggestionIndex,
+              share_count: 0,
+              like_count: 0,
+            },
+          ])
 
-        if (existingDailyQuoteError) throw existingDailyQuoteError
-
-        if (existingDailyQuote?.id) {
-          const shouldReplace = window.confirm(
-            'Já existe uma Palavra do Dia para esta data. Deseja substituir pela nova?'
-          )
-
-          if (shouldReplace) {
-            const { error: updateQuoteError } = await supabase
-              .from('daily_quotes')
-              .update(quotePayload)
-              .eq('id', existingDailyQuote.id)
-
-            if (updateQuoteError) throw updateQuoteError
-          }
-        } else {
-          const { error: quoteError } = await supabase
-            .from('daily_quotes')
-            .insert([quotePayload])
-
-          if (quoteError) throw quoteError
-        }
+        if (quoteError) throw quoteError
       }
 
       const message = scheduledPublishAt
@@ -955,7 +420,7 @@ export default function NovoEpisodio() {
       router.push('/admin')
     } catch (error) {
       console.error('Erro ao criar episódio:', error)
-      alert(`❌ Erro ao criar episódio: ${getErrorMessage(error)}`)
+      alert('❌ Erro ao criar episódio. Tente novamente.')
     } finally {
       setLoading(false)
     }
@@ -1088,19 +553,8 @@ export default function NovoEpisodio() {
             <input
               type="number"
               min="1"
-              value={
-                Number.isFinite(Number(formData.episode_number))
-                  ? formData.episode_number
-                  : 1
-              }
-              onChange={(e) => {
-                const value = Number(e.target.value)
-
-                setFormData({
-                  ...formData,
-                  episode_number: Number.isFinite(value) && value > 0 ? value : 1,
-                })
-              }}
+              value={formData.episode_number}
+              onChange={(e) => setFormData({ ...formData, episode_number: parseInt(e.target.value) })}
               className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-3 focus:border-blue-500 outline-none"
               required
             />
@@ -1158,7 +612,7 @@ export default function NovoEpisodio() {
                 </h4>
 
                 <p className="text-xs text-slate-500 mt-1">
-                  Transcreva o áudio, gere frases fortes e crie 3 cards prontos para escolher.
+                  Transcreva o áudio, gere frases fortes e deixe a Palavra do Dia programada junto com o episódio.
                 </p>
               </div>
 
@@ -1177,34 +631,10 @@ export default function NovoEpisodio() {
               <div className="space-y-4 bg-slate-950 border border-slate-800 rounded-xl p-4">
                 <div className="bg-blue-950/40 border border-blue-900/60 rounded-lg p-3">
                   <p className="text-xs text-blue-100 leading-relaxed">
-                    Fluxo recomendado: envie o áudio → transcreva → gere título/descrição → gere frases → escolha a frase → corrija se necessário → gere 3 cards → escolha o card final.
+                    Fluxo recomendado: envie o áudio → clique em transcrever → gere sugestões → escolha ou edite a frase.
+                    Se a transcrição automática ainda não estiver configurada, você pode colar a transcrição manualmente abaixo.
                   </p>
                 </div>
-
-                <label className="flex items-start gap-3 rounded-lg border border-slate-800 bg-slate-900/70 p-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={autoGenerateEpisodeMetadata}
-                    onChange={(e) => setAutoGenerateEpisodeMetadata(e.target.checked)}
-                    className="mt-1"
-                  />
-
-                  <div>
-                    <p className="text-sm font-semibold text-slate-200">
-                      Gerar título e descrição automaticamente
-                    </p>
-
-                    <p className="text-xs text-slate-500 mt-1">
-                      Use nos áudios novos do dia. Para séries antigas com título pronto, desmarque esta opção.
-                    </p>
-
-                    {generatingEpisodeMetadata && (
-                      <p className="text-xs text-blue-300 mt-2">
-                        ⏳ Gerando título e descrição...
-                      </p>
-                    )}
-                  </div>
-                </label>
 
                 <div className="flex flex-col sm:flex-row gap-3">
                   <button
@@ -1225,17 +655,6 @@ export default function NovoEpisodio() {
                     {generatingQuote ? '⏳ Gerando...' : '✨ Gerar frases'}
                   </button>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={handleTranscribeAndGenerateQuote}
-                  disabled={!audioUrl || transcribing || generatingQuote || generatingEpisodeMetadata}
-                  className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                >
-                  {transcribing || generatingQuote
-                    ? '⏳ Processando áudio, título e frases...'
-                    : '🚀 Transcrever e gerar frases'}
-                </button>
 
                 {!audioUrl && (
                   <p className="text-xs text-yellow-400">
@@ -1315,44 +734,27 @@ export default function NovoEpisodio() {
                 )}
 
                 <div>
-                  <div className="flex items-center justify-between gap-3 mb-2">
-                    <label className="block text-sm font-semibold text-slate-300">
-                      Frase escolhida para a Palavra do Dia
-                    </label>
-
-                    <button
-                      type="button"
-                      onClick={handleCorrectDailyQuote}
-                      disabled={!selectedDailyQuote.trim() || correctingQuote}
-                      className="rounded-full border border-blue-400/30 bg-blue-500/10 px-3 py-1.5 text-xs font-bold text-blue-100 hover:bg-blue-500/20 disabled:opacity-50"
-                    >
-                      {correctingQuote ? '⏳ Corrigindo...' : '✨ Corrigir frase'}
-                    </button>
-                  </div>
+                  <label className="block text-sm font-semibold text-slate-300 mb-2">
+                    Frase escolhida para a Palavra do Dia
+                  </label>
 
                   <textarea
                     value={selectedDailyQuote}
-                    onChange={(e) => handleDailyQuoteChange(e.target.value)}
+                    onChange={(e) => setSelectedDailyQuote(e.target.value)}
                     className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-3 focus:border-blue-500 outline-none"
                     rows={3}
                     placeholder="Escolha uma sugestão ou escreva a frase final..."
                   />
 
-                  {correctionNote && (
-                    <p className="text-xs text-blue-300 mt-2">
-                      {correctionNote}
-                    </p>
-                  )}
-
                   <p className="text-xs text-slate-500 mt-1">
-                    Se editar ou corrigir a frase, gere os cards novamente para atualizar o visual.
+                    Essa frase será salva junto com o episódio. Se houver agendamento, ela será programada para a mesma data.
                   </p>
                 </div>
 
                 {selectedDailyQuote && (
                   <div className="rounded-xl border border-slate-700 bg-slate-900 p-4">
                     <p className="text-xs uppercase tracking-[0.2em] text-blue-300 font-semibold mb-3">
-                      Preview textual
+                      Preview da Palavra do Dia
                     </p>
 
                     <blockquote className="text-lg text-white font-semibold leading-relaxed">
@@ -1376,82 +778,6 @@ export default function NovoEpisodio() {
                     </div>
                   </div>
                 )}
-
-                <div className="border-t border-slate-800 pt-4">
-                  <div className="mb-3">
-                    <h5 className="text-sm font-bold text-white">
-                      🖼️ Cards prontos
-                    </h5>
-
-                    <p className="text-xs text-slate-500 mt-1">
-                      O sistema vai buscar imagens e montar 3 opções já com a frase aplicada.
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleGenerateCardOptions}
-                    disabled={!selectedDailyQuote.trim() || generatingCards}
-                    className="w-full bg-amber-500 text-slate-950 font-bold py-3 rounded-lg hover:bg-amber-400 transition-colors disabled:opacity-50"
-                  >
-                    {generatingCards ? '⏳ Gerando cards...' : '🎨 Gerar 3 cards prontos'}
-                  </button>
-
-                  {cardOptions.length > 0 && (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
-                      {cardOptions.map((option, index) => (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => setSelectedCardIndex(index)}
-                          className={`rounded-2xl overflow-hidden border-2 text-left transition-all ${
-                            selectedCardIndex === index
-                              ? 'border-amber-400 scale-[1.02]'
-                              : 'border-slate-700 hover:border-slate-500'
-                          }`}
-                        >
-                          <img
-                            src={option.preview_data_url}
-                            alt={option.label}
-                            className="w-full aspect-square object-cover bg-slate-800"
-                          />
-
-                          <div className="p-3 bg-slate-900">
-                            <p className="text-sm font-bold text-white">
-                              {index + 1}. {option.label}
-                            </p>
-
-                            <p className="text-xs text-slate-400 mt-1">
-                              Tema: {option.theme_keywords.join(', ') || 'devocional'}
-                            </p>
-
-                            {option.photographer && (
-                              <p className="text-[11px] text-slate-500 mt-1">
-                                Foto: {option.photographer}
-                              </p>
-                            )}
-
-                            <p className={`text-xs font-semibold mt-2 ${
-                              selectedCardIndex === index
-                                ? 'text-amber-300'
-                                : 'text-slate-500'
-                            }`}>
-                              {selectedCardIndex === index
-                                ? '✅ Card escolhido'
-                                : 'Clique para escolher'}
-                            </p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {selectedDailyQuote && cardOptions.length === 0 && (
-                    <p className="text-xs text-slate-500 mt-3">
-                      Nenhum card gerado ainda. A Palavra do Dia pode ser salva sem card, mas o ideal é gerar e escolher uma opção.
-                    </p>
-                  )}
-                </div>
               </div>
             )}
           </div>
@@ -1462,66 +788,6 @@ export default function NovoEpisodio() {
             </h4>
 
             <div className="space-y-3">
-              <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h5 className="text-sm font-bold text-white">
-                      🎧 Thumbnail do Áudio
-                    </h5>
-
-                    <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                      Gere 3 opções com base no título, descrição e transcrição. A imagem escolhida será usada no card do áudio.
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleGenerateEpisodeThumbnails}
-                  disabled={generatingEpisodeThumbnails}
-                  className="mt-4 w-full rounded-lg bg-blue-600 py-3 text-sm font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {generatingEpisodeThumbnails
-                    ? '⏳ Buscando thumbnails...'
-                    : '🎨 Sugerir 3 thumbnails com Pexels'}
-                </button>
-
-                {episodeThumbnailOptions.length > 0 && (
-                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    {episodeThumbnailOptions.map((image, index) => (
-                      <button
-                        key={image.id || image.url}
-                        type="button"
-                        onClick={() => handleSelectEpisodeThumbnail(image, index)}
-                        className={
-                          selectedEpisodeThumbnailIndex === index
-                            ? 'overflow-hidden rounded-xl border-2 border-blue-400 bg-slate-900 text-left'
-                            : 'overflow-hidden rounded-xl border-2 border-slate-700 bg-slate-900 text-left hover:border-slate-500'
-                        }
-                      >
-                        <img
-                          src={image.preview_url || image.url}
-                          alt={image.alt || 'Thumbnail sugerida'}
-                          className="h-28 w-full object-cover"
-                        />
-
-                        <div className="p-3">
-                          <p className="text-xs font-semibold text-white">
-                            Opção {index + 1}
-                          </p>
-
-                          <p className="mt-1 text-[11px] text-slate-500">
-                            {selectedEpisodeThumbnailIndex === index
-                              ? '✅ Thumbnail escolhida'
-                              : 'Clique para escolher'}
-                          </p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="radio"
