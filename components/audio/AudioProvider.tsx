@@ -1,6 +1,12 @@
-'use client'
+﻿'use client'
 
 import { createContext, useContext, useState, useRef, useEffect } from 'react'
+
+type TranscriptionSegment = {
+  start: number
+  end: number
+  text: string
+}
 
 type Episode = {
   id: string
@@ -10,6 +16,8 @@ type Episode = {
   duration_seconds: number
   icon_emoji?: string
   series_title?: string
+  transcription_text?: string | null
+  transcription_segments?: TranscriptionSegment[] | null
 }
 
 type AudioContextType = {
@@ -49,7 +57,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   audio.addEventListener('timeupdate', () => {
     setCurrentTime(audio.currentTime)
     
-    // Se duração é Infinity, tentar pegar do currentTime máximo
+    // Se duraÃ§Ã£o Ã© Infinity, tentar pegar do currentTime mÃ¡ximo
     if (!isFinite(audio.duration) || audio.duration === 0) {
       if (audio.seekable.length > 0) {
         const seekableDuration = audio.seekable.end(0)
@@ -61,21 +69,21 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   })
 
   audio.addEventListener('loadedmetadata', () => {
-    console.log('📊 Metadata carregado!')
-    console.log('⏱️ Duração do arquivo:', audio.duration)
+    console.log('ðŸ“Š Metadata carregado!')
+    console.log('â±ï¸ DuraÃ§Ã£o do arquivo:', audio.duration)
     
     const audioDuration = audio.duration
     
-    // Validar duração
+    // Validar duraÃ§Ã£o
     if (isFinite(audioDuration) && audioDuration > 0) {
-      console.log('✅ Duração válida:', audioDuration)
+      console.log('âœ… DuraÃ§Ã£o vÃ¡lida:', audioDuration)
       setDuration(audioDuration)
     } else {
-      console.log('❌ Duração inválida (Infinity ou 0)')
+      console.log('âŒ DuraÃ§Ã£o invÃ¡lida (Infinity ou 0)')
       // Tentar pegar de seekable
       if (audio.seekable.length > 0) {
         const seekableDuration = audio.seekable.end(0)
-        console.log('🔍 Tentando seekable.end:', seekableDuration)
+        console.log('ðŸ” Tentando seekable.end:', seekableDuration)
         if (isFinite(seekableDuration) && seekableDuration > 0) {
           setDuration(seekableDuration)
         }
@@ -84,7 +92,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   })
 
   audio.addEventListener('durationchange', () => {
-    console.log('🔄 Duração mudou:', audio.duration)
+    console.log('ðŸ”„ DuraÃ§Ã£o mudou:', audio.duration)
     if (isFinite(audio.duration) && audio.duration > 0) {
       setDuration(audio.duration)
     }
@@ -110,13 +118,13 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     setCurrentTime(0)
     
     // IMPORTANTE: Usar duration_seconds do banco SEMPRE
-    console.log('🎵 Tocando episódio:', episode.title)
-    console.log('⏱️ Duração do banco:', episode.duration_seconds, 'segundos')
+    console.log('ðŸŽµ Tocando episÃ³dio:', episode.title)
+    console.log('â±ï¸ DuraÃ§Ã£o do banco:', episode.duration_seconds, 'segundos')
     
     if (episode.duration_seconds && episode.duration_seconds > 0) {
       setDuration(episode.duration_seconds)
     } else {
-      console.warn('⚠️ Episódio sem duração no banco!')
+      console.warn('âš ï¸ EpisÃ³dio sem duraÃ§Ã£o no banco!')
       setDuration(0)
     }
   }

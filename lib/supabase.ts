@@ -1,9 +1,15 @@
-import { createClient } from '@supabase/supabase-js'
+﻿import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+export type TranscriptionSegment = {
+  start: number
+  end: number
+  text: string
+}
 
 export type TranscriptionStatus =
   | 'not_started'
@@ -81,6 +87,7 @@ export type Episode = {
   scheduled_publish_at: string | null
 
   transcription_text: string | null
+  transcription_segments?: TranscriptionSegment[] | null
   transcription_status: TranscriptionStatus | string | null
   transcription_error: string | null
   transcription_generated_at: string | null

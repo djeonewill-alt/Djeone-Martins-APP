@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -55,7 +55,7 @@ export default function TabHoje({ onOpenSeries }: TabHojeProps) {
         setTodayEpisode(null)
       }
     } catch (error) {
-      console.error('Erro ao carregar episódio:', error)
+      console.error('Erro ao carregar episÃ³dio:', error)
       setTodayEpisode(null)
     } finally {
       setLoading(false)
@@ -86,7 +86,7 @@ export default function TabHoje({ onOpenSeries }: TabHojeProps) {
     const userId = localStorage.getItem('user_id')
 
     if (!userId) {
-      alert('❌ Faça login para salvar favoritos!')
+      alert('âŒ FaÃ§a login para salvar favoritos!')
       return
     }
 
@@ -121,6 +121,8 @@ export default function TabHoje({ onOpenSeries }: TabHojeProps) {
       bible_reference: todayEpisode.bible_reference || '',
       audio_url: todayEpisode.audio_url,
       duration_seconds: todayEpisode.duration_seconds || 0,
+      transcription_text: todayEpisode.transcription_text || null,
+      transcription_segments: todayEpisode.transcription_segments || null,
     })
   }
 
@@ -130,11 +132,11 @@ export default function TabHoje({ onOpenSeries }: TabHojeProps) {
     try {
       setSharingEpisode(true)
 
-      const shareText = `🎧 Áudio devocional de hoje
+      const shareText = `ðŸŽ§ Ãudio devocional de hoje
 
 ${todayEpisode.title}
 
-${todayEpisode.bible_reference || 'Devocional Diário'}
+${todayEpisode.bible_reference || 'Devocional DiÃ¡rio'}
 
 Pr. Djeone Martins`
 
@@ -145,10 +147,10 @@ Pr. Djeone Martins`
         })
       } else {
         await navigator.clipboard.writeText(shareText)
-        alert('✅ Texto do áudio copiado para compartilhar!')
+        alert('âœ… Texto do Ã¡udio copiado para compartilhar!')
       }
     } catch (error) {
-      console.error('Erro ao compartilhar áudio:', error)
+      console.error('Erro ao compartilhar Ã¡udio:', error)
     } finally {
       setSharingEpisode(false)
     }
@@ -161,7 +163,7 @@ Pr. Djeone Martins`
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-950">
         <div className="text-center">
-          <div className="mb-2 text-4xl">⏳</div>
+          <div className="mb-2 text-4xl">â³</div>
           <p className="text-slate-400">Carregando...</p>
         </div>
       </div>
@@ -172,14 +174,14 @@ Pr. Djeone Martins`
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-950">
         <div className="p-5 text-center">
-          <div className="mb-4 text-6xl">📭</div>
+          <div className="mb-4 text-6xl">ðŸ“­</div>
 
           <h3 className="mb-2 text-xl font-bold text-white">
             Nenhum devocional publicado
           </h3>
 
           <p className="text-slate-400">
-            Aguarde o próximo episódio!
+            Aguarde o prÃ³ximo episÃ³dio!
           </p>
         </div>
       </div>

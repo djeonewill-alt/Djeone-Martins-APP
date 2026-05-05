@@ -139,6 +139,7 @@ export default function NovoEpisodio() {
 
   const [enableDailyQuote, setEnableDailyQuote] = useState(true)
   const [transcriptionText, setTranscriptionText] = useState('')
+  const [transcriptionSegments, setTranscriptionSegments] = useState<Array<{ start: number; end: number; text: string }>>([])
   const [quoteSuggestions, setQuoteSuggestions] = useState<DailyQuoteSuggestion[]>([])
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState<number | null>(null)
   const [selectedDailyQuote, setSelectedDailyQuote] = useState('')
@@ -176,6 +177,7 @@ export default function NovoEpisodio() {
 
   const resetAutomationData = () => {
     setTranscriptionText('')
+    setTranscriptionSegments([])
     setQuoteSuggestions([])
     setSelectedSuggestionIndex(null)
     setSelectedDailyQuote('')
@@ -392,6 +394,7 @@ export default function NovoEpisodio() {
       }
 
       setTranscriptionText(data.transcriptionText || '')
+      setTranscriptionSegments(Array.isArray(data.transcriptionSegments) ? data.transcriptionSegments : [])
       alert('✅ Transcrição gerada com sucesso!')
     } catch (error) {
       console.error('Erro ao transcrever:', error)
@@ -543,7 +546,12 @@ export default function NovoEpisodio() {
         )
       }
 
+      const generatedSegments = Array.isArray(transcribeData.transcriptionSegments)
+        ? transcribeData.transcriptionSegments
+        : []
+
       setTranscriptionText(generatedTranscription)
+      setTranscriptionSegments(generatedSegments)
 
       if (autoGenerateEpisodeMetadata) {
         await handleGenerateEpisodeMetadataFromTranscription(generatedTranscription)
@@ -828,6 +836,10 @@ export default function NovoEpisodio() {
             scheduled_publish_at: scheduledPublishAt,
 
             transcription_text: hasTranscription ? transcriptionText.trim() : null,
+            transcription_segments:
+              hasTranscription && transcriptionSegments.length > 0
+                ? transcriptionSegments
+                : null,
             transcription_status: hasTranscription ? 'completed' : 'not_started',
             transcription_error: null,
             transcription_generated_at: hasTranscription ? new Date().toISOString() : null,

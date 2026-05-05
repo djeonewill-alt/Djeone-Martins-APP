@@ -1,4 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
+
+type TranscriptionSegment = {
+  start: number
+  end: number
+  text: string
+}
 
 function cleanText(text: string) {
   return text
@@ -16,7 +22,7 @@ function getFileNameFromUrl(url: string) {
       return fileName
     }
   } catch {
-    // mantém fallback abaixo
+    // fallback abaixo
   }
 
   return `audio-${Date.now()}.webm`
@@ -35,6 +41,39 @@ function getContentTypeFromFileName(fileName: string) {
   if (lower.endsWith('.ogg')) return 'audio/ogg'
 
   return 'audio/webm'
+}
+
+function normalizeSegments(rawSegments: unknown): TranscriptionSegment[] {
+  if (!Array.isArray(rawSegments)) {
+    return []
+  }
+
+  return rawSegments
+    .map((segment) => {
+      const item = segment as {
+        start?: unknown
+        end?: unknown
+        text?: unknown
+      }
+
+      const start = Number(item.start)
+      const end = Number(item.end)
+      const text = cleanText(String(item.text || ''))
+
+      return {
+        start,
+        end,
+        text,
+      }
+    })
+    .filter((segment) => {
+      return (
+        Number.isFinite(segment.start) &&
+        Number.isFinite(segment.end) &&
+        segment.end > segment.start &&
+        segment.text.length > 0
+      )
+    })
 }
 
 async function downloadAudioFile(audioUrl: string) {
@@ -67,8 +106,8 @@ async function transcribeWithOpenAI(audioUrl: string) {
   }
 
   const model =
-    process.env.OPENAI_TRANSCRIBE_MODEL ||
-    'gpt-4o-mini-transcribe'
+    process.env.OPENAI_TRANSCRIBE_TIMESTAMPS_MODEL ||
+    'whisper-1'
 
   const { arrayBuffer, fileName, contentType } = await downloadAudioFile(audioUrl)
 
@@ -81,7 +120,8 @@ async function transcribeWithOpenAI(audioUrl: string) {
   formData.append('file', audioBlob, fileName)
   formData.append('model', model)
   formData.append('language', 'pt')
-  formData.append('response_format', 'json')
+  formData.append('response_format', 'verbose_json')
+  formData.append('timestamp_granularities[]', 'segment')
   formData.append(
     'prompt',
     'Transcreva em português brasileiro. Preserve termos bíblicos, nomes próprios, referências bíblicas e linguagem devocional cristã.'
@@ -107,6 +147,7 @@ async function transcribeWithOpenAI(audioUrl: string) {
   }
 
   const transcriptionText = cleanText(String(data.text || ''))
+  const transcriptionSegments = normalizeSegments(data.segments)
 
   if (!transcriptionText) {
     throw new Error('A OpenAI não retornou texto transcrito.')
@@ -114,6 +155,7 @@ async function transcribeWithOpenAI(audioUrl: string) {
 
   return {
     transcriptionText,
+    transcriptionSegments,
     provider: 'openai',
     model,
     usage: data.usage || null,
@@ -137,6 +179,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       transcriptionText: result.transcriptionText,
+      transcriptionSegments: result.transcriptionSegments,
       provider: result.provider,
       model: result.model,
       usage: result.usage,
