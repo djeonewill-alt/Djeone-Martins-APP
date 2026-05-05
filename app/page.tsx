@@ -25,7 +25,7 @@ export default function Home() {
       <Header />
       
       <main className="pt-16">
-        {activeTab === 'hoje' && <TabHoje />}
+        {activeTab === 'hoje' && <TabHoje onOpenSeries={() => setActiveTab('series')} />}
         {activeTab === 'series' && <TabSeries />}
         {activeTab === 'favoritos' && <TabFavoritos />}
         {activeTab === 'oracao' && <TabOracao />}
