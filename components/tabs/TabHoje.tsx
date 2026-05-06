@@ -176,6 +176,9 @@ Pr. Djeone Martins`
         await navigator.clipboard.writeText(shareText)
         alert('Texto do áudio copiado para compartilhar!')
       }
+
+      const currentShareCount = Number(localStorage.getItem('djeone-share-count-v1') || 0)
+      localStorage.setItem('djeone-share-count-v1', String(currentShareCount + 1))
     } catch (error) {
       console.error('Erro ao compartilhar áudio:', error)
     } finally {
@@ -314,3 +317,4 @@ Pr. Djeone Martins`
     </div>
   )
 }
+

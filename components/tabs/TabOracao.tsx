@@ -20,6 +20,7 @@ import type {
 
 const MY_PRAYER_IDS_KEY = 'djeone-my-prayer-ids-v1'
 const PRAYED_IDS_KEY = 'djeone-prayed-ids-v1'
+const ENCOURAGEMENT_IDS_KEY = 'djeone-encouragement-ids-v1'
 
 export default function TabOracao() {
   const [activeSubTab, setActiveSubTab] = useState<PrayerSubTab>('hoje')
@@ -266,6 +267,11 @@ export default function TabOracao() {
       }
 
       if (data) {
+        const currentEncouragementIds = getLocalArray(ENCOURAGEMENT_IDS_KEY)
+        const nextEncouragementIds = Array.from(new Set([data.id, ...currentEncouragementIds]))
+
+        setLocalArray(ENCOURAGEMENT_IDS_KEY, nextEncouragementIds)
+
         const newEncouragement = data as PrayerEncouragement
 
         setEncouragementsByPrayer((current) => ({
@@ -381,3 +387,4 @@ export default function TabOracao() {
     </div>
   )
 }
+
