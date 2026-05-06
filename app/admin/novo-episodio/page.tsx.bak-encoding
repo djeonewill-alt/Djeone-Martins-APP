@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect, FormEvent } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -931,11 +931,11 @@ export default function NovoEpisodio() {
 
         if (existingDailyQuote?.id) {
           const shouldReplace = window.confirm(
-            'Jï¿½ existe uma Palavra do Dia para esta data. Deseja substituir pela nova?'
+            'Já existe uma Palavra do Dia para esta data. Deseja substituir pela nova?'
           )
 
           if (!shouldReplace) {
-            throw new Error('Publicaï¿½ï¿½o cancelada: jï¿½ existe uma Palavra do Dia para esta data.')
+            throw new Error('Publicação cancelada: já existe uma Palavra do Dia para esta data.')
           }
 
           const { error: updateQuoteError } = await supabase
@@ -952,11 +952,11 @@ export default function NovoEpisodio() {
           if (quoteError) {
             if (quoteError.code === '23505') {
               const shouldReplaceAfterConflict = window.confirm(
-                'Jï¿½ existe uma Palavra do Dia para esta data. Deseja substituir pela nova?'
+                'Já existe uma Palavra do Dia para esta data. Deseja substituir pela nova?'
               )
 
               if (!shouldReplaceAfterConflict) {
-                throw new Error('Publicaï¿½ï¿½o cancelada: jï¿½ existe uma Palavra do Dia para esta data.')
+                throw new Error('Publicação cancelada: já existe uma Palavra do Dia para esta data.')
               }
 
               const { error: updateQuoteAfterConflictError } = await supabase
