@@ -66,7 +66,7 @@ export default function AdminOracoes() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="admin-prayers-page min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6">
         <div className="max-w-2xl mx-auto">
@@ -194,6 +194,221 @@ export default function AdminOracoes() {
           </div>
         )}
       </div>
-    </div>
+    
+      <style jsx global>{`
+        .admin-prayers-page {
+          min-height: 100vh !important;
+          background:
+            radial-gradient(circle at top left, rgba(37, 99, 235, 0.18), transparent 34rem),
+            radial-gradient(circle at top right, rgba(245, 158, 11, 0.14), transparent 30rem),
+            #030712 !important;
+          color: #f8fafc !important;
+        }
+
+        .admin-prayers-page > div:first-child {
+          background:
+            linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 64, 175, 0.28)) !important;
+          border-bottom: 1px solid rgba(148, 163, 184, 0.16) !important;
+          box-shadow: 0 20px 80px rgba(0, 0, 0, 0.22) !important;
+          position: relative !important;
+          overflow: hidden !important;
+        }
+
+        .admin-prayers-page > div:first-child::before {
+          content: "" !important;
+          position: absolute !important;
+          inset: 0 !important;
+          background:
+            radial-gradient(circle at 12% 20%, rgba(96, 165, 250, 0.18), transparent 28rem),
+            radial-gradient(circle at 88% 20%, rgba(245, 158, 11, 0.12), transparent 26rem) !important;
+          pointer-events: none !important;
+        }
+
+        .admin-prayers-page > div:first-child > div,
+        .admin-prayers-page > div:nth-child(2) {
+          max-width: 1180px !important;
+          margin-left: auto !important;
+          margin-right: auto !important;
+          position: relative !important;
+          z-index: 1 !important;
+        }
+
+        .admin-prayers-page > div:first-child > div {
+          padding-top: 34px !important;
+          padding-bottom: 28px !important;
+        }
+
+        .admin-prayers-page > div:nth-child(2) {
+          padding-top: 32px !important;
+          padding-bottom: 64px !important;
+        }
+
+        .admin-prayers-page h1 {
+          font-size: clamp(2.1rem, 4vw, 3.2rem) !important;
+          line-height: 0.98 !important;
+          letter-spacing: -0.07em !important;
+          color: #f8fafc !important;
+        }
+
+        .admin-prayers-page h1::after {
+          content: "Admin" !important;
+          display: inline-flex !important;
+          margin-left: 12px !important;
+          transform: translateY(-5px) !important;
+          font-size: 0.72rem !important;
+          letter-spacing: 0.18em !important;
+          text-transform: uppercase !important;
+          color: #93c5fd !important;
+          background: rgba(59, 130, 246, 0.14) !important;
+          border: 1px solid rgba(147, 197, 253, 0.22) !important;
+          padding: 7px 10px !important;
+          border-radius: 999px !important;
+        }
+
+        .admin-prayers-page a[href="/admin"] {
+          display: inline-flex !important;
+          align-items: center !important;
+          gap: 6px !important;
+          color: #bfdbfe !important;
+          background: rgba(15, 23, 42, 0.58) !important;
+          border: 1px solid rgba(148, 163, 184, 0.18) !important;
+          padding: 8px 12px !important;
+          border-radius: 999px !important;
+          text-decoration: none !important;
+        }
+
+        .admin-prayers-page > div:nth-child(2) > div.grid {
+          grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+          background: rgba(15, 23, 42, 0.62) !important;
+          border: 1px solid rgba(148, 163, 184, 0.14) !important;
+          border-radius: 22px !important;
+          padding: 6px !important;
+          box-shadow: none !important;
+        }
+
+        .admin-prayers-page > div:nth-child(2) > div.grid button {
+          min-height: 48px !important;
+          border-radius: 16px !important;
+        }
+
+        .admin-prayers-page .bg-white,
+        .admin-prayers-page .bg-gray-100,
+        .admin-prayers-page .bg-green-50,
+        .admin-prayers-page .bg-yellow-50\/30 {
+          background:
+            linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(15, 23, 42, 0.72)) !important;
+          border: 1px solid rgba(148, 163, 184, 0.16) !important;
+          box-shadow: 0 22px 70px rgba(0, 0, 0, 0.22) !important;
+          border-radius: 26px !important;
+        }
+
+        .admin-prayers-page .space-y-4 > div {
+          transition:
+            transform 0.2s ease,
+            border-color 0.2s ease,
+            background 0.2s ease !important;
+        }
+
+        .admin-prayers-page .space-y-4 > div:hover {
+          transform: translateY(-2px) !important;
+          border-color: rgba(147, 197, 253, 0.34) !important;
+        }
+
+        .admin-prayers-page button,
+        .admin-prayers-page a {
+          border-radius: 16px !important;
+          font-weight: 900 !important;
+          transition:
+            transform 0.2s ease,
+            border-color 0.2s ease,
+            background 0.2s ease,
+            opacity 0.2s ease !important;
+        }
+
+        .admin-prayers-page button:hover,
+        .admin-prayers-page a:hover {
+          transform: translateY(-1px);
+        }
+
+        .admin-prayers-page .bg-blue-600 {
+          background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
+          color: #ffffff !important;
+          box-shadow: 0 14px 34px rgba(37, 99, 235, 0.18) !important;
+        }
+
+        .admin-prayers-page .bg-green-600,
+        .admin-prayers-page .bg-green-500 {
+          background: linear-gradient(135deg, #059669, #047857) !important;
+          color: #ffffff !important;
+        }
+
+        .admin-prayers-page .bg-yellow-500 {
+          background: linear-gradient(135deg, #d97706, #92400e) !important;
+          color: #ffffff !important;
+        }
+
+        .admin-prayers-page .border-green-200,
+        .admin-prayers-page .border-yellow-200,
+        .admin-prayers-page .border-gray-200 {
+          border-color: rgba(148, 163, 184, 0.18) !important;
+        }
+
+        .admin-prayers-page .border-green-500 {
+          border-color: rgba(34, 197, 94, 0.7) !important;
+        }
+
+        .admin-prayers-page .text-gray-900,
+        .admin-prayers-page .text-gray-800,
+        .admin-prayers-page .text-gray-700,
+        .admin-prayers-page .text-gray-600,
+        .admin-prayers-page .text-gray-500 {
+          color: #dbeafe !important;
+        }
+
+        .admin-prayers-page .text-blue-100 {
+          color: #bfdbfe !important;
+        }
+
+        .admin-prayers-page .text-green-600,
+        .admin-prayers-page .text-green-700,
+        .admin-prayers-page .text-green-800 {
+          color: #86efac !important;
+        }
+
+        .admin-prayers-page .hover\:bg-gray-100:hover {
+          background: rgba(30, 41, 59, 0.7) !important;
+        }
+
+        .admin-prayers-page .animate-spin {
+          border-color: rgba(147, 197, 253, 0.24) !important;
+          border-bottom-color: #60a5fa !important;
+        }
+
+        @media (max-width: 768px) {
+          .admin-prayers-page > div:first-child > div,
+          .admin-prayers-page > div:nth-child(2) {
+            padding-left: 14px !important;
+            padding-right: 14px !important;
+          }
+
+          .admin-prayers-page > div:nth-child(2) > div.grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+
+          .admin-prayers-page h1 {
+            font-size: 2.1rem !important;
+          }
+
+          .admin-prayers-page h1::after {
+            display: none !important;
+          }
+
+          .admin-prayers-page .space-y-4 > div {
+            border-radius: 24px !important;
+          }
+        }
+      `}</style>
+
+</div>
   )
 }
