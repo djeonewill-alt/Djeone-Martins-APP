@@ -1,220 +1,160 @@
-﻿import { createClient } from '@supabase/supabase-js'
+import { createSupabaseBrowserClient } from "./supabase/browser";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+export const supabase = createSupabaseBrowserClient();
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: JsonValue }
+  | JsonValue[];
 
 export type TranscriptionSegment = {
-  start: number
-  end: number
-  text: string
-}
-
-export type TranscriptionStatus =
-  | 'not_started'
-  | 'processing'
-  | 'completed'
-  | 'failed'
-
-export type DailyQuoteStatus =
-  | 'not_started'
-  | 'processing'
-  | 'completed'
-  | 'failed'
-
-export type DailyQuotePublishStatus =
-  | 'draft'
-  | 'scheduled'
-  | 'published'
-
-export type DailyQuoteSourceType =
-  | 'manual'
-  | 'ai_suggested'
-  | 'ai_auto'
-
-export type CardGenerationStatus =
-  | 'not_started'
-  | 'processing'
-  | 'completed'
-  | 'failed'
-
-export type DailyQuoteTemplate =
-  | 'devotional'
-  | 'modern'
-  | 'cinematic'
-
-export type ImageSourceProvider =
-  | 'pexels'
-  | 'unsplash'
-  | 'pixabay'
-  | 'manual'
-  | 'r2'
-  | 'fallback'
-  | string
+  id?: string | number;
+  start: number;
+  end: number;
+  text: string;
+  [key: string]: unknown;
+};
 
 export type DailyQuoteSuggestion = {
-  quote_text: string
-  reason?: string
-  score?: number
-}
+  quote_text: string;
+  bible_reference?: string | null;
+  reference?: string | null;
+  theme?: string | null;
+  reason?: string | null;
+  notes?: string | null;
+  source?: string | null;
+  confidence?: number | null;
+  [key: string]: unknown;
+};
 
-export type GeneratedCardOption = {
-  id: string
-  template: DailyQuoteTemplate | string
-  preview_url?: string
-  source_image_url: string
-  source_image_provider: ImageSourceProvider
-  theme_keywords: string[]
-  quote_background_id?: string | null
-  photographer?: string | null
-  source_page_url?: string | null
-  query_used?: string | null
-}
-
-export type Episode = {
-  id: string
-  series_id: string
-  episode_number: number
-  title: string
-  bible_reference: string | null
-  description: string | null
-  audio_url: string
-  duration_seconds: number | null
-  created_at: string
-  cover_image_url: string | null
-  status: string | null
-  scheduled_publish_at: string | null
-
-  transcription_text: string | null
-  transcription_segments?: TranscriptionSegment[] | null
-  transcription_status: TranscriptionStatus | string | null
-  transcription_error: string | null
-  transcription_generated_at: string | null
-
-  daily_quote_status: DailyQuoteStatus | string | null
-  daily_quote_suggestions: DailyQuoteSuggestion[] | null
-  daily_quote_generated_at: string | null
-
-  series?: {
-    title: string
-    icon_emoji: string
-    cover_image_url: string | null
-  }
-}
-
-export type Series = {
-  id: string
-  title: string
-  bible_book: string
-  icon_emoji: string
-  description: string | null
-  is_free: boolean
-  is_current: boolean
-  created_at: string
-  cover_image_url: string | null
-  total_episodes?: number
-}
+export type Profile = {
+  id: string;
+  auth_user_id?: string | null;
+  email?: string | null;
+  name?: string | null;
+  phone?: string | null;
+  birth_date?: string | null;
+  gender?: string | null;
+  country?: string | null;
+  city?: string | null;
+  neighborhood?: string | null;
+  created_at?: string | null;
+};
 
 export type PrayerRequest = {
-  id: string
-  user_id: string
-  author_name: string | null
-  request: string
-  content: string
-  is_answered: boolean
-  is_private: boolean
-  testimony_text: string | null
-  created_at: string
-  praying_count?: number
-}
+  id: string;
+  user_id?: string | null;
+  content: string;
+  request?: string | null;
+  author_name?: string | null;
+  is_private?: boolean | null;
+  is_active?: boolean | null;
+  is_answered?: boolean | null;
+  answered_at?: string | null;
+  testimony_text?: string | null;
+  created_at: string;
+  profiles?: Profile | null;
+};
 
-export type QuoteBackground = {
-  id: string
+export type Series = {
+  id: string;
+  title: string;
+  description?: string | null;
+  cover_image_url?: string | null;
+  book_name?: string | null;
+  icon_emoji?: string | null;
+  gradient_colors?: string | null;
+  is_free?: boolean | null;
+  is_current?: boolean | null;
+  total_episodes?: number | null;
+  episode_count?: number | null;
+  order_index?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  bible_book?: string | null;
+};
 
-  image_url: string
-  preview_url: string | null
+export type EpisodeSeries = {
+  id?: string;
+  title?: string;
+  icon_emoji?: string;
+  cover_image_url?: string;
+  description?: string;
+};
 
-  theme: string
-  theme_keywords: string[] | null
+export type Episode = {
+  id: string;
+  series_id?: string | null;
+  title: string;
+  description?: string | null;
+  bible_reference?: string | null;
+  audio_url: string;
+  duration_seconds?: number | null;
+  episode_number?: number | null;
+  published_at?: string | null;
+  created_at?: string | null;
+  cover_image_url?: string | null;
+  status?: string | null;
+  scheduled_publish_at?: string | null;
+  transcription_text?: string | null;
+  transcription_status?: string | null;
+  transcription_error?: string | null;
+  transcription_generated_at?: string | null;
+  daily_quote_status?: string | null;
+  daily_quote_suggestions?: DailyQuoteSuggestion[] | null;
+  daily_quote_generated_at?: string | null;
+  transcription_segments?: TranscriptionSegment[] | null;
+  series?: EpisodeSeries | null;
+};
 
-  source: string | null
-  source_image_provider: ImageSourceProvider | null
-  source_page_url: string | null
-  pexels_photo_id: string | null
-  photographer: string | null
-  photographer_url: string | null
-  query_used: string | null
+export type DailyQuoteEpisodeSeries = {
+  title?: string | null;
+  icon_emoji?: string | null;
+  cover_image_url?: string | null;
+};
 
-  last_used_date: string | null
-  use_count: number | null
-
-  is_active: boolean | null
-  is_approved: boolean | null
-
-  created_at: string
-  updated_at: string | null
-}
-
-export type DailyQuoteImageHistory = {
-  id: string
-
-  daily_quote_id: string | null
-  quote_background_id: string | null
-
-  pexels_photo_id: string | null
-  source_image_url: string | null
-  source_image_provider: ImageSourceProvider | null
-  source_page_url: string | null
-  photographer: string | null
-  photographer_url: string | null
-  query_used: string | null
-  theme_keywords: string[] | null
-
-  used_at: string
-  created_at: string
-}
+export type DailyQuoteEpisode = {
+  id: string;
+  title: string;
+  bible_reference?: string | null;
+  cover_image_url?: string | null;
+  series?: DailyQuoteEpisodeSeries | null;
+};
 
 export type DailyQuote = {
-  id: string
-  episode_id: string | null
-  quote_background_id: string | null
+  id: string;
+  episode_id?: string | null;
+  quote_background_id?: string | null;
+  quote_text: string;
+  background_image_url?: string | null;
+  card_image_url?: string | null;
+  date?: string | null;
+  status?: string | null;
+  scheduled_publish_at?: string | null;
+  published_at?: string | null;
+  source_type?: string | null;
+  ai_suggestions?: JsonValue | null;
+  selected_suggestion_index?: number | null;
+  share_count?: number | null;
+  like_count?: number | null;
+  created_at?: string | null;
+  theme_keywords?: JsonValue | null;
+  source_image_provider?: string | null;
+  source_image_url?: string | null;
+  selected_template?: string | null;
+  generated_card_options?: JsonValue | null;
+  card_generation_status?: string | null;
+  card_generation_error?: string | null;
+  card_generated_at?: string | null;
+  episode?: DailyQuoteEpisode | null;
+};
 
-  quote_text: string
-  background_image_url: string | null
-  card_image_url: string | null
-  date: string
-  status: DailyQuotePublishStatus | string | null
-  scheduled_publish_at: string | null
-  published_at: string | null
-  source_type: DailyQuoteSourceType | string | null
-  ai_suggestions: DailyQuoteSuggestion[] | null
-  selected_suggestion_index: number | null
-  share_count: number
-  like_count: number
-  created_at: string
-
-  theme_keywords: string[] | null
-  source_image_provider: ImageSourceProvider | null
-  source_image_url: string | null
-  selected_template: DailyQuoteTemplate | string | null
-  generated_card_options: GeneratedCardOption[] | null
-  card_generation_status: CardGenerationStatus | string | null
-  card_generation_error: string | null
-  card_generated_at: string | null
-
-  episode?: {
-    id: string
-    title: string
-    bible_reference: string | null
-    cover_image_url?: string | null
-    scheduled_publish_at?: string | null
-    series?: {
-      title: string
-      icon_emoji: string
-      cover_image_url: string | null
-    }
-  }
-
-  quote_background?: QuoteBackground | null
-}
+export type AppSetting = {
+  id: string;
+  key: string;
+  value: string;
+  updated_at?: string | null;
+};

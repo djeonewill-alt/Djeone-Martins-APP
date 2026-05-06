@@ -53,6 +53,39 @@ export default function TabOracao() {
     loadMyPrayers()
   }, [])
 
+  async function getCurrentProfileId() {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError) {
+      throw userError;
+    }
+
+    if (!user) {
+      throw new Error("Usuário não autenticado.");
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("auth_user_id", user.id)
+      .maybeSingle();
+
+    if (profileError) {
+      throw profileError;
+    }
+
+    if (!profile?.id) {
+      throw new Error("Perfil do usuário não encontrado.");
+    }
+
+    window.localStorage.setItem("user_id", profile.id);
+
+    return profile.id as string;
+  }
+
   const loadPrayerStats = async (
     prayerList: PrayerRequest[],
     currentDeviceId: string
@@ -173,9 +206,12 @@ export default function TabOracao() {
     setSending(true)
 
     try {
+      const profileId = await getCurrentProfileId()
+
       const { data, error } = await supabase
         .from('prayer_requests')
         .insert({
+          user_id: profileId,
           content: newPrayer.trim(),
           author_name: authorName.trim() || 'Anônimo',
           is_private: isPrivate,

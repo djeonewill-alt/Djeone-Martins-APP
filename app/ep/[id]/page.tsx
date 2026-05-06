@@ -6,19 +6,33 @@ import { supabase } from '@/lib/supabase'
 import { useAudio } from '@/components/audio/AudioProvider'
 import type { Episode } from '@/lib/supabase'
 
+type EpisodeSeries = {
+  id: string
+  title: string
+  icon_emoji?: string | null
+}
+
+type PublicEpisode = Episode & {
+  series?: EpisodeSeries | null
+}
+
 export default function EpisodePage() {
   const router = useRouter()
   const params = useParams()
   const { play } = useAudio()
-  const [episode, setEpisode] = useState<Episode | null>(null)
+
+  const [episode, setEpisode] = useState<PublicEpisode | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     loadEpisode()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id])
 
-  const loadEpisode = async () => {
+  async function loadEpisode() {
     try {
+      const episodeId = Array.isArray(params.id) ? params.id[0] : params.id
+
       const { data, error } = await supabase
         .from('episodes')
         .select(`
@@ -29,22 +43,24 @@ export default function EpisodePage() {
             icon_emoji
           )
         `)
-        .eq('id', params.id)
+        .eq('id', episodeId)
         .single()
 
       if (error) throw error
-      setEpisode(data)
 
-      // Auto-play
-      if (data) {
+      const typedEpisode = data as PublicEpisode
+
+      setEpisode(typedEpisode)
+
+      if (typedEpisode) {
         play({
-          id: data.id,
-          title: data.title,
-          bible_reference: data.bible_reference || '',
-          audio_url: data.audio_url,
-          duration_seconds: data.duration_seconds || 0,
-          series_title: data.series?.title,
-          icon_emoji: data.series?.icon_emoji,
+          id: typedEpisode.id,
+          title: typedEpisode.title,
+          bible_reference: typedEpisode.bible_reference || '',
+          audio_url: typedEpisode.audio_url,
+          duration_seconds: typedEpisode.duration_seconds || 0,
+          series_title: typedEpisode.series?.title,
+          icon_emoji: typedEpisode.series?.icon_emoji || '🎙️',
         })
       }
     } catch (error) {
@@ -56,9 +72,9 @@ export default function EpisodePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-blue-600 to-blue-800 flex items-center justify-center">
-        <div className="text-white text-center">
-          <div className="text-6xl mb-4">🎙️</div>
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-blue-600 to-blue-800">
+        <div className="text-center text-white">
+          <div className="mb-4 text-6xl">🎙️</div>
           <p className="text-xl">Carregando...</p>
         </div>
       </div>
@@ -67,16 +83,20 @@ export default function EpisodePage() {
 
   if (!episode) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-blue-600 to-blue-800 flex items-center justify-center p-5">
-        <div className="text-white text-center">
-          <div className="text-6xl mb-4">❌</div>
-          <h1 className="text-2xl font-bold mb-2">Episódio não encontrado</h1>
-          <p className="mb-6 opacity-80">Este episódio não existe ou foi removido.</p>
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-blue-600 to-blue-800 p-5">
+        <div className="text-center text-white">
+          <div className="mb-4 text-6xl">😕</div>
+          <h1 className="mb-2 text-2xl font-bold">Episódio não encontrado</h1>
+          <p className="mb-6 text-blue-100">
+            Não conseguimos carregar este devocional agora.
+          </p>
+
           <button
+            type="button"
             onClick={() => router.push('/')}
-            className="bg-white text-blue-600 px-6 py-3 rounded-lg font-bold hover:bg-blue-50 transition-colors"
+            className="rounded-xl bg-white px-6 py-3 font-bold text-blue-700 shadow-lg"
           >
-            Voltar para Home
+            Abrir app
           </button>
         </div>
       </div>
@@ -84,54 +104,52 @@ export default function EpisodePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-600 to-blue-800 flex items-center justify-center p-5">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center">
-        {/* Icon */}
-        <div className="text-8xl mb-6">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-blue-600 to-blue-800 p-5">
+      <div className="w-full max-w-md rounded-3xl bg-white p-8 text-center shadow-2xl">
+        <div className="mb-6 text-8xl">
           {episode.series?.icon_emoji || '🎙️'}
         </div>
 
-        {/* Title */}
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">
-          📖 {episode.bible_reference}
+        <h1 className="mb-2 text-2xl font-bold text-gray-900">
+          📖 {episode.bible_reference || 'Devocional'}
         </h1>
-        <p className="text-lg text-gray-700 mb-1">
-          "{episode.title}"
+
+        <p className="mb-1 text-lg text-gray-700">
+          &quot;{episode.title}&quot;
         </p>
+
         {episode.series?.title && (
-          <p className="text-sm text-gray-500 mb-6">
+          <p className="mb-6 text-sm text-gray-500">
             {episode.series.title}
           </p>
         )}
 
-        {/* Description */}
         {episode.description && (
-          <p className="text-gray-600 text-sm mb-6 leading-relaxed">
+          <p className="mb-6 text-sm leading-relaxed text-gray-600">
             {episode.description}
           </p>
         )}
 
-        {/* Info */}
-        <div className="bg-blue-50 rounded-lg p-4 mb-6">
-          <p className="text-sm text-gray-600">
+        <div className="mb-6 rounded-2xl bg-blue-50 p-4">
+          <p className="text-sm text-gray-700">
             ✨ O áudio já está tocando!
           </p>
-          <p className="text-xs text-gray-500 mt-1">
-            Abra o player para controlar a reprodução
+          <p className="mt-1 text-xs text-gray-500">
+            Abra o player para controlar a reprodução.
           </p>
         </div>
 
-        {/* Actions */}
         <div className="space-y-3">
           <button
+            type="button"
             onClick={() => router.push('/')}
-            className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold py-4 rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-lg"
+            className="w-full rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 py-4 font-bold text-white shadow-lg transition-all hover:from-blue-700 hover:to-blue-800"
           >
-            📱 Abrir App Completo
+            📱 Abrir app completo
           </button>
 
           <p className="text-xs text-gray-500">
-            Instale o app para receber devocionais diários!
+            Instale o app para receber devocionais diários.
           </p>
         </div>
       </div>
