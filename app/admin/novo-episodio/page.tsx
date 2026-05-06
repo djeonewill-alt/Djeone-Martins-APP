@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect, FormEvent } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -69,27 +69,27 @@ function getErrorMessage(error: unknown) {
 function normalizeBasicPortuguese(text: string) {
   let value = text
     .replace(/\s+/g, ' ')
-    .replace(/[“”]/g, '"')
-    .replace(/[‘’]/g, "'")
+    .replace(/[â€œâ€]/g, '"')
+    .replace(/[â€˜â€™]/g, "'")
     .trim()
 
   const replacements: [RegExp, string][] = [
     [/\bjesus\b/gi, 'Jesus'],
     [/\bdeus\b/gi, 'Deus'],
     [/\bsenhor\b/gi, 'Senhor'],
-    [/\bespirito santo\b/gi, 'Espírito Santo'],
-    [/\bespirito\b/gi, 'Espírito'],
-    [/\bnao\b/gi, 'não'],
-    [/\bvoce\b/gi, 'você'],
-    [/\bagua\b/gi, 'água'],
-    [/\bgraca\b/gi, 'graça'],
-    [/\bfe\b/gi, 'fé'],
-    [/\bcoracao\b/gi, 'coração'],
-    [/\boracao\b/gi, 'oração'],
-    [/\bprotecao\b/gi, 'proteção'],
-    [/\blibertacao\b/gi, 'libertação'],
-    [/\bsalvacao\b/gi, 'salvação'],
-    [/\bperdao\b/gi, 'perdão'],
+    [/\bespirito santo\b/gi, 'EspÃ­rito Santo'],
+    [/\bespirito\b/gi, 'EspÃ­rito'],
+    [/\bnao\b/gi, 'nÃ£o'],
+    [/\bvoce\b/gi, 'vocÃª'],
+    [/\bagua\b/gi, 'Ã¡gua'],
+    [/\bgraca\b/gi, 'graÃ§a'],
+    [/\bfe\b/gi, 'fÃ©'],
+    [/\bcoracao\b/gi, 'coraÃ§Ã£o'],
+    [/\boracao\b/gi, 'oraÃ§Ã£o'],
+    [/\bprotecao\b/gi, 'proteÃ§Ã£o'],
+    [/\blibertacao\b/gi, 'libertaÃ§Ã£o'],
+    [/\bsalvacao\b/gi, 'salvaÃ§Ã£o'],
+    [/\bperdao\b/gi, 'perdÃ£o'],
   ]
 
   replacements.forEach(([regex, replacement]) => {
@@ -103,7 +103,7 @@ function normalizeBasicPortuguese(text: string) {
     value = value.charAt(0).toUpperCase() + value.slice(1)
   }
 
-  if (value && !/[.!?…]$/.test(value)) {
+  if (value && !/[.!?â€¦]$/.test(value)) {
     value += '.'
   }
 
@@ -196,7 +196,7 @@ export default function NovoEpisodio() {
 
       setSeries(data || [])
     } catch (error) {
-      console.error('Erro ao carregar séries:', error)
+      console.error('Erro ao carregar sÃ©ries:', error)
     }
   }
 
@@ -219,13 +219,13 @@ export default function NovoEpisodio() {
         setAudioUrl(data.url)
         setAudioDuration(Math.round(duration))
         resetAutomationData()
-        alert('✅ Gravação enviada com sucesso!')
+        alert('âœ… GravaÃ§Ã£o enviada com sucesso!')
       } else {
         throw new Error(data.error || 'Erro ao fazer upload')
       }
     } catch (error) {
       console.error('Erro no upload:', error)
-      alert('❌ Erro ao enviar gravação. Tente novamente.')
+      alert('âŒ Erro ao enviar gravaÃ§Ã£o. Tente novamente.')
     } finally {
       setUploading(false)
     }
@@ -260,13 +260,13 @@ export default function NovoEpisodio() {
           setAudioDuration(Math.round(audio.duration))
         })
 
-        alert('✅ Arquivo enviado com sucesso!')
+        alert('âœ… Arquivo enviado com sucesso!')
       } else {
         throw new Error(data.error || 'Erro ao fazer upload')
       }
     } catch (error) {
       console.error('Erro no upload:', error)
-      alert('❌ Erro ao enviar arquivo. Tente novamente.')
+      alert('âŒ Erro ao enviar arquivo. Tente novamente.')
     } finally {
       setUploading(false)
     }
@@ -294,13 +294,13 @@ export default function NovoEpisodio() {
       if (data.url) {
         setEpisodeImageUrl(data.url)
         setUseSeriesImage(false)
-        alert('✅ Imagem carregada!')
+        alert('âœ… Imagem carregada!')
       } else {
         throw new Error(data.error || 'Erro ao fazer upload')
       }
     } catch (error) {
       console.error('Erro no upload:', error)
-      alert('❌ Erro ao fazer upload da imagem. Tente novamente.')
+      alert('âŒ Erro ao fazer upload da imagem. Tente novamente.')
     } finally {
       setUploading(false)
     }
@@ -319,7 +319,7 @@ export default function NovoEpisodio() {
       .trim()
 
     if (sourceText.length < 20) {
-      alert('❌ Preencha pelo menos o título, descrição ou transcrição para buscar thumbnails.')
+      alert('âŒ Preencha pelo menos o tÃ­tulo, descriÃ§Ã£o ou transcriÃ§Ã£o para buscar thumbnails.')
       return
     }
 
@@ -353,10 +353,10 @@ export default function NovoEpisodio() {
       setEpisodeImageUrl(images[0].url)
       setUseSeriesImage(false)
 
-      alert('✅ 3 thumbnails foram sugeridas. Escolha a melhor para o episódio.')
+      alert('âœ… 3 thumbnails foram sugeridas. Escolha a melhor para o episÃ³dio.')
     } catch (error) {
       console.error('Erro ao gerar thumbnails:', error)
-      alert('❌ ' + getErrorMessage(error))
+      alert('âŒ ' + getErrorMessage(error))
     } finally {
       setGeneratingEpisodeThumbnails(false)
     }
@@ -370,7 +370,7 @@ export default function NovoEpisodio() {
 
   const handleTranscribeAudio = async () => {
     if (!audioUrl) {
-      alert('❌ Envie ou grave um áudio primeiro.')
+      alert('âŒ Envie ou grave um Ã¡udio primeiro.')
       return
     }
 
@@ -390,15 +390,15 @@ export default function NovoEpisodio() {
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Erro ao transcrever áudio.')
+        throw new Error(data.error || 'Erro ao transcrever Ã¡udio.')
       }
 
       setTranscriptionText(data.transcriptionText || '')
       setTranscriptionSegments(Array.isArray(data.transcriptionSegments) ? data.transcriptionSegments : [])
-      alert('✅ Transcrição gerada com sucesso!')
+      alert('âœ… TranscriÃ§Ã£o gerada com sucesso!')
     } catch (error) {
       console.error('Erro ao transcrever:', error)
-      alert(`❌ ${getErrorMessage(error)}`)
+      alert(`âŒ ${getErrorMessage(error)}`)
     } finally {
       setTranscribing(false)
     }
@@ -429,7 +429,7 @@ export default function NovoEpisodio() {
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Erro ao gerar título e descrição.')
+        throw new Error(data.error || 'Erro ao gerar tÃ­tulo e descriÃ§Ã£o.')
       }
 
       const generatedTitle = String(data.title || '').trim()
@@ -447,8 +447,8 @@ export default function NovoEpisodio() {
         themeKeywords: data.theme_keywords || [],
       }
     } catch (error) {
-      console.error('Erro ao gerar título e descrição:', error)
-      alert('⚠️ Não consegui gerar título e descrição automaticamente. Vou continuar gerando as frases.')
+      console.error('Erro ao gerar tÃ­tulo e descriÃ§Ã£o:', error)
+      alert('âš ï¸ NÃ£o consegui gerar tÃ­tulo e descriÃ§Ã£o automaticamente. Vou continuar gerando as frases.')
       return null
     } finally {
       setGeneratingEpisodeMetadata(false)
@@ -459,7 +459,7 @@ export default function NovoEpisodio() {
     const cleanedTranscription = transcriptionText.trim()
 
     if (cleanedTranscription.length < 100) {
-      alert('❌ A transcrição está muito curta. Gere ou cole uma transcrição maior.')
+      alert('âŒ A transcriÃ§Ã£o estÃ¡ muito curta. Gere ou cole uma transcriÃ§Ã£o maior.')
       return
     }
 
@@ -481,13 +481,13 @@ export default function NovoEpisodio() {
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Erro ao gerar sugestões.')
+        throw new Error(data.error || 'Erro ao gerar sugestÃµes.')
       }
 
       const suggestions = (data.suggestions || []) as DailyQuoteSuggestion[]
 
       if (!suggestions.length) {
-        throw new Error('Nenhuma sugestão foi gerada.')
+        throw new Error('Nenhuma sugestÃ£o foi gerada.')
       }
 
       setQuoteSuggestions(suggestions)
@@ -501,10 +501,10 @@ export default function NovoEpisodio() {
           ? 'com IA'
           : 'com modo local'
 
-      alert(`✅ Sugestões geradas ${providerMessage}!`)
+      alert(`âœ… SugestÃµes geradas ${providerMessage}!`)
     } catch (error) {
       console.error('Erro ao gerar Palavra do Dia:', error)
-      alert(`❌ ${getErrorMessage(error)}`)
+      alert(`âŒ ${getErrorMessage(error)}`)
     } finally {
       setGeneratingQuote(false)
     }
@@ -512,7 +512,7 @@ export default function NovoEpisodio() {
 
   const handleTranscribeAndGenerateQuote = async () => {
     if (!audioUrl) {
-      alert('❌ Envie ou grave um áudio primeiro.')
+      alert('âŒ Envie ou grave um Ã¡udio primeiro.')
       return
     }
 
@@ -533,7 +533,7 @@ export default function NovoEpisodio() {
       const transcribeData = await transcribeResponse.json()
 
       if (!transcribeResponse.ok) {
-        throw new Error(transcribeData.error || 'Erro ao transcrever áudio.')
+        throw new Error(transcribeData.error || 'Erro ao transcrever Ã¡udio.')
       }
 
       const generatedTranscription = String(
@@ -542,7 +542,7 @@ export default function NovoEpisodio() {
 
       if (generatedTranscription.length < 100) {
         throw new Error(
-          'A transcrição gerada ficou muito curta. Verifique se o áudio foi enviado corretamente.'
+          'A transcriÃ§Ã£o gerada ficou muito curta. Verifique se o Ã¡udio foi enviado corretamente.'
         )
       }
 
@@ -572,13 +572,13 @@ export default function NovoEpisodio() {
       const quoteData = await quoteResponse.json()
 
       if (!quoteResponse.ok) {
-        throw new Error(quoteData.error || 'Erro ao gerar sugestões.')
+        throw new Error(quoteData.error || 'Erro ao gerar sugestÃµes.')
       }
 
       const suggestions = (quoteData.suggestions || []) as DailyQuoteSuggestion[]
 
       if (!suggestions.length) {
-        throw new Error('Nenhuma sugestão foi gerada.')
+        throw new Error('Nenhuma sugestÃ£o foi gerada.')
       }
 
       setQuoteSuggestions(suggestions)
@@ -592,10 +592,10 @@ export default function NovoEpisodio() {
           ? 'com IA'
           : 'com modo local'
 
-      alert('✅ Transcrição e sugestões geradas ' + providerMessage + '!')
+      alert('âœ… TranscriÃ§Ã£o e sugestÃµes geradas ' + providerMessage + '!')
     } catch (error) {
-      console.error('Erro no fluxo automático:', error)
-      alert('❌ ' + getErrorMessage(error))
+      console.error('Erro no fluxo automÃ¡tico:', error)
+      alert('âŒ ' + getErrorMessage(error))
     } finally {
       setTranscribing(false)
       setGeneratingQuote(false)
@@ -619,7 +619,7 @@ export default function NovoEpisodio() {
     const currentText = selectedDailyQuote.trim()
 
     if (!currentText) {
-      alert('❌ Escreva ou escolha uma frase primeiro.')
+      alert('âŒ Escreva ou escolha uma frase primeiro.')
       return
     }
 
@@ -645,31 +645,31 @@ export default function NovoEpisodio() {
       const correctedText = String(data.correctedText || '').trim()
 
       if (!correctedText) {
-        throw new Error('A correção retornou uma frase vazia.')
+        throw new Error('A correÃ§Ã£o retornou uma frase vazia.')
       }
 
       setSelectedDailyQuote(correctedText)
       setCorrectionNote(
         data.provider === 'openai'
           ? data.notes || 'Frase revisada com IA.'
-          : data.notes || 'Frase revisada com correção local.'
+          : data.notes || 'Frase revisada com correÃ§Ã£o local.'
       )
       resetCardData()
 
       alert(
         data.changed
-          ? '✅ Frase corrigida. Revise antes de gerar os cards.'
-          : '✅ A frase já parecia correta.'
+          ? 'âœ… Frase corrigida. Revise antes de gerar os cards.'
+          : 'âœ… A frase jÃ¡ parecia correta.'
       )
     } catch (error) {
       console.error('Erro ao corrigir frase:', error)
 
       const correctedText = normalizeBasicPortuguese(currentText)
       setSelectedDailyQuote(correctedText)
-      setCorrectionNote('A correção com IA falhou. Foi aplicada uma correção local básica.')
+      setCorrectionNote('A correÃ§Ã£o com IA falhou. Foi aplicada uma correÃ§Ã£o local bÃ¡sica.')
       resetCardData()
 
-      alert(`⚠️ ${getErrorMessage(error)} Correção local aplicada.`)
+      alert(`âš ï¸ ${getErrorMessage(error)} CorreÃ§Ã£o local aplicada.`)
     } finally {
       setCorrectingQuote(false)
     }
@@ -679,7 +679,7 @@ export default function NovoEpisodio() {
     const quoteText = selectedDailyQuote.trim()
 
     if (!quoteText) {
-      alert('❌ Escolha ou escreva uma frase primeiro.')
+      alert('âŒ Escolha ou escreva uma frase primeiro.')
       return
     }
 
@@ -741,10 +741,10 @@ export default function NovoEpisodio() {
 
       setCardOptions(options)
       setSelectedCardIndex(0)
-      alert('✅ 3 opções de card foram geradas!')
+      alert('âœ… 3 opÃ§Ãµes de card foram geradas!')
     } catch (error) {
       console.error('Erro ao gerar cards:', error)
-      alert(`❌ ${getErrorMessage(error)}`)
+      alert(`âŒ ${getErrorMessage(error)}`)
     } finally {
       setGeneratingCards(false)
     }
@@ -785,22 +785,22 @@ export default function NovoEpisodio() {
         : 1
 
     if (!formData.series_id || !formData.bible_reference || !formData.title) {
-      alert('❌ Preencha todos os campos obrigatórios!')
+      alert('âŒ Preencha todos os campos obrigatÃ³rios!')
       return
     }
 
     if (formData.status === 'published' && !audioUrl) {
-      alert('❌ Grave ou faça upload do áudio antes de publicar!')
+      alert('âŒ Grave ou faÃ§a upload do Ã¡udio antes de publicar!')
       return
     }
 
     if (formData.scheduled_date && !audioUrl) {
-      alert('❌ Grave ou faça upload do áudio antes de agendar!')
+      alert('âŒ Grave ou faÃ§a upload do Ã¡udio antes de agendar!')
       return
     }
 
     if (enableDailyQuote && selectedDailyQuote.trim().length > 0 && selectedDailyQuote.trim().length < 20) {
-      alert('❌ A Palavra do Dia está muito curta.')
+      alert('âŒ A Palavra do Dia estÃ¡ muito curta.')
       return
     }
 
@@ -934,40 +934,61 @@ export default function NovoEpisodio() {
             'Já existe uma Palavra do Dia para esta data. Deseja substituir pela nova?'
           )
 
-          if (shouldReplace) {
-            const { error: updateQuoteError } = await supabase
-              .from('daily_quotes')
-              .update(quotePayload)
-              .eq('id', existingDailyQuote.id)
-
-            if (updateQuoteError) throw updateQuoteError
+          if (!shouldReplace) {
+            throw new Error('Publicação cancelada: já existe uma Palavra do Dia para esta data.')
           }
+
+          const { error: updateQuoteError } = await supabase
+            .from('daily_quotes')
+            .update(quotePayload)
+            .eq('id', existingDailyQuote.id)
+
+          if (updateQuoteError) throw updateQuoteError
         } else {
           const { error: quoteError } = await supabase
             .from('daily_quotes')
             .insert([quotePayload])
 
-          if (quoteError) throw quoteError
+          if (quoteError) {
+            if (quoteError.code === '23505') {
+              const shouldReplaceAfterConflict = window.confirm(
+                'Já existe uma Palavra do Dia para esta data. Deseja substituir pela nova?'
+              )
+
+              if (!shouldReplaceAfterConflict) {
+                throw new Error('Publicação cancelada: já existe uma Palavra do Dia para esta data.')
+              }
+
+              const { error: updateQuoteAfterConflictError } = await supabase
+                .from('daily_quotes')
+                .update(quotePayload)
+                .eq('date', quoteDate)
+
+              if (updateQuoteAfterConflictError) throw updateQuoteAfterConflictError
+            } else {
+              throw quoteError
+            }
+          }
         }
       }
 
       const message = scheduledPublishAt
         ? hasDailyQuote
-          ? `✅ Episódio e Palavra do Dia agendados para ${new Date(scheduledPublishAt).toLocaleString('pt-BR')}!`
-          : `✅ Episódio agendado para ${new Date(scheduledPublishAt).toLocaleString('pt-BR')}!`
+          ? `âœ… EpisÃ³dio e Palavra do Dia agendados para ${new Date(scheduledPublishAt).toLocaleString('pt-BR')}!`
+          : `âœ… EpisÃ³dio agendado para ${new Date(scheduledPublishAt).toLocaleString('pt-BR')}!`
         : formData.status === 'published'
         ? hasDailyQuote
-          ? '✅ Episódio e Palavra do Dia publicados com sucesso!'
-          : '✅ Episódio publicado com sucesso!'
+          ? 'âœ… EpisÃ³dio e Palavra do Dia publicados com sucesso!'
+          : 'âœ… EpisÃ³dio publicado com sucesso!'
         : hasDailyQuote
-        ? '✅ Rascunho salvo com Palavra do Dia!'
-        : '✅ Rascunho salvo com sucesso!'
+        ? 'âœ… Rascunho salvo com Palavra do Dia!'
+        : 'âœ… Rascunho salvo com sucesso!'
 
       alert(message)
       router.push('/admin')
     } catch (error) {
-      console.error('Erro ao criar episódio:', error)
-      alert(`❌ Erro ao criar episódio: ${getErrorMessage(error)}`)
+      console.error('Erro ao criar episÃ³dio:', error)
+      alert(`âŒ Erro ao criar episÃ³dio: ${getErrorMessage(error)}`)
     } finally {
       setLoading(false)
     }
@@ -980,13 +1001,13 @@ export default function NovoEpisodio() {
       <div className="bg-slate-900 border-b border-slate-800">
         <div className="max-w-4xl mx-auto p-6">
           <Link href="/admin" className="text-slate-400 hover:text-white mb-3 inline-block text-sm">
-            ← Voltar
+            â† Voltar
           </Link>
 
-          <h1 className="text-2xl font-bold text-white">🎙️ Novo Episódio</h1>
+          <h1 className="text-2xl font-bold text-white">ðŸŽ™ï¸ Novo EpisÃ³dio</h1>
 
           <p className="text-slate-400 text-sm mt-1">
-            Publicar ou agendar devocional com Palavra do Dia automática
+            Publicar ou agendar devocional com Palavra do Dia automÃ¡tica
           </p>
         </div>
       </div>
@@ -1002,7 +1023,7 @@ export default function NovoEpisodio() {
                 : 'bg-slate-900 text-slate-400 border border-slate-800'
             }`}
           >
-            🎙️ Gravar Agora
+            ðŸŽ™ï¸ Gravar Agora
           </button>
 
           <button
@@ -1014,7 +1035,7 @@ export default function NovoEpisodio() {
                 : 'bg-slate-900 text-slate-400 border border-slate-800'
             }`}
           >
-            📁 Upload de Arquivo
+            ðŸ“ Upload de Arquivo
           </button>
         </div>
 
@@ -1024,14 +1045,14 @@ export default function NovoEpisodio() {
 
             {uploading && (
               <p className="text-sm text-white/80 mt-3">
-                ⏳ Enviando gravação...
+                â³ Enviando gravaÃ§Ã£o...
               </p>
             )}
 
             {audioUrl && (
               <div className="mt-4">
                 <audio src={audioUrl} controls className="w-full" />
-                <p className="text-sm text-white mt-2">✅ Áudio carregado!</p>
+                <p className="text-sm text-white mt-2">âœ… Ãudio carregado!</p>
               </div>
             )}
           </div>
@@ -1039,7 +1060,7 @@ export default function NovoEpisodio() {
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 mb-5">
             <label className="block">
               <span className="text-sm font-semibold text-slate-300 mb-2 block">
-                Selecione o arquivo de áudio
+                Selecione o arquivo de Ã¡udio
               </span>
 
               <input
@@ -1053,14 +1074,14 @@ export default function NovoEpisodio() {
 
             {uploading && (
               <p className="text-sm text-slate-400 mt-2">
-                ⏳ Enviando arquivo...
+                â³ Enviando arquivo...
               </p>
             )}
 
             {audioUrl && (
               <div className="mt-4">
                 <audio src={audioUrl} controls className="w-full" />
-                <p className="text-sm text-green-400 mt-2">✅ Áudio carregado!</p>
+                <p className="text-sm text-green-400 mt-2">âœ… Ãudio carregado!</p>
               </div>
             )}
           </div>
@@ -1068,12 +1089,12 @@ export default function NovoEpisodio() {
 
         <form onSubmit={handleSubmit} className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-5">
           <h3 className="text-lg font-bold text-white border-b border-slate-800 pb-3">
-            📝 Informações
+            ðŸ“ InformaÃ§Ãµes
           </h3>
 
           <div>
             <label className="block text-sm font-semibold text-slate-300 mb-2">
-              Série *
+              SÃ©rie *
             </label>
 
             <select
@@ -1082,7 +1103,7 @@ export default function NovoEpisodio() {
               className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-3 focus:border-blue-500 outline-none"
               required
             >
-              <option value="">Selecione a série...</option>
+              <option value="">Selecione a sÃ©rie...</option>
 
               {series.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -1094,7 +1115,7 @@ export default function NovoEpisodio() {
 
           <div>
             <label className="block text-sm font-semibold text-slate-300 mb-2">
-              Episódio Nº *
+              EpisÃ³dio NÂº *
             </label>
 
             <input
@@ -1120,7 +1141,7 @@ export default function NovoEpisodio() {
 
           <div>
             <label className="block text-sm font-semibold text-slate-300 mb-2">
-              Referência Bíblica *
+              ReferÃªncia BÃ­blica *
             </label>
 
             <input
@@ -1128,14 +1149,14 @@ export default function NovoEpisodio() {
               value={formData.bible_reference}
               onChange={(e) => setFormData({ ...formData, bible_reference: e.target.value })}
               className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-3 focus:border-blue-500 outline-none"
-              placeholder="Ex: João 11:17-27"
+              placeholder="Ex: JoÃ£o 11:17-27"
               required
             />
           </div>
 
           <div>
             <label className="block text-sm font-semibold text-slate-300 mb-2">
-              Título do Episódio *
+              TÃ­tulo do EpisÃ³dio *
             </label>
 
             <input
@@ -1143,14 +1164,14 @@ export default function NovoEpisodio() {
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-3 focus:border-blue-500 outline-none"
-              placeholder="Ex: Eu sou a ressurreição e a vida"
+              placeholder="Ex: Eu sou a ressurreiÃ§Ã£o e a vida"
               required
             />
           </div>
 
           <div>
             <label className="block text-sm font-semibold text-slate-300 mb-2">
-              Descrição (opcional)
+              DescriÃ§Ã£o (opcional)
             </label>
 
             <textarea
@@ -1166,11 +1187,11 @@ export default function NovoEpisodio() {
             <div className="flex items-start justify-between gap-4 mb-4">
               <div>
                 <h4 className="text-sm font-semibold text-slate-300">
-                  ✨ Palavra do Dia automática
+                  âœ¨ Palavra do Dia automÃ¡tica
                 </h4>
 
                 <p className="text-xs text-slate-500 mt-1">
-                  Transcreva o áudio, gere frases fortes e crie 3 cards prontos para escolher.
+                  Transcreva o Ã¡udio, gere frases fortes e crie 3 cards prontos para escolher.
                 </p>
               </div>
 
@@ -1189,7 +1210,7 @@ export default function NovoEpisodio() {
               <div className="space-y-4 bg-slate-950 border border-slate-800 rounded-xl p-4">
                 <div className="bg-blue-950/40 border border-blue-900/60 rounded-lg p-3">
                   <p className="text-xs text-blue-100 leading-relaxed">
-                    Fluxo recomendado: envie o áudio → transcreva → gere título/descrição → gere frases → escolha a frase → corrija se necessário → gere 3 cards → escolha o card final.
+                    Fluxo recomendado: envie o Ã¡udio â†’ transcreva â†’ gere tÃ­tulo/descriÃ§Ã£o â†’ gere frases â†’ escolha a frase â†’ corrija se necessÃ¡rio â†’ gere 3 cards â†’ escolha o card final.
                   </p>
                 </div>
 
@@ -1203,16 +1224,16 @@ export default function NovoEpisodio() {
 
                   <div>
                     <p className="text-sm font-semibold text-slate-200">
-                      Gerar título e descrição automaticamente
+                      Gerar tÃ­tulo e descriÃ§Ã£o automaticamente
                     </p>
 
                     <p className="text-xs text-slate-500 mt-1">
-                      Use nos áudios novos do dia. Para séries antigas com título pronto, desmarque esta opção.
+                      Use nos Ã¡udios novos do dia. Para sÃ©ries antigas com tÃ­tulo pronto, desmarque esta opÃ§Ã£o.
                     </p>
 
                     {generatingEpisodeMetadata && (
                       <p className="text-xs text-blue-300 mt-2">
-                        ⏳ Gerando título e descrição...
+                        â³ Gerando tÃ­tulo e descriÃ§Ã£o...
                       </p>
                     )}
                   </div>
@@ -1225,7 +1246,7 @@ export default function NovoEpisodio() {
                     disabled={!audioUrl || transcribing}
                     className="flex-1 bg-purple-600 text-white font-bold py-3 rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
                   >
-                    {transcribing ? '⏳ Transcrevendo...' : '🎧 Transcrever áudio'}
+                    {transcribing ? 'â³ Transcrevendo...' : 'ðŸŽ§ Transcrever Ã¡udio'}
                   </button>
 
                   <button
@@ -1234,7 +1255,7 @@ export default function NovoEpisodio() {
                     disabled={transcriptionText.trim().length < 100 || generatingQuote}
                     className="flex-1 bg-emerald-600 text-white font-bold py-3 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
                   >
-                    {generatingQuote ? '⏳ Gerando...' : '✨ Gerar frases'}
+                    {generatingQuote ? 'â³ Gerando...' : 'âœ¨ Gerar frases'}
                   </button>
                 </div>
 
@@ -1245,19 +1266,19 @@ export default function NovoEpisodio() {
                   className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
                 >
                   {transcribing || generatingQuote
-                    ? '⏳ Processando áudio, título e frases...'
-                    : '🚀 Transcrever e gerar frases'}
+                    ? 'â³ Processando Ã¡udio, tÃ­tulo e frases...'
+                    : 'ðŸš€ Transcrever e gerar frases'}
                 </button>
 
                 {!audioUrl && (
                   <p className="text-xs text-yellow-400">
-                    Envie ou grave um áudio para liberar a transcrição automática.
+                    Envie ou grave um Ã¡udio para liberar a transcriÃ§Ã£o automÃ¡tica.
                   </p>
                 )}
 
                 <div>
                   <label className="block text-sm font-semibold text-slate-300 mb-2">
-                    Transcrição do áudio
+                    TranscriÃ§Ã£o do Ã¡udio
                   </label>
 
                   <textarea
@@ -1265,7 +1286,7 @@ export default function NovoEpisodio() {
                     onChange={(e) => setTranscriptionText(e.target.value)}
                     className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-3 focus:border-purple-500 outline-none"
                     rows={6}
-                    placeholder="A transcrição automática aparecerá aqui. Você também pode colar uma transcrição manualmente..."
+                    placeholder="A transcriÃ§Ã£o automÃ¡tica aparecerÃ¡ aqui. VocÃª tambÃ©m pode colar uma transcriÃ§Ã£o manualmente..."
                   />
 
                   <p className="text-xs text-slate-500 mt-1">
@@ -1276,7 +1297,7 @@ export default function NovoEpisodio() {
                 {quoteSuggestions.length > 0 && (
                   <div>
                     <label className="block text-sm font-semibold text-slate-300 mb-3">
-                      Sugestões geradas
+                      SugestÃµes geradas
                     </label>
 
                     <div className="space-y-3">
@@ -1304,7 +1325,7 @@ export default function NovoEpisodio() {
 
                             <div className="flex-1">
                               <p className="text-white font-medium leading-relaxed">
-                                “{suggestion.quote_text}”
+                                â€œ{suggestion.quote_text}â€
                               </p>
 
                               {suggestion.reason && (
@@ -1315,7 +1336,7 @@ export default function NovoEpisodio() {
 
                               {typeof suggestion.score === 'number' && (
                                 <p className="text-xs text-blue-300 mt-2">
-                                  Força devocional: {suggestion.score}/10
+                                  ForÃ§a devocional: {suggestion.score}/10
                                 </p>
                               )}
                             </div>
@@ -1338,7 +1359,7 @@ export default function NovoEpisodio() {
                       disabled={!selectedDailyQuote.trim() || correctingQuote}
                       className="rounded-full border border-blue-400/30 bg-blue-500/10 px-3 py-1.5 text-xs font-bold text-blue-100 hover:bg-blue-500/20 disabled:opacity-50"
                     >
-                      {correctingQuote ? '⏳ Corrigindo...' : '✨ Corrigir frase'}
+                      {correctingQuote ? 'â³ Corrigindo...' : 'âœ¨ Corrigir frase'}
                     </button>
                   </div>
 
@@ -1347,7 +1368,7 @@ export default function NovoEpisodio() {
                     onChange={(e) => handleDailyQuoteChange(e.target.value)}
                     className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-3 focus:border-blue-500 outline-none"
                     rows={3}
-                    placeholder="Escolha uma sugestão ou escreva a frase final..."
+                    placeholder="Escolha uma sugestÃ£o ou escreva a frase final..."
                   />
 
                   {correctionNote && (
@@ -1368,21 +1389,21 @@ export default function NovoEpisodio() {
                     </p>
 
                     <blockquote className="text-lg text-white font-semibold leading-relaxed">
-                      “{selectedDailyQuote}”
+                      â€œ{selectedDailyQuote}â€
                     </blockquote>
 
                     <div className="mt-4 pt-3 border-t border-slate-800">
                       <p className="text-blue-200 text-sm font-medium">
-                        {formData.bible_reference || 'Referência bíblica'}
+                        {formData.bible_reference || 'ReferÃªncia bÃ­blica'}
                       </p>
 
                       <p className="text-slate-400 text-sm mt-1">
-                        {formData.title || 'Título do episódio'}
+                        {formData.title || 'TÃ­tulo do episÃ³dio'}
                       </p>
 
                       {formData.scheduled_date && (
                         <p className="text-green-300 text-xs mt-2">
-                          Programada para {formData.scheduled_date} às {selectedTime}
+                          Programada para {formData.scheduled_date} Ã s {selectedTime}
                         </p>
                       )}
                     </div>
@@ -1392,11 +1413,11 @@ export default function NovoEpisodio() {
                 <div className="border-t border-slate-800 pt-4">
                   <div className="mb-3">
                     <h5 className="text-sm font-bold text-white">
-                      🖼️ Cards prontos
+                      ðŸ–¼ï¸ Cards prontos
                     </h5>
 
                     <p className="text-xs text-slate-500 mt-1">
-                      O sistema vai buscar imagens e montar 3 opções já com a frase aplicada.
+                      O sistema vai buscar imagens e montar 3 opÃ§Ãµes jÃ¡ com a frase aplicada.
                     </p>
                   </div>
 
@@ -1406,7 +1427,7 @@ export default function NovoEpisodio() {
                     disabled={!selectedDailyQuote.trim() || generatingCards}
                     className="w-full bg-amber-500 text-slate-950 font-bold py-3 rounded-lg hover:bg-amber-400 transition-colors disabled:opacity-50"
                   >
-                    {generatingCards ? '⏳ Gerando cards...' : '🎨 Gerar 3 cards prontos'}
+                    {generatingCards ? 'â³ Gerando cards...' : 'ðŸŽ¨ Gerar 3 cards prontos'}
                   </button>
 
                   {cardOptions.length > 0 && (
@@ -1449,7 +1470,7 @@ export default function NovoEpisodio() {
                                 : 'text-slate-500'
                             }`}>
                               {selectedCardIndex === index
-                                ? '✅ Card escolhido'
+                                ? 'âœ… Card escolhido'
                                 : 'Clique para escolher'}
                             </p>
                           </div>
@@ -1460,7 +1481,7 @@ export default function NovoEpisodio() {
 
                   {selectedDailyQuote && cardOptions.length === 0 && (
                     <p className="text-xs text-slate-500 mt-3">
-                      Nenhum card gerado ainda. A Palavra do Dia pode ser salva sem card, mas o ideal é gerar e escolher uma opção.
+                      Nenhum card gerado ainda. A Palavra do Dia pode ser salva sem card, mas o ideal Ã© gerar e escolher uma opÃ§Ã£o.
                     </p>
                   )}
                 </div>
@@ -1470,7 +1491,7 @@ export default function NovoEpisodio() {
 
           <div className="border-t border-slate-800 pt-5">
             <h4 className="text-sm font-semibold text-slate-300 mb-3">
-              🖼️ Imagem do Episódio
+              ðŸ–¼ï¸ Imagem do EpisÃ³dio
             </h4>
 
             <div className="space-y-3">
@@ -1478,11 +1499,11 @@ export default function NovoEpisodio() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <h5 className="text-sm font-bold text-white">
-                      🎧 Thumbnail do Áudio
+                      ðŸŽ§ Thumbnail do Ãudio
                     </h5>
 
                     <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                      Gere 3 opções com base no título, descrição e transcrição. A imagem escolhida será usada no card do áudio.
+                      Gere 3 opÃ§Ãµes com base no tÃ­tulo, descriÃ§Ã£o e transcriÃ§Ã£o. A imagem escolhida serÃ¡ usada no card do Ã¡udio.
                     </p>
                   </div>
                 </div>
@@ -1494,8 +1515,8 @@ export default function NovoEpisodio() {
                   className="mt-4 w-full rounded-lg bg-blue-600 py-3 text-sm font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
                 >
                   {generatingEpisodeThumbnails
-                    ? '⏳ Buscando thumbnails...'
-                    : '🎨 Sugerir 3 thumbnails com Pexels'}
+                    ? 'â³ Buscando thumbnails...'
+                    : 'ðŸŽ¨ Sugerir 3 thumbnails com Pexels'}
                 </button>
 
                 {episodeThumbnailOptions.length > 0 && (
@@ -1519,12 +1540,12 @@ export default function NovoEpisodio() {
 
                         <div className="p-3">
                           <p className="text-xs font-semibold text-white">
-                            Opção {index + 1}
+                            OpÃ§Ã£o {index + 1}
                           </p>
 
                           <p className="mt-1 text-[11px] text-slate-500">
                             {selectedEpisodeThumbnailIndex === index
-                              ? '✅ Thumbnail escolhida'
+                              ? 'âœ… Thumbnail escolhida'
                               : 'Clique para escolher'}
                           </p>
                         </div>
@@ -1541,14 +1562,14 @@ export default function NovoEpisodio() {
                   onChange={() => setUseSeriesImage(true)}
                 />
 
-                <span className="text-sm text-slate-300">Usar imagem da série</span>
+                <span className="text-sm text-slate-300">Usar imagem da sÃ©rie</span>
               </label>
 
               {selectedSeriesImage && useSeriesImage && (
                 <div className="ml-6">
                   <img
                     src={selectedSeriesImage}
-                    alt="Capa da série"
+                    alt="Capa da sÃ©rie"
                     className="w-24 h-32 object-cover rounded-lg"
                   />
                 </div>
@@ -1561,7 +1582,7 @@ export default function NovoEpisodio() {
                   onChange={() => setUseSeriesImage(false)}
                 />
 
-                <span className="text-sm text-slate-300">Imagem específica deste episódio</span>
+                <span className="text-sm text-slate-300">Imagem especÃ­fica deste episÃ³dio</span>
               </label>
 
               {!useSeriesImage && (
@@ -1588,13 +1609,13 @@ export default function NovoEpisodio() {
 
           <div className="border-t border-slate-800 pt-5">
             <h4 className="text-sm font-semibold text-slate-300 mb-3">
-              ⏰ Agendamento
+              â° Agendamento
             </h4>
 
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-semibold text-slate-300 mb-2">
-                  Data de Publicação
+                  Data de PublicaÃ§Ã£o
                 </label>
 
                 <input
@@ -1618,13 +1639,13 @@ export default function NovoEpisodio() {
                       onChange={(e) => setUseDefaultTime(e.target.checked)}
                     />
 
-                    <span className="text-sm text-slate-300">Sempre publicar às 6:00 da manhã</span>
+                    <span className="text-sm text-slate-300">Sempre publicar Ã s 6:00 da manhÃ£</span>
                   </label>
 
                   {!useDefaultTime && (
                     <div>
                       <label className="block text-sm font-semibold text-slate-300 mb-2">
-                        Horário
+                        HorÃ¡rio
                       </label>
 
                       <input
@@ -1651,8 +1672,8 @@ export default function NovoEpisodio() {
                 onChange={(e) => setFormData({ ...formData, status: e.target.value as 'draft' | 'published' })}
                 className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-3 focus:border-blue-500 outline-none"
               >
-                <option value="draft">💾 Salvar como Rascunho</option>
-                <option value="published">✅ Publicar Agora</option>
+                <option value="draft">ðŸ’¾ Salvar como Rascunho</option>
+                <option value="published">âœ… Publicar Agora</option>
               </select>
             </div>
           )}
@@ -1671,18 +1692,18 @@ export default function NovoEpisodio() {
               className="flex-1 bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
               {loading
-                ? '⏳ Salvando...'
+                ? 'â³ Salvando...'
                 : formData.scheduled_date
                 ? enableDailyQuote && selectedDailyQuote
-                  ? '📅 Agendar Episódio + Palavra'
-                  : '📅 Agendar Publicação'
+                  ? 'ðŸ“… Agendar EpisÃ³dio + Palavra'
+                  : 'ðŸ“… Agendar PublicaÃ§Ã£o'
                 : formData.status === 'published'
                 ? enableDailyQuote && selectedDailyQuote
-                  ? '📤 Publicar Episódio + Palavra'
-                  : '📤 Publicar Agora'
+                  ? 'ðŸ“¤ Publicar EpisÃ³dio + Palavra'
+                  : 'ðŸ“¤ Publicar Agora'
                 : enableDailyQuote && selectedDailyQuote
-                ? '💾 Salvar Rascunho + Palavra'
-                : '💾 Salvar Rascunho'}
+                ? 'ðŸ’¾ Salvar Rascunho + Palavra'
+                : 'ðŸ’¾ Salvar Rascunho'}
             </button>
           </div>
         </form>

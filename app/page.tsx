@@ -29,7 +29,11 @@ export default function Home() {
 
       <main className="pt-16">
         {activeTab === 'hoje' && (
-          <TabHoje onOpenSeries={() => setActiveTab('series')} />
+          <TabHoje
+            onOpenSeries={() => setActiveTab('series')}
+            onOpenReading={() => setActiveTab('leitura')}
+            onOpenPrayer={() => setActiveTab('oracao')}
+          />
         )}
 
         {activeTab === 'leitura' && <TabLeitura />}
