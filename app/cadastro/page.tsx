@@ -1,204 +1,642 @@
 'use client'
 
-import { useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseBrowserClient } from '@/lib/supabase/browser'
+
+type AuthMode = 'signup' | 'login'
+
+type ProfileForm = {
+  email: string
+  password: string
+  name: string
+  phone: string
+  birth_date: string
+  gender: string
+  country: string
+  city: string
+  neighborhood: string
+}
+
+const initialForm: ProfileForm = {
+  email: '',
+  password: '',
+  name: '',
+  phone: '',
+  birth_date: '',
+  gender: '',
+  country: 'Brasil',
+  city: '',
+  neighborhood: '',
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 export default function Cadastro() {
   const router = useRouter()
+  const supabase = useMemo(() => createSupabaseBrowserClient(), [])
+
+  const [mode, setMode] = useState<AuthMode>('signup')
   const [saving, setSaving] = useState(false)
-  const [formData, setFormData] = useState({
-    name: '',
-    phone: '',
-    birth_date: '',
-    gender: '',
-    country: 'Brasil',
-    city: '',
-    neighborhood: '',
-  })
+  const [message, setMessage] = useState('')
+  const [errorMessage, setErrorMessage] = useState('')
+  const [formData, setFormData] = useState<ProfileForm>(initialForm)
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setSaving(true)
+  useEffect(() => {
+    async function checkSession() {
+      const { data } = await supabase.auth.getUser()
 
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .insert({
-          name: formData.name,
-          phone: formData.phone,
-          birth_date: formData.birth_date,
-          gender: formData.gender,
-          country: formData.country,
-          city: formData.city,
-          neighborhood: formData.neighborhood,
-        })
+      if (data.user) {
+        await syncLocalProfile(data.user.id)
+        router.replace('/')
+      }
+    }
 
-      if (error) throw error
+    checkSession()
+  }, [router, supabase])
 
-      // Salvar ID do usuário no localStorage
-      const { data } = await supabase
+  async function syncLocalProfile(authUserId: string) {
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const { data, error } = await supabase
         .from('profiles')
         .select('id')
-        .eq('phone', formData.phone)
-        .single()
+        .eq('auth_user_id', authUserId)
+        .maybeSingle()
 
-      if (data) {
-        localStorage.setItem('user_id', data.id)
+      if (!error && data?.id) {
+        window.localStorage.setItem('user_id', data.id)
+        return data.id
       }
 
-      alert('✅ Cadastro realizado com sucesso!')
-      router.push('/')
+      await sleep(450)
+    }
+
+    return null
+  }
+
+  function updateField(field: keyof ProfileForm, value: string) {
+    setFormData((current) => ({
+      ...current,
+      [field]: value,
+    }))
+  }
+
+  function validateForm() {
+    const email = formData.email.trim().toLowerCase()
+    const password = formData.password.trim()
+
+    if (!email) {
+      return 'Informe seu e-mail.'
+    }
+
+    if (!email.includes('@')) {
+      return 'Informe um e-mail válido.'
+    }
+
+    if (!password || password.length < 6) {
+      return 'A senha precisa ter pelo menos 6 caracteres.'
+    }
+
+    if (mode === 'signup') {
+      if (!formData.name.trim()) {
+        return 'Informe seu nome completo.'
+      }
+
+      if (!formData.phone.trim()) {
+        return 'Informe seu telefone.'
+      }
+
+      if (!formData.birth_date) {
+        return 'Informe sua data de nascimento.'
+      }
+
+      if (!formData.gender) {
+        return 'Informe seu gênero.'
+      }
+
+      if (!formData.city.trim()) {
+        return 'Informe sua cidade.'
+      }
+
+      if (!formData.neighborhood.trim()) {
+        return 'Informe seu bairro.'
+      }
+    }
+
+    return ''
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    setSaving(true)
+    setMessage('')
+    setErrorMessage('')
+
+    try {
+      const validationError = validateForm()
+
+      if (validationError) {
+        setErrorMessage(validationError)
+        return
+      }
+
+      const email = formData.email.trim().toLowerCase()
+      const password = formData.password.trim()
+
+      if (mode === 'login') {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        })
+
+        if (error) {
+          throw error
+        }
+
+        if (data.user) {
+          await syncLocalProfile(data.user.id)
+        }
+
+        setMessage('Entrada realizada com sucesso.')
+        router.replace('/')
+        return
+      }
+
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: window.location.origin + '/auth/callback?next=/',
+          data: {
+            name: formData.name.trim(),
+            phone: formData.phone.trim(),
+            birth_date: formData.birth_date,
+            gender: formData.gender,
+            country: formData.country,
+            city: formData.city.trim(),
+            neighborhood: formData.neighborhood.trim(),
+          },
+        },
+      })
+
+      if (error) {
+        throw error
+      }
+
+      if (data.user) {
+        await syncLocalProfile(data.user.id)
+      }
+
+      if (!data.session) {
+        setMessage(
+          'Conta criada. Verifique seu e-mail para confirmar o acesso antes de entrar.'
+        )
+        setMode('login')
+        return
+      }
+
+      setMessage('Cadastro realizado com sucesso.')
+      router.replace('/')
     } catch (error) {
-      console.error('Erro ao cadastrar:', error)
-      alert('❌ Erro ao cadastrar. Tente novamente.')
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível concluir agora. Tente novamente.'
+
+      setErrorMessage(message)
     } finally {
       setSaving(false)
     }
   }
 
+  async function handleForgotPassword() {
+    setMessage('')
+    setErrorMessage('')
+
+    const email = formData.email.trim().toLowerCase()
+
+    if (!email || !email.includes('@')) {
+      setErrorMessage('Informe seu e-mail para recuperar a senha.')
+      return
+    }
+
+    setSaving(true)
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + '/cadastro',
+      })
+
+      if (error) {
+        throw error
+      }
+
+      setMessage('Enviamos um link de recuperação para o seu e-mail.')
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível enviar o e-mail de recuperação.'
+
+      setErrorMessage(message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const isSignup = mode === 'signup'
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-600 to-blue-800 flex items-center justify-center p-5">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="text-6xl mb-4">🙏</div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Bem-vindo!
-          </h1>
-          <p className="text-gray-600">
-            Cadastre-se para continuar recebendo os devocionais diários
+    <main className="auth-page">
+      <section className="auth-card">
+        <div className="brand-block">
+          <span className="eyebrow">Devocional Diário</span>
+          <h1>{isSignup ? 'Crie sua conta' : 'Entre na sua conta'}</h1>
+          <p>
+            {isSignup
+              ? 'Cadastre-se para acompanhar devocionais, leitura bíblica, oração e sua jornada espiritual.'
+              : 'Entre para continuar sua jornada diária de discipulado.'}
           </p>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Nome */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
-              Nome Completo *
-            </label>
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) => setFormData({...formData, name: e.target.value})}
-              placeholder="Ex: Maria Silva"
-              className="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-500 outline-none"
-              required
-            />
-          </div>
-
-          {/* Telefone */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
-              Telefone (com DDD) *
-            </label>
-            <input
-              type="tel"
-              value={formData.phone}
-              onChange={(e) => setFormData({...formData, phone: e.target.value})}
-              placeholder="Ex: 11987654321"
-              className="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-500 outline-none"
-              required
-            />
-          </div>
-
-          {/* Data de Nascimento */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
-              Data de Nascimento *
-            </label>
-            <input
-              type="date"
-              value={formData.birth_date}
-              onChange={(e) => setFormData({...formData, birth_date: e.target.value})}
-              className="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-500 outline-none"
-              required
-            />
-          </div>
-
-          {/* Gênero */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
-              Gênero *
-            </label>
-            <select
-              value={formData.gender}
-              onChange={(e) => setFormData({...formData, gender: e.target.value})}
-              className="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-500 outline-none"
-              required
-            >
-              <option value="">Selecione...</option>
-              <option value="Masculino">Masculino</option>
-              <option value="Feminino">Feminino</option>
-            </select>
-          </div>
-
-          {/* País */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
-              País *
-            </label>
-            <select
-              value={formData.country}
-              onChange={(e) => setFormData({...formData, country: e.target.value})}
-              className="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-500 outline-none"
-              required
-            >
-              <option value="Brasil">🇧🇷 Brasil</option>
-              <option value="Estados Unidos">🇺🇸 Estados Unidos</option>
-              <option value="Portugal">🇵🇹 Portugal</option>
-              <option value="Canadá">🇨🇦 Canadá</option>
-              <option value="Reino Unido">🇬🇧 Reino Unido</option>
-              <option value="Austrália">🇦🇺 Austrália</option>
-            </select>
-          </div>
-
-          {/* Cidade */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
-              Cidade *
-            </label>
-            <input
-              type="text"
-              value={formData.city}
-              onChange={(e) => setFormData({...formData, city: e.target.value})}
-              placeholder="Ex: Piracaia"
-              className="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-500 outline-none"
-              required
-            />
-          </div>
-
-          {/* Bairro */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
-              Bairro *
-            </label>
-            <input
-              type="text"
-              value={formData.neighborhood}
-              onChange={(e) => setFormData({...formData, neighborhood: e.target.value})}
-              placeholder="Ex: Centro"
-              className="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-500 outline-none"
-              required
-            />
-          </div>
-
-          {/* Botão */}
+        <div className="mode-switch">
           <button
-            type="submit"
-            disabled={saving}
-            className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold py-4 rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-lg disabled:opacity-50"
+            type="button"
+            className={isSignup ? 'active' : ''}
+            onClick={() => {
+              setMode('signup')
+              setMessage('')
+              setErrorMessage('')
+            }}
           >
-            {saving ? '⏳ Cadastrando...' : '🎉 Completar Cadastro'}
+            Criar conta
           </button>
+
+          <button
+            type="button"
+            className={!isSignup ? 'active' : ''}
+            onClick={() => {
+              setMode('login')
+              setMessage('')
+              setErrorMessage('')
+            }}
+          >
+            Entrar
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="auth-form">
+          <div className="field">
+            <label>E-mail *</label>
+            <input
+              type="email"
+              value={formData.email}
+              onChange={(event) => updateField('email', event.target.value)}
+              placeholder="voce@email.com"
+              autoComplete="email"
+              required
+            />
+          </div>
+
+          <div className="field">
+            <label>Senha *</label>
+            <input
+              type="password"
+              value={formData.password}
+              onChange={(event) => updateField('password', event.target.value)}
+              placeholder="Mínimo de 6 caracteres"
+              autoComplete={isSignup ? 'new-password' : 'current-password'}
+              required
+            />
+          </div>
+
+          {isSignup && (
+            <>
+              <div className="field">
+                <label>Nome completo *</label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(event) => updateField('name', event.target.value)}
+                  placeholder="Ex: Maria Silva"
+                  autoComplete="name"
+                  required
+                />
+              </div>
+
+              <div className="field">
+                <label>Telefone com DDD *</label>
+                <input
+                  type="tel"
+                  value={formData.phone}
+                  onChange={(event) => updateField('phone', event.target.value)}
+                  placeholder="Ex: 11987654321"
+                  autoComplete="tel"
+                  required
+                />
+              </div>
+
+              <div className="grid-two">
+                <div className="field">
+                  <label>Data de nascimento *</label>
+                  <input
+                    type="date"
+                    value={formData.birth_date}
+                    onChange={(event) => updateField('birth_date', event.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="field">
+                  <label>Gênero *</label>
+                  <select
+                    value={formData.gender}
+                    onChange={(event) => updateField('gender', event.target.value)}
+                    required
+                  >
+                    <option value="">Selecione...</option>
+                    <option value="Masculino">Masculino</option>
+                    <option value="Feminino">Feminino</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="field">
+                <label>País *</label>
+                <select
+                  value={formData.country}
+                  onChange={(event) => updateField('country', event.target.value)}
+                  required
+                >
+                  <option value="Brasil">🇧🇷 Brasil</option>
+                  <option value="Estados Unidos">🇺🇸 Estados Unidos</option>
+                  <option value="Portugal">🇵🇹 Portugal</option>
+                  <option value="Canadá">🇨🇦 Canadá</option>
+                  <option value="Reino Unido">🇬🇧 Reino Unido</option>
+                  <option value="Austrália">🇦🇺 Austrália</option>
+                </select>
+              </div>
+
+              <div className="grid-two">
+                <div className="field">
+                  <label>Cidade *</label>
+                  <input
+                    type="text"
+                    value={formData.city}
+                    onChange={(event) => updateField('city', event.target.value)}
+                    placeholder="Ex: Piracaia"
+                    required
+                  />
+                </div>
+
+                <div className="field">
+                  <label>Bairro *</label>
+                  <input
+                    type="text"
+                    value={formData.neighborhood}
+                    onChange={(event) => updateField('neighborhood', event.target.value)}
+                    placeholder="Ex: Centro"
+                    required
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {message && <div className="message success">{message}</div>}
+          {errorMessage && <div className="message error">{errorMessage}</div>}
+
+          <button type="submit" disabled={saving} className="submit-button">
+            {saving
+              ? isSignup
+                ? 'Criando conta...'
+                : 'Entrando...'
+              : isSignup
+              ? 'Criar conta e continuar'
+              : 'Entrar no app'}
+          </button>
+
+          {!isSignup && (
+            <button
+              type="button"
+              className="forgot-button"
+              onClick={handleForgotPassword}
+              disabled={saving}
+            >
+              Esqueci minha senha
+            </button>
+          )}
         </form>
 
-        {/* Footer */}
-        <p className="text-center text-xs text-gray-500 mt-6">
-          Ao cadastrar, você concorda em receber devocionais diários
+        <p className="footer-note">
+          Ao continuar, você concorda em usar este aplicativo como uma jornada
+          diária de discipulado, leitura bíblica e oração.
         </p>
-      </div>
-    </div>
+      </section>
+
+      <style jsx>{`
+        .auth-page {
+          min-height: 100vh;
+          background:
+            radial-gradient(circle at top left, rgba(37, 99, 235, 0.2), transparent 34rem),
+            radial-gradient(circle at top right, rgba(245, 158, 11, 0.14), transparent 30rem),
+            #030712;
+          color: #f8fafc;
+          padding: 28px 16px 56px;
+          display: grid;
+          place-items: center;
+        }
+
+        .auth-card {
+          width: min(100%, 560px);
+          background:
+            linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(15, 23, 42, 0.78));
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          border-radius: 34px;
+          padding: 28px;
+          box-shadow: 0 26px 90px rgba(0, 0, 0, 0.38);
+        }
+
+        .brand-block {
+          text-align: center;
+          margin-bottom: 22px;
+        }
+
+        .eyebrow {
+          display: inline-flex;
+          color: #93c5fd;
+          background: rgba(59, 130, 246, 0.14);
+          border: 1px solid rgba(147, 197, 253, 0.22);
+          padding: 7px 12px;
+          border-radius: 999px;
+          font-size: 0.7rem;
+          font-weight: 900;
+          letter-spacing: 0.18em;
+          text-transform: uppercase;
+          margin-bottom: 16px;
+        }
+
+        h1 {
+          margin: 0;
+          font-size: clamp(2.1rem, 6vw, 3rem);
+          line-height: 0.98;
+          letter-spacing: -0.07em;
+        }
+
+        p {
+          margin: 0;
+        }
+
+        .brand-block p {
+          color: #bfdbfe;
+          line-height: 1.6;
+          margin-top: 12px;
+        }
+
+        .mode-switch {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 8px;
+          background: rgba(2, 6, 23, 0.55);
+          border: 1px solid rgba(148, 163, 184, 0.16);
+          padding: 6px;
+          border-radius: 20px;
+          margin-bottom: 22px;
+        }
+
+        .mode-switch button {
+          border: 0;
+          border-radius: 15px;
+          padding: 12px;
+          background: transparent;
+          color: #bfdbfe;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .mode-switch button.active {
+          background: linear-gradient(135deg, #2563eb, #1d4ed8);
+          color: white;
+          box-shadow: 0 14px 34px rgba(37, 99, 235, 0.22);
+        }
+
+        .auth-form {
+          display: grid;
+          gap: 15px;
+        }
+
+        .grid-two {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+        }
+
+        .field {
+          display: grid;
+          gap: 7px;
+        }
+
+        label {
+          color: #dbeafe;
+          font-weight: 900;
+          font-size: 0.84rem;
+        }
+
+        input,
+        select {
+          width: 100%;
+          background: rgba(2, 6, 23, 0.72);
+          border: 1px solid rgba(148, 163, 184, 0.24);
+          color: #f8fafc;
+          border-radius: 16px;
+          padding: 13px 15px;
+          min-height: 48px;
+          outline: none;
+        }
+
+        input:focus,
+        select:focus {
+          border-color: rgba(147, 197, 253, 0.62);
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+        }
+
+        ::placeholder {
+          color: rgba(191, 219, 254, 0.46);
+        }
+
+        .message {
+          border-radius: 16px;
+          padding: 13px 15px;
+          font-weight: 800;
+          line-height: 1.45;
+        }
+
+        .message.success {
+          color: #bbf7d0;
+          background: rgba(22, 101, 52, 0.28);
+          border: 1px solid rgba(74, 222, 128, 0.24);
+        }
+
+        .message.error {
+          color: #fecaca;
+          background: rgba(127, 29, 29, 0.28);
+          border: 1px solid rgba(248, 113, 113, 0.24);
+        }
+
+        .submit-button {
+          border: 0;
+          border-radius: 18px;
+          min-height: 54px;
+          background: linear-gradient(135deg, #2563eb, #1d4ed8);
+          color: white;
+          font-weight: 950;
+          font-size: 1rem;
+          cursor: pointer;
+          box-shadow: 0 18px 44px rgba(37, 99, 235, 0.24);
+        }
+
+        .submit-button:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .forgot-button {
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          background: rgba(15, 23, 42, 0.72);
+          color: #bfdbfe;
+          border-radius: 16px;
+          min-height: 46px;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .footer-note {
+          color: #93c5fd;
+          font-size: 0.78rem;
+          line-height: 1.55;
+          text-align: center;
+          margin-top: 22px;
+        }
+
+        @media (max-width: 560px) {
+          .auth-page {
+            padding: 16px 10px 36px;
+            align-items: start;
+          }
+
+          .auth-card {
+            padding: 22px;
+            border-radius: 28px;
+          }
+
+          .grid-two {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
+    </main>
   )
 }

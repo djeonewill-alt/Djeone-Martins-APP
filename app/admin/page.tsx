@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 type FilterValue = string | number | boolean;
 
@@ -120,7 +121,7 @@ function getTodayLabel() {
 }
 
 export default function AdminDashboardPage() {
-  const [isLogged, setIsLogged] = useState(false);
+  const [isLogged, setIsLogged] = useState(true);
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [stats, setStats] = useState<AdminStats>(initialStats);
@@ -205,8 +206,7 @@ export default function AdminDashboardPage() {
   }
 
   useEffect(() => {
-    const storedLogin = window.localStorage.getItem(ADMIN_STORAGE_KEY);
-    setIsLogged(storedLogin === "true");
+    setIsLogged(true);
   }, []);
 
   useEffect(() => {
@@ -229,9 +229,11 @@ export default function AdminDashboardPage() {
     setLoginError("Senha incorreta. Tente novamente.");
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    const supabaseAuth = createSupabaseBrowserClient();
+    await supabaseAuth.auth.signOut();
     window.localStorage.removeItem(ADMIN_STORAGE_KEY);
-    setIsLogged(false);
+    window.location.href = "/cadastro";
   }
 
   const totalPrayers = stats.publicPrayers + stats.privatePrayers;
