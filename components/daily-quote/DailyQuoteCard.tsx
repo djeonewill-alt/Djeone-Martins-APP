@@ -201,11 +201,13 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
   return (
     <section className={`w-full ${className}`}>
       {quote.card_image_url ? (
-        <div className="relative w-full overflow-hidden rounded-[30px] bg-slate-900 shadow-[0_18px_55px_rgba(0,0,0,0.32)]">
+        <div className="relative w-full overflow-hidden rounded-[30px] bg-slate-950 shadow-[0_18px_55px_rgba(0,0,0,0.32)]">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.18),transparent_42%),linear-gradient(135deg,rgba(15,23,42,0.98),rgba(2,6,23,1))]" />
+
           <img
             src={quote.card_image_url}
             alt="Palavra do Dia"
-            className="aspect-[4/3] w-full rounded-[30px] object-cover sm:aspect-square"
+            className="relative aspect-square w-full rounded-[30px] object-contain sm:aspect-square"
           />
 
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/44 via-black/12 to-transparent" />
@@ -233,7 +235,7 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
         </div>
       ) : (
         <div className="relative w-full overflow-hidden rounded-[30px] bg-slate-900 shadow-[0_18px_55px_rgba(0,0,0,0.32)]">
-          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-[30px] sm:aspect-square">
+          <div className="relative aspect-[4/5] w-full overflow-hidden rounded-[30px] sm:aspect-square">
             {fallbackBackgroundImage ? (
               <div
                 className="absolute inset-0 bg-cover bg-center"
@@ -248,12 +250,12 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
             <div className="absolute inset-0 bg-black/50" />
             <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/50" />
 
-            <div className="relative flex h-full flex-col items-center justify-center px-8 pb-12 text-center">
+            <div className="relative flex h-full flex-col items-center justify-center px-7 pb-20 pt-10 text-center sm:px-8 sm:pb-16">
               <p className="mb-5 text-[11px] font-black uppercase tracking-[0.22em] text-blue-200">
                 Palavra do Dia
               </p>
 
-              <blockquote className="max-w-[86%] text-[1.85rem] font-black leading-[1.08] tracking-[-0.035em] text-white drop-shadow-[0_4px_16px_rgba(0,0,0,0.82)]">
+              <blockquote className="max-w-[92%] text-[clamp(1.45rem,8vw,1.85rem)] font-black leading-[1.12] text-white drop-shadow-[0_4px_16px_rgba(0,0,0,0.82)]">
                 {quote.quote_text}
               </blockquote>
 
