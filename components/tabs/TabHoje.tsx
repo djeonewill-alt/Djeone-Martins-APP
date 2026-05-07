@@ -160,20 +160,14 @@ export default function TabHoje({
 
     try {
       const episodeUrl = `${window.location.origin}/ep/${todayEpisode.id}`
-      const shareText = 'Áudio devocional de hoje'
-      const shareTextWithLink = `${shareText}
-
-${episodeUrl}`
 
       if (navigator.share) {
         await navigator.share({
-          title: todayEpisode.title,
-          text: shareText,
           url: episodeUrl,
         })
       } else {
-        await navigator.clipboard.writeText(shareTextWithLink)
-        alert('Texto do áudio copiado para compartilhar!')
+        await navigator.clipboard.writeText(episodeUrl)
+        alert('Link do áudio copiado para compartilhar!')
       }
 
       const currentShareCount = Number(localStorage.getItem('djeone-share-count-v1') || 0)
