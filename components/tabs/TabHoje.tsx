@@ -159,7 +159,7 @@ export default function TabHoje({
     setSharingEpisode(true)
 
     try {
-      const episodeUrl = `${window.location.origin}/ep/${todayEpisode.id}?share=audio-v4`
+      const episodeUrl = `${window.location.origin}/ep/${todayEpisode.id}?share=audio-v5`
 
       if (navigator.share) {
         await navigator.share({

@@ -33,8 +33,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const title = '🎧 Áudio devocional de hoje | Pr. Djeone Martins'
     const description = 'Ouça uma palavra bíblica para fortalecer sua fé hoje.'
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    const episodeUrl = `${appUrl}/ep/${id}?share=audio-v4`
-    const ogImageUrl = `${appUrl}/api/og/episode/${id}?v=audio-og-v4`
+    const episodeUrl = `${appUrl}/ep/${id}?share=audio-v5`
+    const ogImageUrl = `${appUrl}/api/og/episode/${id}?v=audio-og-v5`
 
     return {
       title,
@@ -48,8 +48,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         images: [
           {
             url: ogImageUrl,
-            width: 1280,
-            height: 720,
+            width: 1200,
+            height: 630,
+            type: 'image/png',
             alt: title,
           },
         ],
