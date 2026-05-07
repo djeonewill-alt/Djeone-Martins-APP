@@ -30,10 +30,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       }
     }
 
-    const title = `📖 ${episode.bible_reference} - ${episode.title}`
-    const description = episode.description || `Ouça "${episode.title}" com Pastor Djeone Martins`
+    const title = '🎧 Áudio devocional de hoje | Pr. Djeone Martins'
+    const description = 'Ouça uma palavra bíblica para fortalecer sua fé hoje.'
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    const episodeUrl = `${appUrl}/ep/${id}`
+    const episodeUrl = `${appUrl}/ep/${id}?share=audio-v2`
     const baseImageUrl =
       episode.cover_image_url ||
       episode.series?.cover_image_url
@@ -43,6 +43,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const ogImageParams = new URLSearchParams({
       title: episode.title,
       subtitle: episode.bible_reference || 'Devocional Diário',
+      v: 'audio-og-v2',
     })
 
     if (backgroundImageUrl) {

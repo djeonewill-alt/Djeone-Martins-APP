@@ -7,7 +7,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const title = searchParams.get('title') || 'Devocional Diário'
-    const subtitle = searchParams.get('subtitle') || 'Pastor Djeone Martins'
+    const subtitle = searchParams.get('subtitle') || 'Pr. Djeone Martins'
     const background = searchParams.get('background')
 
     return new ImageResponse(
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
                 textTransform: 'uppercase',
               }}
             >
-              Áudio devocional
+              ÁUDIO DEVOCIONAL
             </div>
 
             <div
