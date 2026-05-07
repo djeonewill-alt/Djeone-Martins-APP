@@ -17,7 +17,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         *,
         series:series_id (
           title,
-          icon_emoji
+          icon_emoji,
+          cover_image_url
         )
       `)
       .eq('id', id)
@@ -33,6 +34,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const description = episode.description || `Ouça "${episode.title}" com Pastor Djeone Martins`
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
     const episodeUrl = `${appUrl}/ep/${id}`
+    const fallbackImageUrl = `${appUrl}/api/og?title=${encodeURIComponent(episode.bible_reference)}&subtitle=${encodeURIComponent(episode.title)}`
+    const imageUrl =
+      episode.cover_image_url ||
+      episode.series?.cover_image_url ||
+      fallbackImageUrl
+    const absoluteImageUrl = new URL(imageUrl, appUrl).toString()
 
     return {
       title,
@@ -46,7 +53,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         audio: episode.audio_url,
         images: [
           {
-            url: `${appUrl}/api/og?title=${encodeURIComponent(episode.bible_reference)}&subtitle=${encodeURIComponent(episode.title)}`,
+            url: absoluteImageUrl,
             width: 1200,
             height: 630,
             alt: title,
@@ -57,6 +64,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         card: 'summary_large_image',
         title,
         description,
+        images: [absoluteImageUrl],
       },
     }
   } catch (error) {

@@ -159,6 +159,7 @@ export default function TabHoje({
     setSharingEpisode(true)
 
     try {
+      const episodeUrl = `${window.location.origin}/ep/${todayEpisode.id}`
       const shareText = `Áudio devocional de hoje
 
 ${todayEpisode.title}
@@ -166,14 +167,18 @@ ${todayEpisode.title}
 ${todayEpisode.bible_reference || 'Devocional Diário'}
 
 Pr. Djeone Martins`
+      const shareTextWithLink = `${shareText}
+
+${episodeUrl}`
 
       if (navigator.share) {
         await navigator.share({
           title: todayEpisode.title,
           text: shareText,
+          url: episodeUrl,
         })
       } else {
-        await navigator.clipboard.writeText(shareText)
+        await navigator.clipboard.writeText(shareTextWithLink)
         alert('Texto do áudio copiado para compartilhar!')
       }
 
