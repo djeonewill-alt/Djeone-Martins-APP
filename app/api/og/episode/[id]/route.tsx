@@ -21,6 +21,16 @@ type EpisodeOgData = {
   } | null
 }
 
+function limitTitle(title: string) {
+  const cleanTitle = title.replace(/\s+/g, ' ').trim()
+
+  if (cleanTitle.length <= 74) {
+    return cleanTitle
+  }
+
+  return `${cleanTitle.slice(0, 71).trim()}...`
+}
+
 export async function GET(request: Request, { params }: Props) {
   try {
     const { id } = await params
@@ -43,7 +53,7 @@ export async function GET(request: Request, { params }: Props) {
     }
 
     const typedEpisode = episode as EpisodeOgData
-    const title = typedEpisode.title
+    const title = limitTitle(typedEpisode.title)
     const bibleReference =
       typedEpisode.bible_reference || 'Devocional Diário'
     const rawBackground =
@@ -61,8 +71,6 @@ export async function GET(request: Request, { params }: Props) {
             height: '100%',
             width: '100%',
             display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'flex-end',
             position: 'relative',
             overflow: 'hidden',
             backgroundColor: '#020617',
@@ -86,7 +94,7 @@ export async function GET(request: Request, { params }: Props) {
                 position: 'absolute',
                 inset: 0,
                 backgroundImage:
-                  'linear-gradient(135deg, #020617, #1d4ed8 50%, #0f172a)',
+                  'linear-gradient(135deg, #020617, #1d4ed8 46%, #0f172a)',
               }}
             />
           )}
@@ -95,8 +103,25 @@ export async function GET(request: Request, { params }: Props) {
             style={{
               position: 'absolute',
               inset: 0,
+              backgroundColor: 'rgba(2, 6, 23, 0.5)',
+            }}
+          />
+
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
               background:
-                'linear-gradient(90deg, rgba(2,6,23,0.94), rgba(2,6,23,0.72) 48%, rgba(2,6,23,0.38)), linear-gradient(0deg, rgba(2,6,23,0.92), rgba(2,6,23,0.08) 58%, rgba(2,6,23,0.5))',
+                'linear-gradient(0deg, rgba(2,6,23,0.96), rgba(2,6,23,0.62) 46%, rgba(2,6,23,0.34)), linear-gradient(90deg, rgba(2,6,23,0.96), rgba(15,23,42,0.82) 45%, rgba(15,23,42,0.42) 100%)',
+            }}
+          />
+
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background:
+                'radial-gradient(circle at 82% 18%, rgba(96,165,250,0.24), transparent 30%), radial-gradient(circle at 18% 82%, rgba(234,179,8,0.16), transparent 24%)',
             }}
           />
 
@@ -104,50 +129,76 @@ export async function GET(request: Request, { params }: Props) {
             style={{
               position: 'relative',
               display: 'flex',
-              flexDirection: 'column',
+              alignItems: 'center',
+              height: '100%',
               width: '100%',
-              padding: '78px',
+              padding: '76px',
             }}
           >
             <div
               style={{
-                fontSize: 32,
-                fontWeight: 900,
-                color: '#bfdbfe',
-                letterSpacing: 8,
-                marginBottom: 28,
-              }}
-            >
-              ÁUDIO DEVOCIONAL
-            </div>
-
-            <div
-              style={{
-                maxWidth: 960,
-                fontSize: 76,
-                fontWeight: 900,
-                lineHeight: 0.98,
-                color: 'white',
-                marginBottom: 30,
-                textShadow: '0 10px 34px rgba(0,0,0,0.68)',
-              }}
-            >
-              {title}
-            </div>
-
-            <div
-              style={{
                 display: 'flex',
-                alignItems: 'center',
-                gap: 18,
-                color: '#dbeafe',
-                fontSize: 34,
-                fontWeight: 800,
+                flexDirection: 'column',
+                width: 850,
+                padding: '46px 52px 50px',
+                borderRadius: 28,
+                background: 'rgba(2, 6, 23, 0.72)',
+                border: '1px solid rgba(255,255,255,0.16)',
+                boxShadow: '0 26px 80px rgba(0,0,0,0.5)',
               }}
             >
-              <span>{bibleReference}</span>
-              <span style={{ color: '#60a5fa' }}>•</span>
-              <span>Pr. Djeone Martins</span>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  alignSelf: 'flex-start',
+                  padding: '12px 18px',
+                  borderRadius: 999,
+                  background: 'rgba(37, 99, 235, 0.92)',
+                  color: '#eff6ff',
+                  fontSize: 24,
+                  fontWeight: 900,
+                  letterSpacing: 4,
+                  marginBottom: 28,
+                  border: '1px solid rgba(191,219,254,0.36)',
+                }}
+              >
+                ÁUDIO DEVOCIONAL
+              </div>
+
+              <div
+                style={{
+                  fontSize: 68,
+                  fontWeight: 900,
+                  lineHeight: 0.96,
+                  color: '#ffffff',
+                  marginBottom: 30,
+                  textShadow: '0 6px 22px rgba(0,0,0,0.7)',
+                }}
+              >
+                {title}
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 16,
+                  color: '#dbeafe',
+                  fontSize: 30,
+                  fontWeight: 800,
+                }}
+              >
+                <span
+                  style={{
+                    color: '#facc15',
+                  }}
+                >
+                  {bibleReference}
+                </span>
+                <span style={{ color: '#60a5fa' }}>•</span>
+                <span>Pr. Djeone Martins</span>
+              </div>
             </div>
           </div>
         </div>
