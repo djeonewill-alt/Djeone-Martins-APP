@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -132,10 +132,66 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
 
       if (navigator.share) {
         try {
-          await navigator.share({
-            title: 'Palavra do Dia',
-            text: shareText,
-          })
+          const nav = navigator as Navigator & {
+            canShare?: (data: ShareData) => boolean
+          }
+
+          let sharedImage = false
+
+          if (quote.card_image_url) {
+            try {
+              const imageResponse = await fetch(quote.card_image_url, {
+                cache: 'no-store',
+              })
+
+              if (imageResponse.ok) {
+                const imageBlob = await imageResponse.blob()
+                const mimeType = imageBlob.type || 'image/png'
+                const extension = mimeType.includes('jpeg')
+                  ? 'jpg'
+                  : mimeType.includes('webp')
+                  ? 'webp'
+                  : 'png'
+
+                const imageFile = new File(
+                  [imageBlob],
+                  `palavra-do-dia-${quote.date || 'hoje'}.${extension}`,
+                  { type: mimeType }
+                )
+
+                const shareDataWithImage = {
+                  title: 'Palavra do Dia',
+                  text: shareText,
+                  files: [imageFile],
+                } as ShareData
+
+                const canShareImage =
+                  typeof nav.canShare === 'function' &&
+                  nav.canShare(shareDataWithImage)
+
+                if (canShareImage) {
+                  await nav.share(shareDataWithImage)
+                  sharedImage = true
+                }
+              } else {
+                console.warn(
+                  'Não foi possível carregar a imagem da Palavra do Dia para compartilhar.'
+                )
+              }
+            } catch (imageShareError) {
+              console.warn(
+                'Falha ao preparar imagem da Palavra do Dia. Compartilhando texto como fallback.',
+                imageShareError
+              )
+            }
+          }
+
+          if (!sharedImage) {
+            await navigator.share({
+              title: 'Palavra do Dia',
+              text: shareText,
+            })
+          }
 
           shouldCountShare = window.confirm(
             'Você concluiu o compartilhamento da Palavra do Dia?'
