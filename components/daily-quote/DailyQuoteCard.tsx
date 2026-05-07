@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -119,7 +119,7 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
 
     try {
       const bibleReference = quote.episode?.bible_reference
-        ? `\n\nBase bíblica: ${quote.episode.bible_reference}`
+        ? `\n\nBase bÃ­blica: ${quote.episode.bible_reference}`
         : ''
 
       const episodeTitle = quote.episode?.title
@@ -159,23 +159,22 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
                   { type: mimeType }
                 )
 
-                const shareDataWithImage = {
+                const shareDataWithImageOnly = {
                   title: 'Palavra do Dia',
-                  text: shareText,
                   files: [imageFile],
                 } as ShareData
 
                 const canShareImage =
                   typeof nav.canShare === 'function' &&
-                  nav.canShare(shareDataWithImage)
+                  nav.canShare(shareDataWithImageOnly)
 
                 if (canShareImage) {
-                  await nav.share(shareDataWithImage)
+                  await nav.share(shareDataWithImageOnly)
                   sharedImage = true
                 }
               } else {
                 console.warn(
-                  'Não foi possível carregar a imagem da Palavra do Dia para compartilhar.'
+                  'NÃ£o foi possÃ­vel carregar a imagem da Palavra do Dia para compartilhar.'
                 )
               }
             } catch (imageShareError) {
@@ -194,7 +193,7 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
           }
 
           shouldCountShare = window.confirm(
-            'Você concluiu o compartilhamento da Palavra do Dia?'
+            'VocÃª concluiu o compartilhamento da Palavra do Dia?'
           )
         } catch (shareError) {
           const errorName =
@@ -350,4 +349,5 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
     </section>
   )
 }
+
 
