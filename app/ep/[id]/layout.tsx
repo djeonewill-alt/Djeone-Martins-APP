@@ -33,24 +33,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const title = '🎧 Áudio devocional de hoje | Pr. Djeone Martins'
     const description = 'Ouça uma palavra bíblica para fortalecer sua fé hoje.'
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    const episodeUrl = `${appUrl}/ep/${id}?share=audio-v2`
-    const baseImageUrl =
-      episode.cover_image_url ||
-      episode.series?.cover_image_url
-    const backgroundImageUrl = baseImageUrl
-      ? new URL(baseImageUrl, appUrl).toString()
-      : ''
-    const ogImageParams = new URLSearchParams({
-      title: episode.title,
-      subtitle: episode.bible_reference || 'Devocional Diário',
-      v: 'audio-og-v2',
-    })
-
-    if (backgroundImageUrl) {
-      ogImageParams.set('background', backgroundImageUrl)
-    }
-
-    const ogImageUrl = `${appUrl}/api/og?${ogImageParams.toString()}`
+    const episodeUrl = `${appUrl}/ep/${id}?share=audio-v3`
+    const ogImageUrl = `${appUrl}/api/og/episode/${id}?v=audio-og-v3`
 
     return {
       title,
@@ -60,13 +44,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         description,
         url: episodeUrl,
         siteName: 'Djeone Martins - Devocional Diário',
-        type: 'music.song',
-        audio: episode.audio_url,
+        type: 'website',
         images: [
           {
             url: ogImageUrl,
-            width: 1200,
-            height: 630,
+            width: 1280,
+            height: 720,
             alt: title,
           },
         ],
