@@ -34,12 +34,22 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const description = episode.description || `Ouça "${episode.title}" com Pastor Djeone Martins`
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
     const episodeUrl = `${appUrl}/ep/${id}`
-    const fallbackImageUrl = `${appUrl}/api/og?title=${encodeURIComponent(episode.bible_reference)}&subtitle=${encodeURIComponent(episode.title)}`
-    const imageUrl =
+    const baseImageUrl =
       episode.cover_image_url ||
-      episode.series?.cover_image_url ||
-      fallbackImageUrl
-    const absoluteImageUrl = new URL(imageUrl, appUrl).toString()
+      episode.series?.cover_image_url
+    const backgroundImageUrl = baseImageUrl
+      ? new URL(baseImageUrl, appUrl).toString()
+      : ''
+    const ogImageParams = new URLSearchParams({
+      title: episode.title,
+      subtitle: episode.bible_reference || 'Devocional Diário',
+    })
+
+    if (backgroundImageUrl) {
+      ogImageParams.set('background', backgroundImageUrl)
+    }
+
+    const ogImageUrl = `${appUrl}/api/og?${ogImageParams.toString()}`
 
     return {
       title,
@@ -53,7 +63,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         audio: episode.audio_url,
         images: [
           {
-            url: absoluteImageUrl,
+            url: ogImageUrl,
             width: 1200,
             height: 630,
             alt: title,
@@ -64,7 +74,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         card: 'summary_large_image',
         title,
         description,
-        images: [absoluteImageUrl],
+        images: [ogImageUrl],
       },
     }
   } catch (error) {

@@ -160,13 +160,7 @@ export default function TabHoje({
 
     try {
       const episodeUrl = `${window.location.origin}/ep/${todayEpisode.id}`
-      const shareText = `Áudio devocional de hoje
-
-${todayEpisode.title}
-
-${todayEpisode.bible_reference || 'Devocional Diário'}
-
-Pr. Djeone Martins`
+      const shareText = 'Áudio devocional de hoje'
       const shareTextWithLink = `${shareText}
 
 ${episodeUrl}`
