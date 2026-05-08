@@ -1,4 +1,4 @@
-import { createServerClient } from "@supabase/ssr";
+﻿import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC_ROUTES = [
@@ -10,6 +10,7 @@ const PUBLIC_ROUTES = [
 const PUBLIC_PREFIXES = [
   "/ep/",
   "/api/og",
+  "/palavra/",
 ];
 
 const FILE_EXTENSION_REGEX = /\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|css|js|map)$/i;

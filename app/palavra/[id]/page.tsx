@@ -1,0 +1,255 @@
+﻿import type { Metadata } from 'next'
+import Link from 'next/link'
+import { notFound } from 'next/navigation'
+import { createSupabaseAdminClient } from '@/lib/supabase/admin'
+
+type RouteParams = {
+  id: string
+}
+
+type PageProps = {
+  params: Promise<RouteParams>
+}
+
+type PublicDailyQuote = {
+  id: string
+  quote_text: string
+  card_image_url?: string | null
+  background_image_url?: string | null
+  source_image_url?: string | null
+  date?: string | null
+  episode?: {
+    id?: string | null
+    title?: string | null
+    bible_reference?: string | null
+    cover_image_url?: string | null
+    series?: {
+      title?: string | null
+      icon_emoji?: string | null
+      cover_image_url?: string | null
+    } | null
+  } | null
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value
+  )
+}
+
+function getBaseUrl() {
+  const explicitUrl =
+    process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL
+
+  if (explicitUrl) {
+    return explicitUrl.replace(/\/+$/, '')
+  }
+
+  const vercelUrl =
+    process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL
+
+  if (vercelUrl) {
+    return `https://${vercelUrl.replace(/^https?:\/\//, '')}`.replace(/\/+$/, '')
+  }
+
+  return 'http://localhost:3000'
+}
+
+function normalizeText(text?: string | null) {
+  return (text || '').replace(/\s+/g, ' ').trim()
+}
+
+function buildDescription(quote?: PublicDailyQuote | null) {
+  const text = normalizeText(quote?.quote_text)
+
+  if (!text) {
+    return 'Receba uma Palavra do Dia para fortalecer sua fé.'
+  }
+
+  return text.length > 170 ? `${text.slice(0, 167)}...` : text
+}
+
+async function getDailyQuote(id: string): Promise<PublicDailyQuote | null> {
+  if (!isUuid(id)) return null
+
+  const supabase = createSupabaseAdminClient()
+
+  const { data, error } = await supabase
+    .from('daily_quotes')
+    .select(`
+      id,
+      quote_text,
+      card_image_url,
+      background_image_url,
+      source_image_url,
+      date,
+      status,
+      episode:episodes (
+        id,
+        title,
+        bible_reference,
+        cover_image_url,
+        series:series (
+          title,
+          icon_emoji,
+          cover_image_url
+        )
+      )
+    `)
+    .eq('id', id)
+    .eq('status', 'published')
+    .maybeSingle()
+
+  if (error) {
+    console.error('Erro ao carregar página pública da Palavra do Dia:', error)
+    return null
+  }
+
+  return data as PublicDailyQuote | null
+}
+
+export async function generateMetadata({
+  params,
+}: PageProps): Promise<Metadata> {
+  const { id } = await params
+  const quote = await getDailyQuote(id)
+  const baseUrl = getBaseUrl()
+
+  const pageUrl = `${baseUrl}/palavra/${id}?share=quote-v1`
+  const imageUrl = `${baseUrl}/api/og/quote/${id}?v=quote-og-v1`
+  const title = 'Palavra do Dia | Pr. Djeone Martins'
+  const description = buildDescription(quote)
+
+  if (!quote) {
+    return {
+      title,
+      description: 'Palavra do Dia não encontrada.',
+      robots: {
+        index: false,
+        follow: false,
+      },
+    }
+  }
+
+  return {
+    title,
+    description,
+    alternates: {
+      canonical: `/palavra/${id}`,
+    },
+    openGraph: {
+      title,
+      description,
+      type: 'website',
+      url: pageUrl,
+      siteName: 'Pr. Djeone Martins',
+      images: [
+        {
+          url: imageUrl,
+          width: 1080,
+          height: 1080,
+          alt: 'Palavra do Dia',
+        },
+      ],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: [imageUrl],
+    },
+  }
+}
+
+export default async function PalavraDoDiaPage({ params }: PageProps) {
+  const { id } = await params
+  const quote = await getDailyQuote(id)
+
+  if (!quote) {
+    notFound()
+  }
+
+  const imageUrl =
+    quote.card_image_url ||
+    quote.background_image_url ||
+    quote.source_image_url ||
+    quote.episode?.cover_image_url ||
+    quote.episode?.series?.cover_image_url ||
+    ''
+
+  return (
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.22),transparent_38%),linear-gradient(135deg,#020617,#0f172a_48%,#020617)] px-4 py-8 text-white">
+      <section className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md flex-col justify-center">
+        <div className="overflow-hidden rounded-[32px] border border-white/10 bg-white/[0.04] shadow-[0_24px_70px_rgba(0,0,0,0.45)] backdrop-blur">
+          {imageUrl ? (
+            <div className="bg-slate-950">
+              <img
+                src={imageUrl}
+                alt="Palavra do Dia"
+                className="aspect-square w-full object-contain"
+              />
+            </div>
+          ) : (
+            <div className="flex aspect-square w-full items-center justify-center bg-gradient-to-br from-blue-950 via-slate-950 to-slate-900 px-8 text-center">
+              <p className="text-3xl font-black leading-tight">
+                Palavra do Dia
+              </p>
+            </div>
+          )}
+
+          <div className="space-y-5 px-6 py-7">
+            <p className="text-xs font-black uppercase tracking-[0.24em] text-blue-200">
+              Palavra do Dia
+            </p>
+
+            <blockquote className="text-2xl font-black leading-tight text-white">
+              “{quote.quote_text}”
+            </blockquote>
+
+            {quote.episode?.bible_reference && (
+              <p className="rounded-2xl border border-blue-300/15 bg-blue-300/10 px-4 py-3 text-sm font-bold text-blue-100">
+                Base bíblica: {quote.episode.bible_reference}
+              </p>
+            )}
+
+            {quote.episode?.title && (
+              <p className="text-sm text-slate-300">
+                Tema: <span className="font-bold">{quote.episode.title}</span>
+              </p>
+            )}
+
+            <div className="border-t border-white/10 pt-5">
+              <p className="text-base font-black text-white">
+                Pr. Djeone Martins
+              </p>
+              <p className="mt-1 text-sm text-slate-300">
+                Devocional Diário
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3 pt-2">
+              <Link
+                href="/"
+                className="rounded-full bg-white px-5 py-3 text-center text-sm font-black text-slate-950 transition hover:bg-blue-100"
+              >
+                Abrir app
+              </Link>
+
+              {quote.card_image_url && (
+                <a
+                  href={quote.card_image_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-full border border-white/15 px-5 py-3 text-center text-sm font-bold text-white transition hover:bg-white/10"
+                >
+                  Abrir imagem
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  )
+}
+

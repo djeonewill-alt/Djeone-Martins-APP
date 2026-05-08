@@ -118,82 +118,18 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
     setSharing(true)
 
     try {
-      const bibleReference = quote.episode?.bible_reference
-        ? `\n\nBase bÃ­blica: ${quote.episode.bible_reference}`
-        : ''
-
-      const episodeTitle = quote.episode?.title
-        ? `\nTema: ${quote.episode.title}`
-        : ''
-
-      const shareText = `Palavra do Dia\n\n"${quote.quote_text}"${bibleReference}${episodeTitle}\n\nPr. Djeone Martins`
+      const quoteUrl = `${window.location.origin}/palavra/${quote.id}?share=quote-v1`
 
       let shouldCountShare = false
 
       if (navigator.share) {
         try {
-          const nav = navigator as Navigator & {
-            canShare?: (data: ShareData) => boolean
-          }
-
-          let sharedImage = false
-
-          if (quote.card_image_url) {
-            try {
-              const imageResponse = await fetch(quote.card_image_url, {
-                cache: 'no-store',
-              })
-
-              if (imageResponse.ok) {
-                const imageBlob = await imageResponse.blob()
-                const mimeType = imageBlob.type || 'image/png'
-                const extension = mimeType.includes('jpeg')
-                  ? 'jpg'
-                  : mimeType.includes('webp')
-                  ? 'webp'
-                  : 'png'
-
-                const imageFile = new File(
-                  [imageBlob],
-                  `palavra-do-dia-${quote.date || 'hoje'}.${extension}`,
-                  { type: mimeType }
-                )
-
-                const shareDataWithImageOnly = {
-                  title: 'Palavra do Dia',
-                  files: [imageFile],
-                } as ShareData
-
-                const canShareImage =
-                  typeof nav.canShare === 'function' &&
-                  nav.canShare(shareDataWithImageOnly)
-
-                if (canShareImage) {
-                  await nav.share(shareDataWithImageOnly)
-                  sharedImage = true
-                }
-              } else {
-                console.warn(
-                  'NÃ£o foi possÃ­vel carregar a imagem da Palavra do Dia para compartilhar.'
-                )
-              }
-            } catch (imageShareError) {
-              console.warn(
-                'Falha ao preparar imagem da Palavra do Dia. Compartilhando texto como fallback.',
-                imageShareError
-              )
-            }
-          }
-
-          if (!sharedImage) {
-            await navigator.share({
-              title: 'Palavra do Dia',
-              text: shareText,
-            })
-          }
+          await navigator.share({
+            url: quoteUrl,
+          })
 
           shouldCountShare = window.confirm(
-            'VocÃª concluiu o compartilhamento da Palavra do Dia?'
+            'Você concluiu o compartilhamento da Palavra do Dia?'
           )
         } catch (shareError) {
           const errorName =
@@ -206,8 +142,8 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
           return
         }
       } else {
-        await navigator.clipboard.writeText(shareText)
-        alert('Texto da Palavra do Dia copiado para compartilhar.')
+        await navigator.clipboard.writeText(quoteUrl)
+        alert('Link da Palavra do Dia copiado para compartilhar.')
         shouldCountShare = true
       }
 
@@ -232,7 +168,6 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
       setSharing(false)
     }
   }
-
   if (loading) {
     return (
       <section className={`w-full ${className}`}>
@@ -349,5 +284,6 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
     </section>
   )
 }
+
 
 
