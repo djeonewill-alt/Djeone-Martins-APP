@@ -1,4 +1,4 @@
-self.addEventListener('install', function () {
+﻿self.addEventListener('install', function () {
   self.skipWaiting()
 })
 
@@ -33,9 +33,7 @@ self.addEventListener('push', function (event) {
     },
   }
 
-  event.waitUntil(
-    self.registration.showNotification(data.title, options)
-  )
+  event.waitUntil(self.registration.showNotification(data.title, options))
 })
 
 self.addEventListener('notificationclick', function (event) {
@@ -44,20 +42,22 @@ self.addEventListener('notificationclick', function (event) {
   const urlToOpen = event.notification.data?.url || '/'
 
   event.waitUntil(
-    self.clients.matchAll({
-      type: 'window',
-      includeUncontrolled: true,
-    }).then(function (clientList) {
-      for (const client of clientList) {
-        if ('focus' in client) {
-          client.navigate(urlToOpen)
-          return client.focus()
+    self.clients
+      .matchAll({
+        type: 'window',
+        includeUncontrolled: true,
+      })
+      .then(function (clientList) {
+        for (const client of clientList) {
+          if ('focus' in client) {
+            client.navigate(urlToOpen)
+            return client.focus()
+          }
         }
-      }
 
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(urlToOpen)
-      }
-    })
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(urlToOpen)
+        }
+      })
   )
 })

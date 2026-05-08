@@ -1,7 +1,7 @@
-{
-  "name": "Djeone Martins App",
-  "short_name": "Devocionais",
-  "description": "Devocionais em áudio do Pr. Djeone Martins",
+﻿{
+  "name": "Djeone Martins",
+  "short_name": "Djeone",
+  "description": "Devocional diário em áudio, Palavra do Dia, leitura bíblica e oração com Pr. Djeone Martins.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -12,16 +12,28 @@
   "lang": "pt-BR",
   "icons": [
     {
-      "src": "/pastor.png",
+      "src": "/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "/pastor.png",
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

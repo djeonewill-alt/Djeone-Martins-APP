@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+﻿import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { AudioProvider } from '@/components/audio/AudioProvider'
@@ -9,10 +9,15 @@ const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Djeone Martins - Devocional Diário',
-  description: 'Devocional diário com Pastor Djeone Martins',
+  description: 'Devocional diário com Pr. Djeone Martins',
   manifest: '/manifest.json',
-  themeColor: '#2563EB',
-  viewport: 'width=device-width, initial-scale=1, maximum-scale=1',
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  themeColor: '#020617',
 }
 
 export default function RootLayout({
