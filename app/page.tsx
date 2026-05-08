@@ -8,13 +8,13 @@ import TabLeitura from '@/components/tabs/TabLeitura'
 import TabOracao from '@/components/tabs/TabOracao'
 import TabVoce from '@/components/tabs/TabVoce'
 import TabMais from '@/components/tabs/TabMais'
+import TabSettings from '@/components/tabs/TabSettings'
 import TabSeries from '@/components/tabs/TabSeries'
 import TabOferta from '@/components/tabs/TabOferta'
 import TabFavoritos from '@/components/tabs/favorites/TabFavoritos'
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('hoje')
-  const [settingsOpenToken, setSettingsOpenToken] = useState(0)
 
   const tabs = [
     { id: 'hoje', label: 'Hoje', icon: 'home' },
@@ -27,10 +27,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-slate-950">
       <Header
-        onOpenSettings={() => {
-          setActiveTab('mais')
-          setSettingsOpenToken(Date.now())
-        }}
+        onOpenSettings={() => setActiveTab('settings')}
       />
 
       <main className="pt-16">
@@ -51,11 +48,12 @@ export default function Home() {
           <TabVoce onOpenFavoritos={() => setActiveTab('favoritos')} />
         )}
 
+        {activeTab === 'settings' && <TabSettings />}
+
         {activeTab === 'mais' && (
           <TabMais
             onOpenSeries={() => setActiveTab('series')}
             onOpenOferta={() => setActiveTab('oferta')}
-            settingsOpenToken={settingsOpenToken}
           />
         )}
 
@@ -74,5 +72,6 @@ export default function Home() {
     </div>
   )
 }
+
 
 
