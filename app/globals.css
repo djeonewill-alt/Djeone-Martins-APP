@@ -1,1 +1,17 @@
 @import "tailwindcss";
+/* Mobile app shell background / overscroll fix */
+html,
+body {
+  min-height: 100%;
+  background: #020617;
+}
+
+body {
+  overscroll-behavior-y: none;
+}
+
+@supports (height: 100dvh) {
+  body {
+    min-height: 100dvh;
+  }
+}

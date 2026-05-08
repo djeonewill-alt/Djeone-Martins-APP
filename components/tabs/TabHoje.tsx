@@ -28,6 +28,17 @@ type TabHojeProps = {
   onOpenPrayer?: () => void
 }
 
+function formatEpisodeDateLabel(dateValue?: string | null) {
+  const sourceDate = dateValue ? new Date(dateValue) : new Date()
+
+  return sourceDate.toLocaleDateString('pt-BR', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    timeZone: 'America/Sao_Paulo',
+  })
+}
+
 export default function TabHoje({
   onOpenSeries,
   onOpenReading,
@@ -63,6 +74,7 @@ export default function TabHoje({
           )
         `)
         .or('status.eq.published,status.is.null')
+        .order('published_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
@@ -219,6 +231,8 @@ export default function TabHoje({
   const isCurrentEpisodePlaying =
     currentEpisode?.id === todayEpisode?.id && isPlaying
 
+  const episodeDateLabel = formatEpisodeDateLabel(todayEpisode?.published_at)
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-950">
@@ -253,7 +267,7 @@ export default function TabHoje({
       <div className="mx-auto w-full max-w-2xl px-5 py-6">
         <section className="mb-6">
           <p className="text-xs font-bold text-blue-200">
-            Terça-Feira, 05 De Maio
+            {episodeDateLabel}
           </p>
 
           <h1 className="mt-2 max-w-xl text-3xl font-black leading-[0.98] tracking-[-0.06em] text-white">
@@ -310,4 +324,6 @@ export default function TabHoje({
     </div>
   )
 }
+
+
 
