@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -74,8 +74,8 @@ export default function AdminSeriesPage() {
 
       setSeries(rows)
     } catch (error) {
-      console.error('Erro ao carregar séries:', error)
-      alert('Não foi possível carregar as séries agora.')
+      console.error('Erro ao carregar podcasts:', error)
+      alert('Não foi possível carregar as podcasts agora.')
     } finally {
       setLoading(false)
     }
@@ -84,13 +84,13 @@ export default function AdminSeriesPage() {
   async function handleDelete(serie: SeriesRow) {
     if ((serie.episode_count || 0) > 0) {
       alert(
-        'Esta série possui episódios vinculados. Para evitar perda de organização, remova ou mova os episódios antes de excluir a série.'
+        'Este podcast possui episódios vinculados. Para evitar perda de organização, remova ou mova os episódios antes de excluir o podcast.'
       )
       return
     }
 
     const confirmed = confirm(
-      `Excluir a série "${serie.title}"?\n\nEsta ação não pode ser desfeita.`
+      `Excluir o podcast "${serie.title}"?\n\nEsta ação não pode ser desfeita.`
     )
 
     if (!confirmed) return
@@ -107,8 +107,8 @@ export default function AdminSeriesPage() {
 
       await loadSeries()
     } catch (error) {
-      console.error('Erro ao excluir série:', error)
-      alert('Não foi possível excluir a série agora.')
+      console.error('Erro ao excluir podcast:', error)
+      alert('Não foi possível excluir o podcast agora.')
     } finally {
       setActionLoadingId(null)
     }
@@ -170,7 +170,7 @@ export default function AdminSeriesPage() {
             </h1>
 
             <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-400">
-              Organize séries como Salmo 23, Atos, João e outras jornadas em
+              Organize podcasts como Salmo 23, Atos, João e outras jornadas em
               áudio. Esta área foi pensada para trabalho no desktop.
             </p>
           </div>
@@ -253,18 +253,18 @@ export default function AdminSeriesPage() {
 
         {loading ? (
           <div className="rounded-[30px] border border-white/10 bg-slate-900/70 p-8 text-sm font-bold text-slate-400">
-            Carregando séries...
+            Carregando podcasts...
           </div>
         ) : filteredSeries.length === 0 ? (
           <div className="rounded-[30px] border border-white/10 bg-slate-900/70 p-8 text-center">
             <p className="text-5xl">📚</p>
             <h2 className="mt-4 text-2xl font-black tracking-[-0.05em]">
-              Nenhuma série encontrada
+              Nenhumo podcast encontrada
             </h2>
             <p className="mt-3 text-sm leading-6 text-slate-400">
               {searchTerm
                 ? 'Tente buscar por outro termo.'
-                : 'Crie a primeira série para começar a organizar seus episódios.'}
+                : 'Crie a primeiro podcast para começar a organizar seus episódios.'}
             </p>
           </div>
         ) : (
@@ -342,7 +342,7 @@ export default function AdminSeriesPage() {
                         href={`/admin/series/${serie.id}`}
                         className="rounded-2xl bg-blue-600 px-4 py-3 text-center text-sm font-black text-white active:scale-[0.98]"
                       >
-                        Editar série
+                        Editar podcast
                       </Link>
 
                       <Link

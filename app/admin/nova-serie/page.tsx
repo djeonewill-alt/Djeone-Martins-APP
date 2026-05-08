@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { FormEvent, useState } from 'react'
 import Link from 'next/link'
@@ -78,7 +78,7 @@ export default function NovaSeriePage() {
     event.preventDefault()
 
     if (!formData.title.trim()) {
-      alert('Informe o título da série.')
+      alert('Informe o título do podcast.')
       return
     }
 
@@ -112,11 +112,11 @@ export default function NovaSeriePage() {
 
       if (error) throw error
 
-      alert('Série criada com sucesso.')
+      alert('Podcast criada com sucesso.')
       router.push('/admin/series')
     } catch (error) {
-      console.error('Erro ao criar série:', error)
-      alert('Não foi possível criar a série agora.')
+      console.error('Erro ao criar podcast:', error)
+      alert('Não foi possível criar o podcast agora.')
     } finally {
       setLoading(false)
     }
@@ -129,16 +129,16 @@ export default function NovaSeriePage() {
           href="/admin/series"
           className="inline-flex rounded-full border border-white/10 bg-slate-900/80 px-4 py-2 text-sm font-black text-blue-200 active:scale-[0.98]"
         >
-          ← Voltar para séries
+          ← Voltar paro podcasts
         </Link>
 
         <div className="mt-8">
           <p className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-300">
-            Nova série
+            Novo podcast
           </p>
 
           <h1 className="mt-2 text-4xl font-black leading-none tracking-[-0.07em] sm:text-5xl">
-            Criar série devocional
+            Criar podcast devocional
           </h1>
 
           <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-400">
@@ -153,7 +153,7 @@ export default function NovaSeriePage() {
           <div className="grid gap-5 md:grid-cols-2">
             <div>
               <label className="text-sm font-black text-slate-100">
-                Título da série *
+                Título do podcast *
               </label>
               <input
                 value={formData.title}
@@ -187,7 +187,7 @@ export default function NovaSeriePage() {
 
             <div>
               <label className="text-sm font-black text-slate-100">
-                Emoji da série
+                Emoji do podcast
               </label>
               <input
                 value={formData.icon_emoji}
@@ -226,7 +226,7 @@ export default function NovaSeriePage() {
               onChange={(event) =>
                 setFormData({ ...formData, description: event.target.value })
               }
-              placeholder="Breve descrição da série..."
+              placeholder="Breve descrição do podcast..."
               rows={4}
               className="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold leading-6 text-white outline-none placeholder:text-slate-600 focus:border-blue-300/60"
             />
@@ -234,7 +234,7 @@ export default function NovaSeriePage() {
 
           <div className="mt-6 rounded-[28px] border border-amber-300/20 bg-amber-300/10 p-5">
             <p className="text-sm font-black text-amber-100">
-              Capa da série
+              Capa do podcast
             </p>
 
             <p className="mt-2 text-sm leading-6 text-amber-50/90">
@@ -286,7 +286,7 @@ export default function NovaSeriePage() {
                       Gratuita
                     </span>
                     <span className="mt-1 block text-xs leading-5 text-slate-400">
-                      Qualquer usuário poderá acessar esta série.
+                      Qualquer usuário poderá acessar este podcast.
                     </span>
                   </span>
                 </label>
@@ -328,10 +328,10 @@ export default function NovaSeriePage() {
                 />
                 <span>
                   <span className="block text-sm font-black text-white">
-                    Definir como série em destaque atual
+                    Definir como podcast em destaque atual
                   </span>
                   <span className="mt-1 block text-xs leading-5 text-slate-400">
-                    Ela aparecerá com destaque principal na aba Séries.
+                    Ela aparecerá com destaque principal na aba Podcasts.
                   </span>
                 </span>
               </label>
@@ -351,7 +351,7 @@ export default function NovaSeriePage() {
               disabled={loading}
               className="flex-1 rounded-2xl bg-blue-600 px-5 py-4 text-sm font-black text-white shadow-xl shadow-blue-950/20 active:scale-[0.98] disabled:opacity-60"
             >
-              {loading ? 'Criando...' : 'Criar série'}
+              {loading ? 'Criando...' : 'Criar podcast'}
             </button>
           </div>
         </form>
