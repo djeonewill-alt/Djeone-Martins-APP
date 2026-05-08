@@ -34,6 +34,7 @@ export default function TabOracao() {
   const [newPrayer, setNewPrayer] = useState('')
   const [authorName, setAuthorName] = useState('')
   const [isPrivate, setIsPrivate] = useState(false)
+  const [acceptedPrayerNotice, setAcceptedPrayerNotice] = useState(false)
   const [sending, setSending] = useState(false)
 
   const [deviceId, setDeviceId] = useState('')
@@ -153,7 +154,7 @@ export default function TabOracao() {
 
       const { data, error } = await supabase
         .from('prayer_requests')
-        .select('*')
+        .select('*, profiles:user_id(country)')
         .eq('is_private', false)
         .eq('is_active', true)
         .order('created_at', { ascending: false })
@@ -203,6 +204,11 @@ export default function TabOracao() {
 
     if (!newPrayer.trim()) return
 
+    if (!acceptedPrayerNotice) {
+      alert('Antes de publicar, confirme que você leu o aviso de privacidade do mural de oração.')
+      return
+    }
+
     setSending(true)
 
     try {
@@ -233,6 +239,7 @@ export default function TabOracao() {
       setNewPrayer('')
       setAuthorName('')
       setIsPrivate(false)
+      setAcceptedPrayerNotice(false)
       setShowForm(false)
 
       await loadPrayers(deviceId || getOrCreateDeviceId())
@@ -392,6 +399,7 @@ export default function TabOracao() {
             newPrayer={newPrayer}
             isPrivate={isPrivate}
             sending={sending}
+            acceptedPrayerNotice={acceptedPrayerNotice}
             prayedIds={prayedIds}
             prayerCounts={prayerCounts}
             encouragementsByPrayer={encouragementsByPrayer}
@@ -399,6 +407,7 @@ export default function TabOracao() {
             onAuthorNameChange={setAuthorName}
             onNewPrayerChange={setNewPrayer}
             onPrivateChange={setIsPrivate}
+            onPrayerNoticeChange={setAcceptedPrayerNotice}
             onSubmit={handleSubmit}
             onPray={handlePray}
             onReport={handleReport}
@@ -423,5 +432,6 @@ export default function TabOracao() {
     </div>
   )
 }
+
 
 
