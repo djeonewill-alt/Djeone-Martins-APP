@@ -331,10 +331,40 @@ export default function TabOracao() {
     }
   }
 
-  const handleReport = (prayer: PrayerRequest) => {
-    console.log('Pedido sinalizado:', prayer.id)
+  const handleReport = async (prayer: PrayerRequest) => {
+    const reason = window.prompt(
+      'Deseja informar o motivo da denúncia?\\n\\nExemplos: exposição de dados pessoais, conteúdo inadequado, pedido ofensivo, spam ou outro problema.\\n\\nVocê também pode deixar em branco e confirmar.'
+    )
 
-    alert('Obrigado por avisar. Na próxima etapa, esse alerta irá para moderação.')
+    if (reason === null) return
+
+    const confirmed = confirm(
+      'Enviar esta sinalização para revisão da moderação?'
+    )
+
+    if (!confirmed) return
+
+    try {
+      const currentDeviceId = deviceId || getOrCreateDeviceId()
+
+      const { error } = await supabase
+        .from('prayer_reports')
+        .insert({
+          prayer_request_id: prayer.id,
+          reason: reason.trim() || null,
+          source: 'prayer_wall',
+          device_id: currentDeviceId,
+          user_agent:
+            typeof navigator !== 'undefined' ? navigator.userAgent : null,
+        })
+
+      if (error) throw error
+
+      alert('Obrigado por avisar. Este pedido foi enviado para revisão.')
+    } catch (error) {
+      console.error('Erro ao sinalizar pedido:', error)
+      alert('Não foi possível enviar a denúncia agora.')
+    }
   }
 
   const handleMarkAnswered = async (prayer: PrayerRequest) => {
@@ -432,6 +462,7 @@ export default function TabOracao() {
     </div>
   )
 }
+
 
 
 
