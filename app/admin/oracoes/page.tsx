@@ -1,414 +1,700 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
-import type { PrayerRequest } from '@/lib/supabase'
+
+import { supabase } from '@/lib/supabase'
+
+type AdminView = 'public' | 'private' | 'answered' | 'hidden' | 'reports' | null
+
+type PrayerRow = {
+  id: string
+  author_name: string | null
+  content: string | null
+  is_active: boolean | null
+  is_private: boolean | null
+  is_answered: boolean | null
+  testimony_text: string | null
+  created_at: string | null
+  answered_at: string | null
+}
+
+type PrayerReportRow = {
+  id: string
+  prayer_request_id: string
+  reason: string | null
+  status: 'pending' | 'reviewing' | 'resolved' | 'rejected'
+  source: string | null
+  device_id: string | null
+  reporter_auth_user_id: string | null
+  created_at: string
+  reviewed_at: string | null
+  admin_notes: string | null
+  prayer_requests?: PrayerRow | PrayerRow[] | null
+}
+
+type PrayerStats = {
+  publicPrayers: number
+  privatePrayers: number
+  answeredPrayers: number
+  hiddenPrayers: number
+  pendingReports: number
+}
+
+const initialStats: PrayerStats = {
+  publicPrayers: 0,
+  privatePrayers: 0,
+  answeredPrayers: 0,
+  hiddenPrayers: 0,
+  pendingReports: 0,
+}
+
+function formatDate(date?: string | null) {
+  if (!date) return 'Sem data'
+
+  return new Date(date).toLocaleString('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  })
+}
+
+function getReportPrayer(report: PrayerReportRow) {
+  const prayer = report.prayer_requests
+
+  if (Array.isArray(prayer)) {
+    return prayer[0] || null
+  }
+
+  return prayer || null
+}
+
+function getPrayerText(prayer?: PrayerRow | null) {
+  return prayer?.content || 'Pedido sem texto carregado.'
+}
+
+function getViewTitle(view: AdminView) {
+  if (view === 'public') return 'Pedidos públicos'
+  if (view === 'private') return 'Pedidos privados'
+  if (view === 'answered') return 'Pedidos respondidos'
+  if (view === 'hidden') return 'Pedidos ocultos'
+  if (view === 'reports') return 'Denúncias pendentes'
+  return 'Resumo de orações'
+}
 
 export default function AdminOracoes() {
-  const [prayers, setPrayers] = useState<PrayerRequest[]>([])
-  const [filter, setFilter] = useState<'all' | 'public' | 'private' | 'answered'>('all')
-  const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState<PrayerStats>(initialStats)
+  const [activeView, setActiveView] = useState<AdminView>(null)
+  const [prayers, setPrayers] = useState<PrayerRow[]>([])
+  const [reports, setReports] = useState<PrayerReportRow[]>([])
+  const [loadingStats, setLoadingStats] = useState(true)
+  const [loadingDetails, setLoadingDetails] = useState(false)
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
 
   useEffect(() => {
-    loadPrayers()
-  }, [filter])
+    loadStats()
+  }, [])
 
-  const loadPrayers = async () => {
+  useEffect(() => {
+    if (activeView) {
+      loadDetails(activeView)
+    }
+  }, [activeView])
+
+  async function countPrayerRequests(
+    filter: (query: any) => any
+  ): Promise<number> {
+    let query = supabase
+      .from('prayer_requests')
+      .select('id', { count: 'exact', head: true })
+
+    query = filter(query)
+
+    const { count, error } = await query
+
+    if (error) {
+      console.error('Erro ao contar pedidos:', error)
+      return 0
+    }
+
+    return count || 0
+  }
+
+  async function countPendingReports(): Promise<number> {
+    const { count, error } = await supabase
+      .from('prayer_reports')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending')
+
+    if (error) {
+      console.error('Erro ao contar denúncias:', error)
+      return 0
+    }
+
+    return count || 0
+  }
+
+  async function loadStats() {
     try {
+      setLoadingStats(true)
+
+      const [
+        publicPrayers,
+        privatePrayers,
+        answeredPrayers,
+        hiddenPrayers,
+        pendingReports,
+      ] = await Promise.all([
+        countPrayerRequests((query) =>
+          query.eq('is_private', false).eq('is_active', true)
+        ),
+        countPrayerRequests((query) =>
+          query.eq('is_private', true).eq('is_active', true)
+        ),
+        countPrayerRequests((query) => query.eq('is_answered', true)),
+        countPrayerRequests((query) => query.eq('is_active', false)),
+        countPendingReports(),
+      ])
+
+      setStats({
+        publicPrayers,
+        privatePrayers,
+        answeredPrayers,
+        hiddenPrayers,
+        pendingReports,
+      })
+    } finally {
+      setLoadingStats(false)
+    }
+  }
+
+  async function loadDetails(view: AdminView) {
+    if (!view) return
+
+    try {
+      setLoadingDetails(true)
+
+      if (view === 'reports') {
+        const { data, error } = await supabase
+          .from('prayer_reports')
+          .select(`
+            id,
+            prayer_request_id,
+            reason,
+            status,
+            source,
+            device_id,
+            reporter_auth_user_id,
+            created_at,
+            reviewed_at,
+            admin_notes,
+            prayer_requests:prayer_request_id (
+              id,
+              author_name,
+              content,
+              is_active,
+              is_private,
+              is_answered,
+              testimony_text,
+              created_at,
+              answered_at
+            )
+          `)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false })
+
+        if (error) throw error
+
+        setReports((data || []) as PrayerReportRow[])
+        setPrayers([])
+        return
+      }
+
       let query = supabase
         .from('prayer_requests')
-        .select('*')
-        .eq('is_active', true)
+        .select(
+          'id, author_name, content, is_active, is_private, is_answered, testimony_text, created_at, answered_at'
+        )
         .order('created_at', { ascending: false })
 
-      if (filter === 'public') {
-        query = query.eq('is_private', false).eq('is_answered', false)
-      } else if (filter === 'private') {
-        query = query.eq('is_private', true).eq('is_answered', false)
-      } else if (filter === 'answered') {
+      if (view === 'public') {
+        query = query.eq('is_private', false).eq('is_active', true)
+      }
+
+      if (view === 'private') {
+        query = query.eq('is_private', true).eq('is_active', true)
+      }
+
+      if (view === 'answered') {
         query = query.eq('is_answered', true)
-      } else if (filter === 'all') {
-        query = query.eq('is_answered', false)
+      }
+
+      if (view === 'hidden') {
+        query = query.eq('is_active', false)
       }
 
       const { data, error } = await query
 
       if (error) throw error
-      setPrayers(data || [])
+
+      setPrayers((data || []) as PrayerRow[])
+      setReports([])
     } catch (error) {
-      console.error('Erro ao carregar pedidos:', error)
+      console.error('Erro ao carregar detalhes de orações:', error)
+      alert('Não foi possível carregar esta visão agora.')
     } finally {
-      setLoading(false)
+      setLoadingDetails(false)
     }
   }
 
-  const handleMarkAnswered = async (prayerId: string) => {
-    if (!confirm('Marcar este pedido como respondido?')) return
+  async function refreshCurrentView() {
+    await loadStats()
+
+    if (activeView) {
+      await loadDetails(activeView)
+    }
+  }
+
+  async function hidePrayer(prayerId: string) {
+    const confirmed = confirm('Ocultar este pedido do mural público?')
+
+    if (!confirmed) return
 
     try {
+      setActionLoadingId(prayerId)
+
       const { error } = await supabase
         .from('prayer_requests')
-        .update({
-          is_answered: true,
-          answered_at: new Date().toISOString(),
-        })
+        .update({ is_active: false })
         .eq('id', prayerId)
 
       if (error) throw error
-      
-      alert('✅ Pedido marcado como respondido!')
-      loadPrayers()
+
+      await refreshCurrentView()
     } catch (error) {
-      console.error('Erro:', error)
-      alert('❌ Erro ao atualizar pedido')
+      console.error('Erro ao ocultar pedido:', error)
+      alert('Não foi possível ocultar este pedido agora.')
+    } finally {
+      setActionLoadingId(null)
     }
   }
 
+  async function hidePrayerAndResolveReport(report: PrayerReportRow) {
+    const confirmed = confirm(
+      'Ocultar este pedido e marcar a denúncia como resolvida?'
+    )
+
+    if (!confirmed) return
+
+    const adminNotes =
+      window.prompt(
+        'Observação administrativa, opcional:',
+        'Pedido ocultado após denúncia.'
+      ) || 'Pedido ocultado após denúncia.'
+
+    try {
+      setActionLoadingId(report.id)
+
+      const { error: prayerError } = await supabase
+        .from('prayer_requests')
+        .update({ is_active: false })
+        .eq('id', report.prayer_request_id)
+
+      if (prayerError) throw prayerError
+
+      const { error: reportError } = await supabase
+        .from('prayer_reports')
+        .update({
+          status: 'resolved',
+          reviewed_at: new Date().toISOString(),
+          admin_notes: adminNotes,
+        })
+        .eq('id', report.id)
+
+      if (reportError) throw reportError
+
+      await refreshCurrentView()
+    } catch (error) {
+      console.error('Erro ao moderar denúncia:', error)
+      alert('Não foi possível processar esta denúncia agora.')
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
+  async function resolveReportOnly(report: PrayerReportRow) {
+    const confirmed = confirm(
+      'Marcar a denúncia como resolvida sem ocultar o pedido?'
+    )
+
+    if (!confirmed) return
+
+    const adminNotes =
+      window.prompt(
+        'Observação administrativa, opcional:',
+        'Denúncia resolvida sem ocultar o pedido.'
+      ) || 'Denúncia resolvida sem ocultar o pedido.'
+
+    try {
+      setActionLoadingId(report.id)
+
+      const { error } = await supabase
+        .from('prayer_reports')
+        .update({
+          status: 'resolved',
+          reviewed_at: new Date().toISOString(),
+          admin_notes: adminNotes,
+        })
+        .eq('id', report.id)
+
+      if (error) throw error
+
+      await refreshCurrentView()
+    } catch (error) {
+      console.error('Erro ao resolver denúncia:', error)
+      alert('Não foi possível resolver esta denúncia agora.')
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
+  async function rejectReport(report: PrayerReportRow) {
+    const confirmed = confirm('Rejeitar esta denúncia e manter o pedido ativo?')
+
+    if (!confirmed) return
+
+    const adminNotes =
+      window.prompt(
+        'Observação administrativa, opcional:',
+        'Denúncia revisada e rejeitada.'
+      ) || 'Denúncia revisada e rejeitada.'
+
+    try {
+      setActionLoadingId(report.id)
+
+      const { error } = await supabase
+        .from('prayer_reports')
+        .update({
+          status: 'rejected',
+          reviewed_at: new Date().toISOString(),
+          admin_notes: adminNotes,
+        })
+        .eq('id', report.id)
+
+      if (error) throw error
+
+      await refreshCurrentView()
+    } catch (error) {
+      console.error('Erro ao rejeitar denúncia:', error)
+      alert('Não foi possível rejeitar esta denúncia agora.')
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
+  const cards = [
+    {
+      id: 'public' as const,
+      title: 'Pedidos públicos',
+      value: stats.publicPrayers,
+      subtitle: 'Visíveis no mural',
+      emoji: '🌍',
+    },
+    {
+      id: 'private' as const,
+      title: 'Pedidos privados',
+      value: stats.privatePrayers,
+      subtitle: 'Não aparecem no mural',
+      emoji: '🔒',
+    },
+    {
+      id: 'answered' as const,
+      title: 'Respondidos',
+      value: stats.answeredPrayers,
+      subtitle: 'Marcados como resposta',
+      emoji: '✅',
+    },
+    {
+      id: 'hidden' as const,
+      title: 'Ocultos',
+      value: stats.hiddenPrayers,
+      subtitle: 'Removidos do mural',
+      emoji: '🙈',
+    },
+    {
+      id: 'reports' as const,
+      title: 'Denúncias',
+      value: stats.pendingReports,
+      subtitle: 'Pendentes de revisão',
+      emoji: '⚑',
+      danger: stats.pendingReports > 0,
+    },
+  ]
+
   return (
-    <div className="admin-prayers-page min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6">
-        <div className="max-w-2xl mx-auto">
-          <Link href="/admin" className="text-blue-100 hover:text-white mb-2 inline-block">
-            ← Voltar
-          </Link>
-          <h1 className="text-2xl font-bold">🙏 Pedidos de Oração</h1>
-          <p className="text-blue-100 text-sm mt-1">
-            Todos os pedidos da comunidade
-          </p>
-        </div>
-      </div>
+    <main className="min-h-screen bg-slate-950 px-5 py-8 text-white">
+      <section className="mx-auto max-w-6xl">
+        <Link
+          href="/admin"
+          className="text-sm font-bold text-blue-300 underline underline-offset-4"
+        >
+          ← Voltar ao painel
+        </Link>
 
-      <div className="max-w-2xl mx-auto p-5">
-        {/* Filtros */}
-        <div className="grid grid-cols-2 gap-2 mb-6 bg-white rounded-lg p-2 shadow">
+        <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-300">
+              Oração
+            </p>
+
+            <h1 className="mt-2 text-3xl font-black tracking-[-0.05em]">
+              Gestão do mural de oração
+            </h1>
+
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
+              Acompanhe os números principais e abra apenas a lista que deseja
+              revisar.
+            </p>
+          </div>
+
           <button
-            onClick={() => setFilter('all')}
-            className={`py-2 rounded-lg font-semibold transition-colors ${
-              filter === 'all'
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
+            type="button"
+            onClick={refreshCurrentView}
+            className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-black text-slate-200 active:scale-[0.99]"
           >
-            Ativos
-          </button>
-          <button
-            onClick={() => setFilter('public')}
-            className={`py-2 rounded-lg font-semibold transition-colors ${
-              filter === 'public'
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            Públicos
-          </button>
-          <button
-            onClick={() => setFilter('private')}
-            className={`py-2 rounded-lg font-semibold transition-colors ${
-              filter === 'private'
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            Privados
-          </button>
-          <button
-            onClick={() => setFilter('answered')}
-            className={`py-2 rounded-lg font-semibold transition-colors ${
-              filter === 'answered'
-                ? 'bg-green-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            ✅ Respondidos
+            Atualizar
           </button>
         </div>
 
-        {/* Lista */}
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-            <p className="text-gray-600">Carregando...</p>
-          </div>
-        ) : prayers.length === 0 ? (
-          <div className="text-center py-12 bg-gray-100 rounded-xl">
-            <p className="text-4xl mb-4">🙏</p>
-            <p className="font-semibold text-gray-800">Nenhum pedido encontrado</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {prayers.map((prayer) => (
-              <div
-                key={prayer.id}
-                className={`bg-white rounded-xl p-4 shadow border-2 ${
-                  prayer.is_answered
-                    ? 'border-green-200 bg-green-50'
-                    : prayer.is_private
-                    ? 'border-yellow-200 bg-yellow-50/30'
-                    : 'border-gray-200'
-                }`}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-gray-900">
-                      {prayer.author_name || 'Anônimo'}
-                    </span>
-                    {prayer.is_private && (
-                      <span className="bg-yellow-500 text-white text-xs px-2 py-1 rounded-full font-semibold">
-                        🔒 Privado
-                      </span>
-                    )}
-                    {prayer.is_answered && (
-                      <span className="bg-green-500 text-white text-xs px-2 py-1 rounded-full font-semibold">
-                        ✅ Respondido
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-xs text-gray-500 whitespace-nowrap ml-2">
-                    {new Date(prayer.created_at).toLocaleDateString('pt-BR')}
-                  </span>
+        <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {cards.map((card) => (
+            <button
+              key={card.id}
+              type="button"
+              onClick={() => setActiveView(card.id)}
+              className={
+                activeView === card.id
+                  ? 'rounded-[28px] border border-blue-300/40 bg-blue-600/20 p-5 text-left shadow-2xl shadow-blue-950/20'
+                  : card.danger
+                    ? 'rounded-[28px] border border-red-300/25 bg-red-500/10 p-5 text-left shadow-2xl shadow-black/20'
+                    : 'rounded-[28px] border border-white/10 bg-slate-900/70 p-5 text-left shadow-2xl shadow-black/20'
+              }
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-3xl">{card.emoji}</p>
+                  <h2 className="mt-4 text-sm font-black text-white">
+                    {card.title}
+                  </h2>
+                  <p className="mt-1 text-xs leading-5 text-slate-400">
+                    {card.subtitle}
+                  </p>
                 </div>
 
-                <p className="text-gray-700 mb-3">{prayer.content}</p>
-
-                {prayer.is_answered && prayer.testimony_text && (
-                  <div className="bg-white border-l-4 border-green-500 pl-3 py-2 mb-3">
-                    <p className="text-sm font-semibold text-green-800 mb-1">
-                      ✨ Testemunho:
-                    </p>
-                    <p className="text-sm text-gray-700">{prayer.testimony_text}</p>
-                  </div>
-                )}
-
-                {!prayer.is_answered && (
-                  <button
-                    onClick={() => handleMarkAnswered(prayer.id)}
-                    className="text-green-600 font-semibold text-sm hover:text-green-700 transition-colors"
-                  >
-                    ✅ Marcar como Respondido
-                  </button>
-                )}
+                <strong className="text-3xl font-black tracking-[-0.05em] text-white">
+                  {loadingStats ? '...' : card.value}
+                </strong>
               </div>
-            ))}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-8 rounded-[30px] border border-white/10 bg-slate-900/60 p-5">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-blue-300">
+                Detalhes
+              </p>
+
+              <h2 className="mt-2 text-xl font-black text-white">
+                {getViewTitle(activeView)}
+              </h2>
+            </div>
+
+            {activeView && (
+              <button
+                type="button"
+                onClick={() => setActiveView(null)}
+                className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-2 text-xs font-black text-slate-300"
+              >
+                Fechar detalhes
+              </button>
+            )}
           </div>
-        )}
-      </div>
-    
-      <style jsx global>{`
-        .admin-prayers-page {
-          min-height: 100vh !important;
-          background:
-            radial-gradient(circle at top left, rgba(37, 99, 235, 0.18), transparent 34rem),
-            radial-gradient(circle at top right, rgba(245, 158, 11, 0.14), transparent 30rem),
-            #030712 !important;
-          color: #f8fafc !important;
-        }
 
-        .admin-prayers-page > div:first-child {
-          background:
-            linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 64, 175, 0.28)) !important;
-          border-bottom: 1px solid rgba(148, 163, 184, 0.16) !important;
-          box-shadow: 0 20px 80px rgba(0, 0, 0, 0.22) !important;
-          position: relative !important;
-          overflow: hidden !important;
-        }
+          {!activeView ? (
+            <p className="mt-5 text-sm leading-6 text-slate-400">
+              Clique em um card acima para ver a lista correspondente.
+            </p>
+          ) : loadingDetails ? (
+            <p className="mt-5 text-sm font-bold text-slate-400">
+              Carregando detalhes...
+            </p>
+          ) : activeView === 'reports' ? (
+            reports.length === 0 ? (
+              <p className="mt-5 text-sm leading-6 text-slate-400">
+                Nenhuma denúncia pendente.
+              </p>
+            ) : (
+              <div className="mt-5 space-y-4">
+                {reports.map((report) => {
+                  const prayer = getReportPrayer(report)
+                  const actionLoading = actionLoadingId === report.id
 
-        .admin-prayers-page > div:first-child::before {
-          content: "" !important;
-          position: absolute !important;
-          inset: 0 !important;
-          background:
-            radial-gradient(circle at 12% 20%, rgba(96, 165, 250, 0.18), transparent 28rem),
-            radial-gradient(circle at 88% 20%, rgba(245, 158, 11, 0.12), transparent 26rem) !important;
-          pointer-events: none !important;
-        }
+                  return (
+                    <article
+                      key={report.id}
+                      className="rounded-3xl border border-red-300/15 bg-red-500/10 p-5"
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-[0.18em] text-red-200">
+                            Denúncia pendente
+                          </p>
 
-        .admin-prayers-page > div:first-child > div,
-        .admin-prayers-page > div:nth-child(2) {
-          max-width: 1180px !important;
-          margin-left: auto !important;
-          margin-right: auto !important;
-          position: relative !important;
-          z-index: 1 !important;
-        }
+                          <h3 className="mt-2 text-lg font-black text-white">
+                            {prayer?.author_name || 'Anônimo'}
+                          </h3>
 
-        .admin-prayers-page > div:first-child > div {
-          padding-top: 34px !important;
-          padding-bottom: 28px !important;
-        }
+                          <p className="mt-1 text-xs text-red-100/70">
+                            Denunciado em {formatDate(report.created_at)}
+                          </p>
+                        </div>
 
-        .admin-prayers-page > div:nth-child(2) {
-          padding-top: 32px !important;
-          padding-bottom: 64px !important;
-        }
+                        <span className="rounded-full border border-red-300/20 bg-red-400/10 px-3 py-1 text-xs font-black text-red-100">
+                          {report.status}
+                        </span>
+                      </div>
 
-        .admin-prayers-page h1 {
-          font-size: clamp(2.1rem, 4vw, 3.2rem) !important;
-          line-height: 0.98 !important;
-          letter-spacing: -0.07em !important;
-          color: #f8fafc !important;
-        }
+                      <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                          Pedido denunciado
+                        </p>
+                        <p className="mt-3 whitespace-pre-wrap text-sm font-semibold leading-7 text-slate-100">
+                          {getPrayerText(prayer)}
+                        </p>
+                      </div>
 
-        .admin-prayers-page h1::after {
-          content: "Admin" !important;
-          display: inline-flex !important;
-          margin-left: 12px !important;
-          transform: translateY(-5px) !important;
-          font-size: 0.72rem !important;
-          letter-spacing: 0.18em !important;
-          text-transform: uppercase !important;
-          color: #93c5fd !important;
-          background: rgba(59, 130, 246, 0.14) !important;
-          border: 1px solid rgba(147, 197, 253, 0.22) !important;
-          padding: 7px 10px !important;
-          border-radius: 999px !important;
-        }
+                      <div className="mt-4 rounded-2xl border border-red-300/15 bg-red-950/30 p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-red-200">
+                          Motivo
+                        </p>
+                        <p className="mt-3 whitespace-pre-wrap text-sm font-semibold leading-7 text-red-50">
+                          {report.reason || 'Usuário não informou motivo.'}
+                        </p>
+                      </div>
 
-        .admin-prayers-page a[href="/admin"] {
-          display: inline-flex !important;
-          align-items: center !important;
-          gap: 6px !important;
-          color: #bfdbfe !important;
-          background: rgba(15, 23, 42, 0.58) !important;
-          border: 1px solid rgba(148, 163, 184, 0.18) !important;
-          padding: 8px 12px !important;
-          border-radius: 999px !important;
-          text-decoration: none !important;
-        }
+                      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                        <button
+                          type="button"
+                          onClick={() => hidePrayerAndResolveReport(report)}
+                          disabled={actionLoading}
+                          className="rounded-2xl bg-red-600 px-4 py-3 text-sm font-black text-white active:scale-[0.99] disabled:opacity-50"
+                        >
+                          Ocultar pedido
+                        </button>
 
-        .admin-prayers-page > div:nth-child(2) > div.grid {
-          grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-          background: rgba(15, 23, 42, 0.62) !important;
-          border: 1px solid rgba(148, 163, 184, 0.14) !important;
-          border-radius: 22px !important;
-          padding: 6px !important;
-          box-shadow: none !important;
-        }
+                        <button
+                          type="button"
+                          onClick={() => resolveReportOnly(report)}
+                          disabled={actionLoading}
+                          className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-black text-white active:scale-[0.99] disabled:opacity-50"
+                        >
+                          Resolver sem ocultar
+                        </button>
 
-        .admin-prayers-page > div:nth-child(2) > div.grid button {
-          min-height: 48px !important;
-          border-radius: 16px !important;
-        }
+                        <button
+                          type="button"
+                          onClick={() => rejectReport(report)}
+                          disabled={actionLoading}
+                          className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-black text-slate-200 active:scale-[0.99] disabled:opacity-50"
+                        >
+                          Rejeitar denúncia
+                        </button>
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            )
+          ) : prayers.length === 0 ? (
+            <p className="mt-5 text-sm leading-6 text-slate-400">
+              Nenhum pedido encontrado nesta visão.
+            </p>
+          ) : (
+            <div className="mt-5 space-y-4">
+              {prayers.map((prayer) => (
+                <article
+                  key={prayer.id}
+                  className="rounded-3xl border border-white/10 bg-slate-950/40 p-5"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h3 className="text-lg font-black text-white">
+                        {prayer.author_name || 'Anônimo'}
+                      </h3>
 
-        .admin-prayers-page .bg-white,
-        .admin-prayers-page .bg-gray-100,
-        .admin-prayers-page .bg-green-50,
-        .admin-prayers-page .bg-yellow-50\/30 {
-          background:
-            linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(15, 23, 42, 0.72)) !important;
-          border: 1px solid rgba(148, 163, 184, 0.16) !important;
-          box-shadow: 0 22px 70px rgba(0, 0, 0, 0.22) !important;
-          border-radius: 26px !important;
-        }
+                      <p className="mt-1 text-xs text-slate-500">
+                        {formatDate(prayer.created_at)}
+                      </p>
+                    </div>
 
-        .admin-prayers-page .space-y-4 > div {
-          transition:
-            transform 0.2s ease,
-            border-color 0.2s ease,
-            background 0.2s ease !important;
-        }
+                    <div className="flex flex-wrap gap-2">
+                      <span className="rounded-full border border-white/10 bg-slate-900 px-3 py-1 text-xs font-black text-slate-300">
+                        {prayer.is_private ? 'privado' : 'público'}
+                      </span>
 
-        .admin-prayers-page .space-y-4 > div:hover {
-          transform: translateY(-2px) !important;
-          border-color: rgba(147, 197, 253, 0.34) !important;
-        }
+                      <span
+                        className={
+                          prayer.is_active === false
+                            ? 'rounded-full border border-red-300/20 bg-red-400/10 px-3 py-1 text-xs font-black text-red-100'
+                            : 'rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1 text-xs font-black text-emerald-100'
+                        }
+                      >
+                        {prayer.is_active === false ? 'oculto' : 'ativo'}
+                      </span>
 
-        .admin-prayers-page button,
-        .admin-prayers-page a {
-          border-radius: 16px !important;
-          font-weight: 900 !important;
-          transition:
-            transform 0.2s ease,
-            border-color 0.2s ease,
-            background 0.2s ease,
-            opacity 0.2s ease !important;
-        }
+                      {prayer.is_answered && (
+                        <span className="rounded-full border border-blue-300/20 bg-blue-400/10 px-3 py-1 text-xs font-black text-blue-100">
+                          respondido
+                        </span>
+                      )}
+                    </div>
+                  </div>
 
-        .admin-prayers-page button:hover,
-        .admin-prayers-page a:hover {
-          transform: translateY(-1px);
-        }
+                  <p className="mt-4 whitespace-pre-wrap text-sm font-semibold leading-7 text-slate-100">
+                    {getPrayerText(prayer)}
+                  </p>
 
-        .admin-prayers-page .bg-blue-600 {
-          background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
-          color: #ffffff !important;
-          box-shadow: 0 14px 34px rgba(37, 99, 235, 0.18) !important;
-        }
+                  {prayer.testimony_text && (
+                    <div className="mt-4 rounded-2xl border border-emerald-300/15 bg-emerald-500/10 p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-200">
+                        Testemunho
+                      </p>
+                      <p className="mt-3 text-sm leading-7 text-emerald-50">
+                        {prayer.testimony_text}
+                      </p>
+                    </div>
+                  )}
 
-        .admin-prayers-page .bg-green-600,
-        .admin-prayers-page .bg-green-500 {
-          background: linear-gradient(135deg, #059669, #047857) !important;
-          color: #ffffff !important;
-        }
-
-        .admin-prayers-page .bg-yellow-500 {
-          background: linear-gradient(135deg, #d97706, #92400e) !important;
-          color: #ffffff !important;
-        }
-
-        .admin-prayers-page .border-green-200,
-        .admin-prayers-page .border-yellow-200,
-        .admin-prayers-page .border-gray-200 {
-          border-color: rgba(148, 163, 184, 0.18) !important;
-        }
-
-        .admin-prayers-page .border-green-500 {
-          border-color: rgba(34, 197, 94, 0.7) !important;
-        }
-
-        .admin-prayers-page .text-gray-900,
-        .admin-prayers-page .text-gray-800,
-        .admin-prayers-page .text-gray-700,
-        .admin-prayers-page .text-gray-600,
-        .admin-prayers-page .text-gray-500 {
-          color: #dbeafe !important;
-        }
-
-        .admin-prayers-page .text-blue-100 {
-          color: #bfdbfe !important;
-        }
-
-        .admin-prayers-page .text-green-600,
-        .admin-prayers-page .text-green-700,
-        .admin-prayers-page .text-green-800 {
-          color: #86efac !important;
-        }
-
-        .admin-prayers-page .hover\:bg-gray-100:hover {
-          background: rgba(30, 41, 59, 0.7) !important;
-        }
-
-        .admin-prayers-page .animate-spin {
-          border-color: rgba(147, 197, 253, 0.24) !important;
-          border-bottom-color: #60a5fa !important;
-        }
-
-        @media (max-width: 768px) {
-          .admin-prayers-page > div:first-child > div,
-          .admin-prayers-page > div:nth-child(2) {
-            padding-left: 14px !important;
-            padding-right: 14px !important;
-          }
-
-          .admin-prayers-page > div:nth-child(2) > div.grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-          }
-
-          .admin-prayers-page h1 {
-            font-size: 2.1rem !important;
-          }
-
-          .admin-prayers-page h1::after {
-            display: none !important;
-          }
-
-          .admin-prayers-page .space-y-4 > div {
-            border-radius: 24px !important;
-          }
-        }
-      `}</style>
-
-</div>
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    {prayer.is_active !== false && (
+                      <button
+                        type="button"
+                        onClick={() => hidePrayer(prayer.id)}
+                        disabled={actionLoadingId === prayer.id}
+                        className="rounded-2xl bg-red-600 px-4 py-3 text-sm font-black text-white active:scale-[0.99] disabled:opacity-50"
+                      >
+                        Ocultar
+                      </button>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+    </main>
   )
 }
+
