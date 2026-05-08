@@ -118,7 +118,7 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
     setSharing(true)
 
     try {
-      const quoteUrl = `${window.location.origin}/palavra/${quote.id}?share=quote-v1`
+      const quoteUrl = `${window.location.origin}/palavra/${quote.id}?share=quote-v2`
 
       let shouldCountShare = false
 
@@ -284,6 +284,7 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
     </section>
   )
 }
+
 
 
 

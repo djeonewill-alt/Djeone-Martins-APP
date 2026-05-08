@@ -115,8 +115,8 @@ export async function generateMetadata({
   const quote = await getDailyQuote(id)
   const baseUrl = getBaseUrl()
 
-  const pageUrl = `${baseUrl}/palavra/${id}?share=quote-v1`
-  const imageUrl = `${baseUrl}/api/og/quote/${id}?v=quote-og-v1`
+  const pageUrl = `${baseUrl}/palavra/${id}?share=quote-v2`
+  const imageUrl = `${baseUrl}/api/og/quote/${id}?v=quote-og-v2`
   const title = 'Palavra do Dia | Pr. Djeone Martins'
   const description = buildDescription(quote)
 
@@ -146,8 +146,8 @@ export async function generateMetadata({
       images: [
         {
           url: imageUrl,
-          width: 1080,
-          height: 1080,
+          width: 1200,
+          height: 630,
           alt: 'Palavra do Dia',
         },
       ],
@@ -178,74 +178,49 @@ export default async function PalavraDoDiaPage({ params }: PageProps) {
     ''
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.22),transparent_38%),linear-gradient(135deg,#020617,#0f172a_48%,#020617)] px-4 py-8 text-white">
-      <section className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md flex-col justify-center">
-        <div className="overflow-hidden rounded-[32px] border border-white/10 bg-white/[0.04] shadow-[0_24px_70px_rgba(0,0,0,0.45)] backdrop-blur">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.20),transparent_35%),linear-gradient(135deg,#020617,#0f172a_52%,#020617)] px-4 py-6 text-white">
+      <section className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-md flex-col justify-center">
+        <div className="overflow-hidden rounded-[34px] border border-white/10 bg-slate-950/70 shadow-[0_24px_80px_rgba(0,0,0,0.50)]">
           {imageUrl ? (
-            <div className="bg-slate-950">
-              <img
-                src={imageUrl}
-                alt="Palavra do Dia"
-                className="aspect-square w-full object-contain"
-              />
-            </div>
+            <img
+              src={imageUrl}
+              alt="Palavra do Dia"
+              className="aspect-square w-full bg-slate-950 object-contain"
+            />
           ) : (
-            <div className="flex aspect-square w-full items-center justify-center bg-gradient-to-br from-blue-950 via-slate-950 to-slate-900 px-8 text-center">
-              <p className="text-3xl font-black leading-tight">
+            <div className="flex aspect-square w-full flex-col items-center justify-center bg-gradient-to-br from-blue-950 via-slate-950 to-slate-900 px-8 text-center">
+              <p className="mb-5 text-xs font-black uppercase tracking-[0.24em] text-blue-200">
                 Palavra do Dia
               </p>
+
+              <blockquote className="text-3xl font-black leading-tight text-white">
+                “{quote.quote_text}”
+              </blockquote>
+
+              {quote.episode?.bible_reference && (
+                <p className="mt-6 text-sm font-bold text-blue-100">
+                  {quote.episode.bible_reference}
+                </p>
+              )}
             </div>
           )}
 
-          <div className="space-y-5 px-6 py-7">
-            <p className="text-xs font-black uppercase tracking-[0.24em] text-blue-200">
-              Palavra do Dia
-            </p>
-
-            <blockquote className="text-2xl font-black leading-tight text-white">
-              “{quote.quote_text}”
-            </blockquote>
-
-            {quote.episode?.bible_reference && (
-              <p className="rounded-2xl border border-blue-300/15 bg-blue-300/10 px-4 py-3 text-sm font-bold text-blue-100">
-                Base bíblica: {quote.episode.bible_reference}
-              </p>
-            )}
-
-            {quote.episode?.title && (
-              <p className="text-sm text-slate-300">
-                Tema: <span className="font-bold">{quote.episode.title}</span>
-              </p>
-            )}
-
-            <div className="border-t border-white/10 pt-5">
-              <p className="text-base font-black text-white">
+          <div className="space-y-4 px-5 py-5">
+            <div className="text-center">
+              <p className="text-sm font-black text-white">
                 Pr. Djeone Martins
               </p>
-              <p className="mt-1 text-sm text-slate-300">
+              <p className="mt-1 text-xs font-medium text-slate-400">
                 Devocional Diário
               </p>
             </div>
 
-            <div className="flex flex-col gap-3 pt-2">
-              <Link
-                href="/"
-                className="rounded-full bg-white px-5 py-3 text-center text-sm font-black text-slate-950 transition hover:bg-blue-100"
-              >
-                Abrir app
-              </Link>
-
-              {quote.card_image_url && (
-                <a
-                  href={quote.card_image_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-full border border-white/15 px-5 py-3 text-center text-sm font-bold text-white transition hover:bg-white/10"
-                >
-                  Abrir imagem
-                </a>
-              )}
-            </div>
+            <Link
+              href="/"
+              className="block rounded-full bg-white px-5 py-3 text-center text-sm font-black text-slate-950 transition hover:bg-blue-100"
+            >
+              Abrir app
+            </Link>
           </div>
         </div>
       </section>
