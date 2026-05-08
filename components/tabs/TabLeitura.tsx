@@ -57,7 +57,7 @@ export default function TabLeitura() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 px-5 pb-32 pt-20 text-white">
+    <div className="min-h-screen bg-slate-950 px-5 pb-32 pt-4 text-white">
       <div className="mx-auto max-w-2xl">
         <div className="mb-6">
           <p className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-300">
@@ -104,3 +104,4 @@ export default function TabLeitura() {
     </div>
   )
 }
+

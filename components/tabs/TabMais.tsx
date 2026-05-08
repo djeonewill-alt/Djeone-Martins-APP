@@ -1,10 +1,13 @@
 ﻿'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { createSupabaseBrowserClient } from '@/lib/supabase/browser'
+import { usePushNotifications } from '@/lib/notifications/usePushNotifications'
 
 type TabMaisProps = {
   onOpenSeries?: () => void
   onOpenOferta?: () => void
+  settingsOpenToken?: number
 }
 
 type MoreView = 'home' | 'settings'
@@ -126,8 +129,79 @@ function SettingsItem({
   )
 }
 
-function SettingsScreen({ onBack }: { onBack: () => void }) {
+function SettingsScreen() {
   const appVersion = '0.1.0'
+  const supabase = useMemo(() => createSupabaseBrowserClient(), [])
+  const {
+    isSubscribed,
+    loading: notificationLoading,
+    subscribe,
+    unsubscribe,
+  } = usePushNotifications()
+
+  const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [userName, setUserName] = useState<string | null>(null)
+  const [accountLoading, setAccountLoading] = useState(true)
+
+  useEffect(() => {
+    let mounted = true
+
+    async function loadAccount() {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+
+        if (!mounted) return
+
+        setUserEmail(user?.email ?? null)
+
+        const metadataName =
+          typeof user?.user_metadata?.name === 'string'
+            ? user.user_metadata.name
+            : typeof user?.user_metadata?.display_name === 'string'
+              ? user.user_metadata.display_name
+              : null
+
+        setUserName(metadataName)
+
+        if (user?.id) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('name, email')
+            .eq('auth_user_id', user.id)
+            .maybeSingle()
+
+          if (mounted && profile) {
+            setUserName(profile.name || metadataName)
+            setUserEmail(profile.email || user.email || null)
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao carregar conta nas configurações:', error)
+      } finally {
+        if (mounted) {
+          setAccountLoading(false)
+        }
+      }
+    }
+
+    loadAccount()
+
+    return () => {
+      mounted = false
+    }
+  }, [supabase])
+
+  const accountLabel = accountLoading
+    ? 'Carregando conta...'
+    : userEmail
+      ? userName || userEmail
+      : 'Usuário não conectado'
+
+  const accountSubtitle = userEmail
+    ? userEmail
+    : 'Entre na sua conta para sincronizar favoritos, orações e preferências.'
 
   const clearLocalCache = () => {
     const confirmed = window.confirm(
@@ -160,16 +234,26 @@ function SettingsScreen({ onBack }: { onBack: () => void }) {
     }
   }
 
+  const openSupportEmail = () => {
+    window.location.href =
+      'mailto:djeonewill@gmail.com?subject=Suporte%20Djeone%20Martins%20App'
+  }
+
+  const handleToggleNotifications = async () => {
+    try {
+      if (isSubscribed) {
+        await unsubscribe()
+      } else {
+        await subscribe()
+      }
+    } catch (error) {
+      console.error('Erro ao alterar notificações:', error)
+      alert('Não foi possível alterar as notificações agora.')
+    }
+  }
+
   return (
     <div>
-      <button
-        type="button"
-        onClick={onBack}
-        className="mb-5 inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs font-black text-blue-200 backdrop-blur-md active:scale-[0.98]"
-      >
-        ← Voltar
-      </button>
-
       <div className="mb-6">
         <p className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-300">
           Configurações
@@ -180,78 +264,89 @@ function SettingsScreen({ onBack }: { onBack: () => void }) {
         </h1>
 
         <p className="mt-3 text-sm leading-relaxed text-slate-400">
-          Gerencie preferências, dados locais, notificações e informações importantes do app.
+          Gerencie sua conta, notificações, privacidade, assinatura e dados deste dispositivo.
         </p>
       </div>
 
       <section className="relative mb-5 overflow-hidden rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-[0_22px_70px_rgba(0,0,0,0.35)]">
         <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-blue-500/20 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-24 -left-24 h-56 w-56 rounded-full bg-cyan-400/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -left-24 h-56 w-56 rounded-full bg-yellow-400/10 blur-3xl" />
 
         <div className="relative">
           <p className="text-xs font-black uppercase tracking-[0.2em] text-blue-300">
-            Djeone Martins
+            Minha conta
           </p>
 
-          <h2 className="mt-2 text-4xl font-black leading-none tracking-[-0.075em]">
-            Devocional Diário
+          <h2 className="mt-2 text-3xl font-black leading-none tracking-[-0.075em]">
+            {accountLabel}
           </h2>
 
           <p className="mt-4 text-sm leading-relaxed text-slate-400">
-            Plataforma de discipulado diário com Palavra, áudio, leitura bíblica e oração.
+            {accountSubtitle}
           </p>
-
-          <button
-            type="button"
-            onClick={copyVersion}
-            className="mt-5 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-black text-white"
-          >
-            Versão {appVersion}
-          </button>
         </div>
       </section>
 
       <section className="mb-5 space-y-3">
         <p className="px-1 text-xs font-black uppercase tracking-[0.18em] text-slate-500">
-          Conta e preferências
+          Minha conta
         </p>
 
         <SettingsItem
           icon="👤"
           title="Perfil"
-          subtitle="Atualize nome, foto e dados pessoais."
+          subtitle="Editar nome, foto, cidade e preferências pessoais."
           badge="Em breve"
           disabled
         />
 
         <SettingsItem
-          icon="🔔"
-          title="Notificações"
-          subtitle="Configure lembretes de Palavra do Dia, leitura e oração."
+          icon="🌙"
+          title="Preferências do app"
+          subtitle="Modo claro/escuro, tamanho da fonte e idioma do aplicativo."
           badge="Em breve"
-          disabled
-        />
-
-        <SettingsItem
-          icon="⭐"
-          title="Assinatura"
-          subtitle="Gerencie recursos premium quando forem liberados."
-          badge="Premium"
           disabled
         />
       </section>
 
       <section className="mb-5 space-y-3">
         <p className="px-1 text-xs font-black uppercase tracking-[0.18em] text-slate-500">
-          App
+          Notificações
         </p>
 
         <SettingsItem
-          icon="🧹"
-          title="Limpar cache local"
-          subtitle="Remove dados salvos apenas neste dispositivo."
-          onClick={clearLocalCache}
-          danger
+          icon="🔔"
+          title={isSubscribed ? 'Notificações ativadas' : 'Ativar notificações'}
+          subtitle={
+            isSubscribed
+              ? 'Você pode desativar os lembretes deste dispositivo.'
+              : 'Receba lembretes da Palavra do Dia, oração e novidades do app.'
+          }
+          badge={notificationLoading ? 'Carregando' : isSubscribed ? 'Ativo' : 'Inativo'}
+          onClick={handleToggleNotifications}
+          disabled={notificationLoading}
+        />
+
+        <SettingsItem
+          icon="⏰"
+          title="Horário dos lembretes"
+          subtitle="Escolha o melhor horário para receber devocionais e avisos."
+          badge="Em breve"
+          disabled
+        />
+      </section>
+
+      <section className="mb-5 space-y-3">
+        <p className="px-1 text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+          Privacidade e segurança
+        </p>
+
+        <SettingsItem
+          icon="🔒"
+          title="Política de privacidade"
+          subtitle="Entenda como seus dados serão tratados dentro do aplicativo."
+          badge="Em breve"
+          disabled
         />
 
         <SettingsItem
@@ -263,26 +358,88 @@ function SettingsScreen({ onBack }: { onBack: () => void }) {
         />
 
         <SettingsItem
-          icon="🔒"
-          title="Política de privacidade"
-          subtitle="Entenda como os dados serão tratados."
+          icon="🧹"
+          title="Limpar dados locais"
+          subtitle="Remove dados salvos apenas neste dispositivo."
+          onClick={clearLocalCache}
+          danger
+        />
+      </section>
+
+      <section className="mb-5 space-y-3">
+        <p className="px-1 text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+          Assinatura e cobrança
+        </p>
+
+        <SettingsItem
+          icon="⭐"
+          title="Plano atual"
+          subtitle="Você está usando a versão gratuita do aplicativo."
+          badge="Gratuito"
+          disabled
+        />
+
+        <SettingsItem
+          icon="💳"
+          title="Gerenciar assinatura"
+          subtitle="Cancelar premium, restaurar assinatura ou alterar plano."
           badge="Em breve"
           disabled
         />
       </section>
 
-      <section className="rounded-[30px] border border-yellow-300/15 bg-gradient-to-br from-yellow-500/10 via-slate-900/80 to-slate-950 p-5">
-        <p className="text-xs font-black uppercase tracking-[0.18em] text-yellow-200">
-          Próxima fase
+      <section className="mb-5 space-y-3">
+        <p className="px-1 text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+          Ajuda e contato
         </p>
 
-        <h2 className="mt-2 text-xl font-black">
-          Área completa de conta
-        </h2>
+        <SettingsItem
+          icon="✉️"
+          title="Falar com o ministério"
+          subtitle="Envie uma mensagem para suporte, dúvidas ou testemunhos."
+          onClick={openSupportEmail}
+        />
 
-        <p className="mt-2 text-sm leading-relaxed text-yellow-50/70">
-          Depois do lançamento, esta área poderá receber login completo, foto de perfil, preferências avançadas e controle de assinatura.
+        <SettingsItem
+          icon="🛠️"
+          title="Relatar problema"
+          subtitle="Informe erro de áudio, login, pagamento ou funcionamento do app."
+          onClick={openSupportEmail}
+        />
+      </section>
+
+      <section className="mb-5 space-y-3">
+        <p className="px-1 text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+          Status técnico
         </p>
+
+        <SettingsItem
+          icon="📱"
+          title="Versão do aplicativo"
+          subtitle={`Djeone Martins App versão ${appVersion}`}
+          badge="Copiar"
+          onClick={copyVersion}
+        />
+
+        <SettingsItem
+          icon="✅"
+          title="Status de login"
+          subtitle={userEmail ? 'Sessão ativa neste dispositivo.' : 'Nenhuma sessão ativa encontrada.'}
+          badge={userEmail ? 'Conectado' : 'Desconectado'}
+          disabled
+        />
+
+        <SettingsItem
+          icon="🔔"
+          title="Status das notificações"
+          subtitle={
+            isSubscribed
+              ? 'Este dispositivo está inscrito para receber notificações.'
+              : 'Notificações ainda não estão ativas neste dispositivo.'
+          }
+          badge={isSubscribed ? 'Ativo' : 'Inativo'}
+          disabled
+        />
       </section>
     </div>
   )
@@ -291,21 +448,28 @@ function SettingsScreen({ onBack }: { onBack: () => void }) {
 export default function TabMais({
   onOpenSeries,
   onOpenOferta,
+  settingsOpenToken = 0,
 }: TabMaisProps) {
   const [view, setView] = useState<MoreView>('home')
 
+  useEffect(() => {
+    if (settingsOpenToken > 0) {
+      setView('settings')
+    }
+  }, [settingsOpenToken])
+
   if (view === 'settings') {
     return (
-      <div className="min-h-screen bg-slate-950 px-5 pb-32 pt-20 text-white">
+      <div className="min-h-screen bg-slate-950 px-5 pb-32 pt-0 text-white">
         <div className="mx-auto max-w-2xl">
-          <SettingsScreen onBack={() => setView('home')} />
+          <SettingsScreen />
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 px-5 pb-32 pt-20 text-white">
+    <div className="min-h-screen bg-slate-950 px-5 pb-32 pt-0 text-white">
       <div className="mx-auto max-w-2xl">
         <div className="mb-6">
           <p className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-300">
@@ -335,7 +499,7 @@ export default function TabMais({
             </h2>
 
             <p className="mt-4 text-sm leading-relaxed text-slate-400">
-              Aqui ficam os recursos extras do app: séries antigas, contribuição, assinatura e configurações.
+              Aqui ficam os recursos extras do app: séries antigas, contribuição, assinatura e recursos futuros.
             </p>
           </div>
         </section>
@@ -367,17 +531,13 @@ export default function TabMais({
             accent="purple"
             disabled
           />
-
-          <MoreFeatureCard
-            title="Configurações"
-            subtitle="Preferências do app, dados locais, termos e privacidade."
-            icon="⚙️"
-            badge="Ajustes"
-            accent="green"
-            onClick={() => setView('settings')}
-          />
         </section>
       </div>
     </div>
   )
 }
+
+
+
+
+

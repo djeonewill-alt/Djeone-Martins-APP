@@ -213,7 +213,7 @@ function SeriesShelf({
 
 function SeriesSkeleton() {
   return (
-    <div className="min-h-screen bg-slate-950 px-5 pb-32 pt-20 text-white">
+    <div className="min-h-screen bg-slate-950 px-5 pb-32 pt-4 text-white">
       <div className="mx-auto max-w-2xl">
         <div className="mb-6 h-20 animate-pulse rounded-[28px] bg-white/10" />
         <div className="mb-7 h-[360px] animate-pulse rounded-[36px] bg-white/10" />
@@ -265,7 +265,7 @@ export default function TabSeries() {
 
   if (series.length === 0) {
     return (
-      <div className="min-h-screen bg-slate-950 px-5 pb-32 pt-20 text-white">
+      <div className="min-h-screen bg-slate-950 px-5 pb-32 pt-4 text-white">
         <div className="mx-auto max-w-2xl">
           <section className="rounded-[34px] border border-white/10 bg-slate-900/80 p-8 text-center shadow-[0_22px_70px_rgba(0,0,0,0.35)]">
             <p className="text-6xl">📚</p>
@@ -284,7 +284,7 @@ export default function TabSeries() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 px-5 pb-32 pt-20 text-white">
+    <div className="min-h-screen bg-slate-950 px-5 pb-32 pt-4 text-white">
       <div className="mx-auto max-w-2xl">
         <div className="mb-6">
           <p className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-300">
@@ -333,3 +333,4 @@ export default function TabSeries() {
     </div>
   )
 }
+

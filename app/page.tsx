@@ -14,6 +14,7 @@ import TabFavoritos from '@/components/tabs/favorites/TabFavoritos'
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('hoje')
+  const [settingsOpenToken, setSettingsOpenToken] = useState(0)
 
   const tabs = [
     { id: 'hoje', label: 'Hoje', icon: 'home' },
@@ -25,7 +26,12 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-slate-950">
-      <Header />
+      <Header
+        onOpenSettings={() => {
+          setActiveTab('mais')
+          setSettingsOpenToken(Date.now())
+        }}
+      />
 
       <main className="pt-16">
         {activeTab === 'hoje' && (
@@ -49,6 +55,7 @@ export default function Home() {
           <TabMais
             onOpenSeries={() => setActiveTab('series')}
             onOpenOferta={() => setActiveTab('oferta')}
+            settingsOpenToken={settingsOpenToken}
           />
         )}
 
@@ -67,4 +74,5 @@ export default function Home() {
     </div>
   )
 }
+
 

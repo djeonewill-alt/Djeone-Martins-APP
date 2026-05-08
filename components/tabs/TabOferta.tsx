@@ -93,7 +93,7 @@ export default function TabOferta() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 px-5 pb-32 pt-20 text-white">
+      <div className="min-h-screen bg-slate-950 px-5 pb-32 pt-4 text-white">
         <div className="mx-auto max-w-2xl">
           <div className="mb-6 h-20 animate-pulse rounded-[28px] bg-white/10" />
           <div className="h-[360px] animate-pulse rounded-[36px] bg-white/10" />
@@ -103,7 +103,7 @@ export default function TabOferta() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 px-5 pb-32 pt-20 text-white">
+    <div className="min-h-screen bg-slate-950 px-5 pb-32 pt-4 text-white">
       <div className="mx-auto max-w-2xl">
         <div className="mb-6">
           <p className="text-[11px] font-black uppercase tracking-[0.24em] text-yellow-200">
@@ -228,3 +228,4 @@ export default function TabOferta() {
     </div>
   )
 }
+
