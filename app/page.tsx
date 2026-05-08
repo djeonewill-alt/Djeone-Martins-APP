@@ -33,6 +33,7 @@ export default function Home() {
             onOpenSeries={() => setActiveTab('series')}
             onOpenReading={() => setActiveTab('leitura')}
             onOpenPrayer={() => setActiveTab('oracao')}
+            onOpenOferta={() => setActiveTab('oferta')}
           />
         )}
 
@@ -66,3 +67,4 @@ export default function Home() {
     </div>
   )
 }
+

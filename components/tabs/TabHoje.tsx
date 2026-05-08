@@ -8,6 +8,7 @@ import { usePushNotifications } from '@/lib/notifications/usePushNotifications'
 import DailyQuoteCard from '@/components/daily-quote/DailyQuoteCard'
 import TodayAudioCard from '@/components/tabs/TodayAudioCard'
 import TodayActionCard from '@/components/tabs/today/TodayActionCard'
+import ContributionBanner from '@/components/tabs/today/ContributionBanner'
 import { getChapterKey } from './reading/bibleData'
 import {
   estimateReadingMinutes,
@@ -26,6 +27,7 @@ type TabHojeProps = {
   onOpenSeries?: () => void
   onOpenReading?: () => void
   onOpenPrayer?: () => void
+  onOpenOferta?: () => void
 }
 
 function formatEpisodeDateLabel(dateValue?: string | null) {
@@ -43,6 +45,7 @@ export default function TabHoje({
   onOpenSeries,
   onOpenReading,
   onOpenPrayer,
+  onOpenOferta,
 }: TabHojeProps) {
   const { play, currentEpisode, isPlaying } = useAudio()
   const { isSubscribed, loading: notifLoading, subscribe, unsubscribe } =
@@ -263,8 +266,8 @@ export default function TabHoje({
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 pb-64 pt-16">
-      <div className="mx-auto w-full max-w-2xl px-5 py-6">
+    <div className="min-h-screen bg-slate-950 pb-64 pt-0">
+      <div className="mx-auto w-full max-w-2xl px-5 pb-6 pt-4">
         <section className="mb-6">
           <p className="text-xs font-bold text-blue-200">
             {episodeDateLabel}
@@ -319,11 +322,14 @@ export default function TabHoje({
             accent="gold"
             onClick={onOpenPrayer || (() => {})}
           />
+
+          <ContributionBanner onClick={onOpenOferta || (() => {})} />
         </div>
       </div>
     </div>
   )
 }
+
 
 
 
