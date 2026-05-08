@@ -2,11 +2,18 @@
 
 import { useEffect, useRef, useState } from 'react'
 
+type TranscriptSegment = {
+  start: number
+  end: number
+  text: string
+}
+
 type EpisodeAudioPlayerProps = {
   episodeId: string
   src: string
   title: string
   subtitle?: string
+  segments?: TranscriptSegment[] | null
 }
 
 const STORAGE_PREFIX = 'djeone-episode-progress-'
@@ -20,11 +27,30 @@ function formatTime(seconds: number) {
   return `${minutes}:${String(rest).padStart(2, '0')}`
 }
 
+function normalizeSegments(segments?: TranscriptSegment[] | null) {
+  if (!Array.isArray(segments)) return []
+
+  return segments
+    .map((segment) => ({
+      start: Number(segment.start),
+      end: Number(segment.end),
+      text: String(segment.text || '').trim(),
+    }))
+    .filter(
+      (segment) =>
+        Number.isFinite(segment.start) &&
+        Number.isFinite(segment.end) &&
+        segment.end >= segment.start &&
+        segment.text.length > 0
+    )
+}
+
 export default function EpisodeAudioPlayer({
   episodeId,
   src,
   title,
   subtitle,
+  segments,
 }: EpisodeAudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const lastSavedRef = useRef(0)
@@ -34,9 +60,23 @@ export default function EpisodeAudioPlayer({
   const [currentTime, setCurrentTime] = useState(0)
   const [isReady, setIsReady] = useState(false)
   const [restored, setRestored] = useState(false)
+  const [showCaptions, setShowCaptions] = useState(true)
 
   const storageKey = `${STORAGE_PREFIX}${episodeId}`
-  const progress = duration > 0 ? Math.min((currentTime / duration) * 100, 100) : 0
+  const progress =
+    duration > 0 ? Math.min((currentTime / duration) * 100, 100) : 0
+
+  const normalizedSegments = normalizeSegments(segments)
+
+  const activeSegment =
+    normalizedSegments.find(
+      (segment) => currentTime >= segment.start && currentTime <= segment.end
+    ) || null
+
+  const nextSegment =
+    normalizedSegments.find((segment) => segment.start > currentTime) || null
+
+  const hasCaptions = normalizedSegments.length > 0
 
   useEffect(() => {
     setIsPlaying(false)
@@ -49,7 +89,6 @@ export default function EpisodeAudioPlayer({
 
   function saveProgress(nextTime: number) {
     if (typeof window === 'undefined') return
-
     if (!duration || nextTime < 5) return
 
     if (duration - nextTime <= 8) {
@@ -84,7 +123,10 @@ export default function EpisodeAudioPlayer({
     if (!audio) return
 
     const maxDuration = duration || audio.duration || 0
-    const nextTime = Math.max(0, Math.min((audio.currentTime || 0) + seconds, maxDuration))
+    const nextTime = Math.max(
+      0,
+      Math.min((audio.currentTime || 0) + seconds, maxDuration)
+    )
 
     audio.currentTime = nextTime
     setCurrentTime(nextTime)
@@ -159,14 +201,10 @@ export default function EpisodeAudioPlayer({
         </button>
 
         <div className="min-w-0 flex-1">
-          <p className="line-clamp-1 text-sm font-black text-white">
-            {title}
-          </p>
+          <p className="line-clamp-1 text-sm font-black text-white">{title}</p>
 
           {subtitle && (
-            <p className="mt-1 text-xs font-bold text-blue-200">
-              {subtitle}
-            </p>
+            <p className="mt-1 text-xs font-bold text-blue-200">{subtitle}</p>
           )}
 
           {restored && (
@@ -208,6 +246,49 @@ export default function EpisodeAudioPlayer({
           </span>
         </div>
       </div>
+
+      {hasCaptions && (
+        <div className="mt-4 rounded-2xl border border-blue-300/15 bg-blue-500/[0.06] p-4 ring-1 ring-white/5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-blue-200">
+              Legenda sincronizada
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setShowCaptions((current) => !current)}
+              className="rounded-full border border-white/10 bg-slate-950/70 px-3 py-1.5 text-[11px] font-black text-slate-200 active:scale-95"
+            >
+              {showCaptions ? 'Ocultar' : 'Mostrar'}
+            </button>
+          </div>
+
+          {showCaptions && (
+            <div className="min-h-[96px] rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+              <p className="text-base font-black leading-7 text-white">
+                {activeSegment?.text ||
+                  nextSegment?.text ||
+                  'A legenda aparecerá quando o áudio começar.'}
+              </p>
+
+              {activeSegment && (
+                <p className="mt-3 text-[11px] font-bold tabular-nums text-slate-500">
+                  {formatTime(activeSegment.start)} —{' '}
+                  {formatTime(activeSegment.end)}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!hasCaptions && (
+        <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/60 p-3">
+          <p className="text-xs font-bold leading-5 text-slate-500">
+            Este episódio ainda não possui legenda sincronizada.
+          </p>
+        </div>
+      )}
 
       <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/10 pt-4">
         <button

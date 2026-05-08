@@ -5,6 +5,12 @@ import EpisodeAudioPlayer from '@/components/audio/EpisodeAudioPlayer'
 import { supabase } from '@/lib/supabase'
 import type { Series } from '@/lib/supabase'
 
+type TranscriptSegment = {
+  start: number
+  end: number
+  text: string
+}
+
 type Episode = {
   id: string
   series_id: string | null
@@ -19,6 +25,7 @@ type Episode = {
   cover_image_url: string | null
   status: string | null
   is_preview: boolean | null
+  transcription_segments: TranscriptSegment[] | null
 }
 
 function formatDuration(seconds?: number | null) {
@@ -480,6 +487,7 @@ function EpisodeDetail({
               src={episode.audio_url}
               title={episode.title}
               subtitle={episode.bible_reference || undefined}
+              segments={episode.transcription_segments}
             />
           </div>
         </div>
@@ -697,7 +705,7 @@ export default function TabSeries() {
       const { data, error } = await supabase
         .from('episodes')
         .select(
-          'id, series_id, title, description, bible_reference, audio_url, duration_seconds, episode_number, published_at, created_at, cover_image_url, status, is_preview'
+          'id, series_id, title, description, bible_reference, audio_url, duration_seconds, episode_number, published_at, created_at, cover_image_url, status, is_preview, transcription_segments'
         )
         .eq('series_id', serie.id)
         .eq('status', 'published')
