@@ -126,8 +126,8 @@ export async function generateMetadata({
   const quote = await getDailyQuote(id)
   const baseUrl = getBaseUrl()
 
-  const pageUrl = `${baseUrl}/palavra/${id}?share=quote-v4`
-  const imageUrl = `${baseUrl}/api/og/quote/${id}?v=quote-og-v4`
+  const pageUrl = `${baseUrl}/palavra/${id}?share=quote-v24`
+  const imageUrl = `${baseUrl}/api/og/quote/${id}?v=quote-og-v24`
   const title = 'Palavra do Dia | Pr. Djeone Martins'
   const description = buildDescription(quote)
 
@@ -157,8 +157,8 @@ export async function generateMetadata({
       images: [
         {
           url: imageUrl,
-          width: 1200,
-          height: 630,
+          width: 800,
+          height: 420,
           alt: 'Palavra do Dia',
         },
       ],
@@ -291,3 +291,21 @@ export default async function PalavraDoDiaPage({ params }: PageProps) {
     </main>
   )
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

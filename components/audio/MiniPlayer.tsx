@@ -1,6 +1,7 @@
 ﻿'use client'
 
 import { useEffect, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { useAudio } from './AudioProvider'
 
 function formatTime(seconds: number) {
@@ -55,7 +56,9 @@ function CloseIcon() {
 }
 
 export default function MiniPlayer() {
-  const {
+  const pathname = usePathname()
+
+const {
     currentEpisode,
     isPlaying,
     currentTime,
@@ -79,6 +82,11 @@ export default function MiniPlayer() {
   if (dismissedEpisodeId === currentEpisode.id) return null
 
   const progress = duration > 0 ? Math.min((currentTime / duration) * 100, 100) : 0
+  const isPublicContentPage =
+    pathname.startsWith('/ep/') || pathname.startsWith('/palavra/')
+  const playerBottom = isPublicContentPage
+    ? 'calc(18px + env(safe-area-inset-bottom))'
+    : 'calc(118px + env(safe-area-inset-bottom))'
 
   const handleSeek = (event: React.ChangeEvent<HTMLInputElement>) => {
     const nextTime = Number(event.target.value)
@@ -101,7 +109,7 @@ export default function MiniPlayer() {
         transform: 'translateX(-50%)',
         width: 'calc(100% - 24px)',
         maxWidth: '430px',
-        bottom: 'calc(118px + env(safe-area-inset-bottom))',
+        bottom: playerBottom,
       }}
     >
       <div className="overflow-hidden rounded-[24px] border border-white/15 bg-slate-950 shadow-[0_18px_60px_rgba(0,0,0,0.55)] backdrop-blur-xl">
@@ -178,3 +186,6 @@ export default function MiniPlayer() {
     </div>
   )
 }
+
+
+
