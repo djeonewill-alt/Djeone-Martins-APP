@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import EpisodeAudioPlayer from '@/components/audio/EpisodeAudioPlayer'
 import { supabase } from '@/lib/supabase'
 import type { Series } from '@/lib/supabase'
 
@@ -474,15 +475,12 @@ function EpisodeDetail({
                 {episode.description}
               </p>
             )}
-
-            <audio
-              controls
-              preload="none"
+            <EpisodeAudioPlayer
+              episodeId={episode.id}
               src={episode.audio_url}
-              className="mt-5 w-full"
-            >
-              Seu navegador não suporta áudio.
-            </audio>
+              title={episode.title}
+              subtitle={episode.bible_reference || undefined}
+            />
           </div>
         </div>
       </div>
