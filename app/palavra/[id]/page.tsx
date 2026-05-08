@@ -23,6 +23,7 @@ type PublicDailyQuote = {
     title?: string | null
     bible_reference?: string | null
     cover_image_url?: string | null
+    duration_seconds?: number | null
     series?: {
       title?: string | null
       icon_emoji?: string | null
@@ -69,6 +70,15 @@ function buildDescription(quote?: PublicDailyQuote | null) {
   return text.length > 170 ? `${text.slice(0, 167)}...` : text
 }
 
+function formatDuration(seconds?: number | null) {
+  if (!seconds) return ''
+
+  const minutes = Math.floor(seconds / 60)
+  const rest = seconds % 60
+
+  return `${minutes}:${String(rest).padStart(2, '0')}`
+}
+
 async function getDailyQuote(id: string): Promise<PublicDailyQuote | null> {
   if (!isUuid(id)) return null
 
@@ -89,6 +99,7 @@ async function getDailyQuote(id: string): Promise<PublicDailyQuote | null> {
         title,
         bible_reference,
         cover_image_url,
+        duration_seconds,
         series:series (
           title,
           icon_emoji,
@@ -115,8 +126,8 @@ export async function generateMetadata({
   const quote = await getDailyQuote(id)
   const baseUrl = getBaseUrl()
 
-  const pageUrl = `${baseUrl}/palavra/${id}?share=quote-v2`
-  const imageUrl = `${baseUrl}/api/og/quote/${id}?v=quote-og-v2`
+  const pageUrl = `${baseUrl}/palavra/${id}?share=quote-v4`
+  const imageUrl = `${baseUrl}/api/og/quote/${id}?v=quote-og-v4`
   const title = 'Palavra do Dia | Pr. Djeone Martins'
   const description = buildDescription(quote)
 
@@ -177,6 +188,16 @@ export default async function PalavraDoDiaPage({ params }: PageProps) {
     quote.episode?.series?.cover_image_url ||
     ''
 
+  const audioThumb =
+    quote.episode?.cover_image_url ||
+    quote.episode?.series?.cover_image_url ||
+    imageUrl
+
+  const duration = formatDuration(quote.episode?.duration_seconds)
+  const episodeHref = quote.episode?.id
+    ? `/ep/${quote.episode.id}?from=palavra&share=quote-v4`
+    : '/'
+
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.20),transparent_35%),linear-gradient(135deg,#020617,#0f172a_52%,#020617)] px-4 py-6 text-white">
       <section className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-md flex-col justify-center">
@@ -205,7 +226,7 @@ export default async function PalavraDoDiaPage({ params }: PageProps) {
             </div>
           )}
 
-          <div className="space-y-4 px-5 py-5">
+          <div className="space-y-5 px-5 py-5">
             <div className="text-center">
               <p className="text-sm font-black text-white">
                 Pr. Djeone Martins
@@ -214,6 +235,49 @@ export default async function PalavraDoDiaPage({ params }: PageProps) {
                 Devocional Diário
               </p>
             </div>
+
+            {quote.episode?.id && (
+              <div className="rounded-[26px] border border-white/10 bg-white/[0.05] p-4">
+                <p className="mb-3 text-[11px] font-black uppercase tracking-[0.22em] text-blue-200">
+                  Ouça o devocional completo
+                </p>
+
+                <div className="flex gap-3">
+                  {audioThumb && (
+                    <img
+                      src={audioThumb}
+                      alt="Áudio devocional"
+                      className="h-20 w-20 rounded-2xl object-cover"
+                    />
+                  )}
+
+                  <div className="min-w-0 flex-1">
+                    <p className="line-clamp-2 text-sm font-black leading-snug text-white">
+                      {quote.episode.title || 'Áudio devocional'}
+                    </p>
+
+                    {quote.episode.bible_reference && (
+                      <p className="mt-1 text-xs font-bold text-blue-100">
+                        {quote.episode.bible_reference}
+                      </p>
+                    )}
+
+                    {duration && (
+                      <p className="mt-1 text-xs text-slate-400">
+                        Duração: {duration}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <Link
+                  href={episodeHref}
+                  className="mt-4 block rounded-full bg-blue-600 px-5 py-3 text-center text-sm font-black text-white transition hover:bg-blue-500"
+                >
+                  Ouvir devocional
+                </Link>
+              </div>
+            )}
 
             <Link
               href="/"
@@ -227,4 +291,3 @@ export default async function PalavraDoDiaPage({ params }: PageProps) {
     </main>
   )
 }
-

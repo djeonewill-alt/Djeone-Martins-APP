@@ -22,27 +22,11 @@ function cleanText(value?: string | null) {
   return (value || '').replace(/\s+/g, ' ').trim()
 }
 
-function fitText(value: string, maxLength = 145) {
-  const text = cleanText(value)
-
-  if (text.length <= maxLength) return text
-
-  return `${text.slice(0, maxLength - 3)}...`
-}
-
-function getFontSize(text: string) {
-  if (text.length > 120) return 48
-  if (text.length > 90) return 54
-  if (text.length > 65) return 60
-  return 68
-}
-
 export async function GET(_request: Request, { params }: RouteProps) {
   const { id } = await params
 
-  let quoteText = 'Receba uma Palavra do Dia para fortalecer sua fé.'
-  let bibleReference = ''
-  let episodeTitle = ''
+  let quoteText = 'Palavra do Dia'
+  let cardImageUrl = ''
 
   if (isUuid(id)) {
     try {
@@ -50,15 +34,7 @@ export async function GET(_request: Request, { params }: RouteProps) {
 
       const { data, error } = await supabase
         .from('daily_quotes')
-        .select(`
-          id,
-          quote_text,
-          status,
-          episode:episodes (
-            title,
-            bible_reference
-          )
-        `)
+        .select('id, quote_text, status, card_image_url')
         .eq('id', id)
         .eq('status', 'published')
         .maybeSingle()
@@ -68,23 +44,13 @@ export async function GET(_request: Request, { params }: RouteProps) {
       }
 
       if (data?.quote_text) {
-        const episode = Array.isArray(data.episode)
-          ? data.episode[0]
-          : data.episode
-
-        quoteText = data.quote_text
-        bibleReference = cleanText(episode?.bible_reference)
-        episodeTitle = cleanText(episode?.title)
+        quoteText = cleanText(data.quote_text)
+        cardImageUrl = cleanText(data.card_image_url)
       }
     } catch (error) {
       console.error('Erro inesperado na rota OG da Palavra do Dia:', error)
     }
   }
-
-  const fittedQuote = fitText(quoteText)
-  const fontSize = getFontSize(fittedQuote)
-  const quoteDisplayText = `“${fittedQuote}”`
-  const themeDisplayText = episodeTitle ? `Tema: ${episodeTitle}` : ''
 
   return new ImageResponse(
     (
@@ -93,10 +59,12 @@ export async function GET(_request: Request, { params }: RouteProps) {
           width: '1200px',
           height: '630px',
           display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
           position: 'relative',
           overflow: 'hidden',
           background:
-            'linear-gradient(135deg, #020617 0%, #0f172a 48%, #1e3a8a 100%)',
+            'linear-gradient(135deg, #020617 0%, #0f172a 52%, #1d4ed8 100%)',
           color: '#ffffff',
           fontFamily: 'Arial, sans-serif',
         }}
@@ -107,130 +75,88 @@ export async function GET(_request: Request, { params }: RouteProps) {
             inset: 0,
             display: 'flex',
             background:
-              'radial-gradient(circle at 18% 8%, rgba(96,165,250,0.42), transparent 34%), radial-gradient(circle at 88% 86%, rgba(250,204,21,0.20), transparent 35%)',
+              'radial-gradient(circle at 24% 10%, rgba(250,204,21,0.18), transparent 34%), radial-gradient(circle at 88% 86%, rgba(96,165,250,0.34), transparent 38%)',
           }}
         />
 
-        <div
-          style={{
-            position: 'absolute',
-            left: 56,
-            top: 52,
-            right: 56,
-            bottom: 52,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            border: '2px solid rgba(255,255,255,0.16)',
-            borderRadius: 44,
-            background: 'rgba(15,23,42,0.72)',
-            padding: '48px 60px',
-          }}
-        >
+        {cardImageUrl ? (
           <div
             style={{
+              width: 540,
+              height: 540,
               display: 'flex',
-              justifyContent: 'space-between',
+              overflow: 'hidden',
+              borderRadius: 42,
+              border: '2px solid rgba(255,255,255,0.18)',
+              background: '#020617',
+              boxShadow: '0 34px 90px rgba(0,0,0,0.55)',
+            }}
+          >
+            <img
+              src={cardImageUrl}
+              width="540"
+              height="540"
+              alt="Palavra do Dia"
+              style={{
+                width: 540,
+                height: 540,
+                objectFit: 'cover',
+                display: 'flex',
+              }}
+            />
+          </div>
+        ) : (
+          <div
+            style={{
+              width: 900,
+              height: 470,
+              display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
-              gap: 28,
-              width: '100%',
+              justifyContent: 'center',
+              borderRadius: 42,
+              border: '2px solid rgba(255,255,255,0.18)',
+              background: 'rgba(15,23,42,0.72)',
+              padding: 54,
+              textAlign: 'center',
             }}
           >
             <div
               style={{
                 display: 'flex',
-                fontSize: 24,
+                fontSize: 26,
                 fontWeight: 900,
                 letterSpacing: 8,
                 color: '#bfdbfe',
+                marginBottom: 42,
               }}
             >
               PALAVRA DO DIA
             </div>
 
-            {bibleReference ? (
-              <div
-                style={{
-                  display: 'flex',
-                  fontSize: 24,
-                  fontWeight: 900,
-                  color: '#dbeafe',
-                }}
-              >
-                {bibleReference}
-              </div>
-            ) : null}
-          </div>
-
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 22,
-              width: '100%',
-            }}
-          >
             <div
               style={{
                 display: 'flex',
-                fontSize,
-                lineHeight: 1.08,
+                fontSize: 58,
+                lineHeight: 1.1,
                 fontWeight: 900,
-                letterSpacing: -1.8,
-                maxWidth: 950,
-                textShadow: '0 5px 18px rgba(0,0,0,0.48)',
               }}
             >
-              {quoteDisplayText}
+              {quoteText}
             </div>
 
-            {themeDisplayText ? (
-              <div
-                style={{
-                  display: 'flex',
-                  fontSize: 26,
-                  fontWeight: 700,
-                  color: '#cbd5e1',
-                  maxWidth: 900,
-                }}
-              >
-                {themeDisplayText}
-              </div>
-            ) : null}
-          </div>
-
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'flex-end',
-              borderTop: '1px solid rgba(255,255,255,0.14)',
-              paddingTop: 24,
-              width: '100%',
-            }}
-          >
             <div
               style={{
                 display: 'flex',
-                fontSize: 32,
+                marginTop: 48,
+                fontSize: 30,
                 fontWeight: 900,
               }}
             >
               Pr. Djeone Martins
             </div>
-
-            <div
-              style={{
-                display: 'flex',
-                fontSize: 23,
-                color: '#cbd5e1',
-                fontWeight: 700,
-              }}
-            >
-              Devocional Diário
-            </div>
           </div>
-        </div>
+        )}
       </div>
     ),
     {
