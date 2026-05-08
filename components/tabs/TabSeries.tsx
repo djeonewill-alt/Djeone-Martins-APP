@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -588,8 +588,7 @@ function PodcastDetail({
                 </p>
 
                 <p className="mt-2 text-xs font-semibold leading-5 text-amber-50/90">
-                  Você pode ouvir o primeiro episódio gratuitamente. Os demais
-                  ficarão disponíveis quando a assinatura premium for ativada.
+                  Você pode ouvir o episódio degustativo gratuitamente. Se nenhum degustativo foi definido, o primeiro episódio será liberado como amostra.
                 </p>
               </div>
             )}
@@ -703,7 +702,7 @@ export default function TabSeries() {
           'id, series_id, title, description, bible_reference, audio_url, duration_seconds, episode_number, published_at, created_at, cover_image_url, status, is_preview'
         )
         .eq('series_id', serie.id)
-        .eq('status, is_preview', 'published')
+        .eq('status', 'published')
         .order('episode_number', { ascending: true, nullsFirst: false })
         .order('published_at', { ascending: false })
 
