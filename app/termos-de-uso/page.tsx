@@ -1,5 +1,7 @@
 ﻿import type { Metadata } from 'next'
 
+import LegalBackButton from '@/components/legal/LegalBackButton'
+
 export const metadata: Metadata = {
   title: 'Termos de Uso | Djeone Martins App',
   description:
@@ -10,6 +12,7 @@ export default function TermosDeUsoPage() {
   return (
     <main className="min-h-screen bg-[#0b1020] px-5 py-10 text-white">
       <section className="mx-auto max-w-3xl rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl sm:p-10">
+        <LegalBackButton />
         <p className="mb-3 text-xs font-semibold uppercase tracking-[0.3em] text-amber-300">
           Djeone Martins App
         </p>
@@ -129,3 +132,4 @@ export default function TermosDeUsoPage() {
     </main>
   )
 }
+
