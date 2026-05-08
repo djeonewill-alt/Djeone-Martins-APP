@@ -1,7 +1,9 @@
-'use client'
+﻿'use client'
 
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser'
 
 type AuthMode = 'signup' | 'login'
@@ -18,6 +20,12 @@ type ProfileForm = {
   neighborhood: string
 }
 
+type LegalAcceptance = {
+  termsOfUse: boolean
+  privacyPolicy: boolean
+  billingTerms: boolean
+}
+
 const initialForm: ProfileForm = {
   email: '',
   password: '',
@@ -28,6 +36,12 @@ const initialForm: ProfileForm = {
   country: 'Brasil',
   city: '',
   neighborhood: '',
+}
+
+const initialLegalAcceptance: LegalAcceptance = {
+  termsOfUse: false,
+  privacyPolicy: false,
+  billingTerms: false,
 }
 
 function sleep(ms: number) {
@@ -43,6 +57,14 @@ export default function Cadastro() {
   const [message, setMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const [formData, setFormData] = useState<ProfileForm>(initialForm)
+  const [legalAcceptance, setLegalAcceptance] = useState<LegalAcceptance>(
+    initialLegalAcceptance
+  )
+
+  const acceptedAllLegalTerms =
+    legalAcceptance.termsOfUse &&
+    legalAcceptance.privacyPolicy &&
+    legalAcceptance.billingTerms
 
   useEffect(() => {
     async function checkSession() {
@@ -83,6 +105,13 @@ export default function Cadastro() {
     }))
   }
 
+  function updateLegalAcceptance(field: keyof LegalAcceptance, value: boolean) {
+    setLegalAcceptance((current) => ({
+      ...current,
+      [field]: value,
+    }))
+  }
+
   function validateForm() {
     const email = formData.email.trim().toLowerCase()
     const password = formData.password.trim()
@@ -92,7 +121,7 @@ export default function Cadastro() {
     }
 
     if (!email.includes('@')) {
-      return 'Informe um e-mail válido.'
+      return 'Informe um e-mail v\u00e1lido.'
     }
 
     if (!password || password.length < 6) {
@@ -113,7 +142,7 @@ export default function Cadastro() {
       }
 
       if (!formData.gender) {
-        return 'Informe seu gênero.'
+        return 'Informe seu g\u00eanero.'
       }
 
       if (!formData.city.trim()) {
@@ -122,6 +151,10 @@ export default function Cadastro() {
 
       if (!formData.neighborhood.trim()) {
         return 'Informe seu bairro.'
+      }
+
+      if (!acceptedAllLegalTerms) {
+        return 'Para criar sua conta, leia e aceite os Termos de Uso, a Pol\u00edtica de Privacidade e os Termos de Assinatura e Cobran\u00e7a.'
       }
     }
 
@@ -165,6 +198,8 @@ export default function Cadastro() {
         return
       }
 
+      const now = new Date().toISOString()
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -178,6 +213,11 @@ export default function Cadastro() {
             country: formData.country,
             city: formData.city.trim(),
             neighborhood: formData.neighborhood.trim(),
+            accepted_terms_of_use: true,
+            accepted_privacy_policy: true,
+            accepted_billing_terms: true,
+            accepted_legal_terms_at: now,
+            legal_version: '2026-05-08',
           },
         },
       })
@@ -195,6 +235,7 @@ export default function Cadastro() {
           'Conta criada. Verifique seu e-mail para confirmar o acesso antes de entrar.'
         )
         setMode('login')
+        setLegalAcceptance(initialLegalAcceptance)
         return
       }
 
@@ -204,7 +245,7 @@ export default function Cadastro() {
       const message =
         error instanceof Error
           ? error.message
-          : 'Não foi possível concluir agora. Tente novamente.'
+          : 'N\u00e3o foi poss\u00edvel concluir agora. Tente novamente.'
 
       setErrorMessage(message)
     } finally {
@@ -234,12 +275,12 @@ export default function Cadastro() {
         throw error
       }
 
-      setMessage('Enviamos um link de recuperação para o seu e-mail.')
+      setMessage('Enviamos um link de recupera\u00e7\u00e3o para o seu e-mail.')
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
-          : 'Não foi possível enviar o e-mail de recuperação.'
+          : 'N\u00e3o foi poss\u00edvel enviar o e-mail de recupera\u00e7\u00e3o.'
 
       setErrorMessage(message)
     } finally {
@@ -253,12 +294,17 @@ export default function Cadastro() {
     <main className="auth-page">
       <section className="auth-card">
         <div className="brand-block">
-          <span className="eyebrow">Devocional Diário</span>
+          <span className="eyebrow">Devocional Di&aacute;rio</span>
           <h1>{isSignup ? 'Crie sua conta' : 'Entre na sua conta'}</h1>
           <p>
-            {isSignup
-              ? 'Cadastre-se para acompanhar devocionais, leitura bíblica, oração e sua jornada espiritual.'
-              : 'Entre para continuar sua jornada diária de discipulado.'}
+            {isSignup ? (
+              <>
+                Cadastre-se para acompanhar devocionais, leitura b&iacute;blica,
+                ora&ccedil;&atilde;o e sua jornada espiritual.
+              </>
+            ) : (
+              <>Entre para continuar sua jornada di&aacute;ria de discipulado.</>
+            )}
           </p>
         </div>
 
@@ -280,6 +326,7 @@ export default function Cadastro() {
             className={!isSignup ? 'active' : ''}
             onClick={() => {
               setMode('login')
+              setLegalAcceptance(initialLegalAcceptance)
               setMessage('')
               setErrorMessage('')
             }}
@@ -307,7 +354,7 @@ export default function Cadastro() {
               type="password"
               value={formData.password}
               onChange={(event) => updateField('password', event.target.value)}
-              placeholder="Mínimo de 6 caracteres"
+              placeholder="Minimo de 6 caracteres"
               autoComplete={isSignup ? 'new-password' : 'current-password'}
               required
             />
@@ -351,7 +398,7 @@ export default function Cadastro() {
                 </div>
 
                 <div className="field">
-                  <label>Gênero *</label>
+                  <label>G&ecirc;nero *</label>
                   <select
                     value={formData.gender}
                     onChange={(event) => updateField('gender', event.target.value)}
@@ -365,18 +412,18 @@ export default function Cadastro() {
               </div>
 
               <div className="field">
-                <label>País *</label>
+                <label>Pa&iacute;s *</label>
                 <select
                   value={formData.country}
                   onChange={(event) => updateField('country', event.target.value)}
                   required
                 >
-                  <option value="Brasil">🇧🇷 Brasil</option>
-                  <option value="Estados Unidos">🇺🇸 Estados Unidos</option>
-                  <option value="Portugal">🇵🇹 Portugal</option>
-                  <option value="Canadá">🇨🇦 Canadá</option>
-                  <option value="Reino Unido">🇬🇧 Reino Unido</option>
-                  <option value="Austrália">🇦🇺 Austrália</option>
+                  <option value="Brasil">Brasil</option>
+                  <option value="Estados Unidos">Estados Unidos</option>
+                  <option value="Portugal">Portugal</option>
+                  <option value="Canada">Canada</option>
+                  <option value="Reino Unido">Reino Unido</option>
+                  <option value="Australia">Australia</option>
                 </select>
               </div>
 
@@ -403,6 +450,96 @@ export default function Cadastro() {
                   />
                 </div>
               </div>
+
+              <div className="legal-acceptance">
+                <p className="legal-title">Antes de criar sua conta</p>
+                <p className="legal-intro">
+                  Leia os documentos abaixo e marque cada item para confirmar que
+                  voc&ecirc; entendeu e aceitou.
+                </p>
+
+                <div className="legal-card">
+                  <label className="legal-check">
+                    <input
+                      type="checkbox"
+                      checked={legalAcceptance.termsOfUse}
+                      onChange={(event) =>
+                        updateLegalAcceptance('termsOfUse', event.target.checked)
+                      }
+                    />
+
+                    <span>
+                      <strong>Aceito os Termos de Uso</strong>
+                      <small>
+                        Explica as regras gerais para usar o app, criar conta,
+                        acessar conte&uacute;dos e utilizar os recursos de forma adequada.
+                      </small>
+                    </span>
+                  </label>
+
+                  <Link
+                    href="/termos-de-uso"
+                    className="legal-link"
+                  >
+                    Ler Termos de Uso
+                  </Link>
+                </div>
+
+                <div className="legal-card">
+                  <label className="legal-check">
+                    <input
+                      type="checkbox"
+                      checked={legalAcceptance.privacyPolicy}
+                      onChange={(event) =>
+                        updateLegalAcceptance('privacyPolicy', event.target.checked)
+                      }
+                    />
+
+                    <span>
+                      <strong>Aceito a Pol&iacute;tica de Privacidade</strong>
+                      <small>
+                        Explica quais dados podem ser coletados, como s&atilde;o usados,
+                        protegidos e como voc&ecirc; pode solicitar acesso ou exclus&atilde;o.
+                      </small>
+                    </span>
+                  </label>
+
+                  <Link
+                    href="/politica-de-privacidade"
+                    className="legal-link"
+                  >
+                    Ler Pol&iacute;tica de Privacidade
+                  </Link>
+                </div>
+
+                <div className="legal-card">
+                  <label className="legal-check">
+                    <input
+                      type="checkbox"
+                      checked={legalAcceptance.billingTerms}
+                      onChange={(event) =>
+                        updateLegalAcceptance('billingTerms', event.target.checked)
+                      }
+                    />
+
+                    <span>
+                      <strong>Aceito os Termos de Assinatura e Cobran&ccedil;a</strong>
+                      <small>
+                        Este aceite n&atilde;o gera cobran&ccedil;a. Ele apenas explica
+                        regras futuras caso o usu&aacute;rio escolha um plano premium,
+                        assinatura, contribui&ccedil;&atilde;o ou algum recurso pago.
+                      </small>
+                    </span>
+                  </label>
+
+                  <Link
+                    href="/termos-de-assinatura-e-cobranca"
+                    className="legal-link"
+                  >
+                    Ler Termos de Assinatura e Cobran&ccedil;a
+                  </Link>
+                </div>
+              </div>
             </>
           )}
 
@@ -415,8 +552,8 @@ export default function Cadastro() {
                 ? 'Criando conta...'
                 : 'Entrando...'
               : isSignup
-              ? 'Criar conta e continuar'
-              : 'Entrar no app'}
+                ? 'Criar conta e continuar'
+                : 'Entrar no app'}
           </button>
 
           {!isSignup && (
@@ -432,8 +569,9 @@ export default function Cadastro() {
         </form>
 
         <p className="footer-note">
-          Ao continuar, você concorda em usar este aplicativo como uma jornada
-          diária de discipulado, leitura bíblica e oração.
+          Ao continuar, voc&ecirc; concorda em usar este aplicativo como uma
+          jornada di&aacute;ria de discipulado, leitura b&iacute;blica e
+          ora&ccedil;&atilde;o.
         </p>
       </section>
 
@@ -567,6 +705,84 @@ export default function Cadastro() {
           color: rgba(191, 219, 254, 0.46);
         }
 
+        .legal-acceptance {
+          display: grid;
+          gap: 12px;
+          border: 1px solid rgba(147, 197, 253, 0.16);
+          background: rgba(2, 6, 23, 0.32);
+          border-radius: 22px;
+          padding: 15px;
+        }
+
+        .legal-title {
+          color: #f8fafc;
+          font-size: 0.92rem;
+          font-weight: 950;
+          letter-spacing: -0.02em;
+        }
+
+        .legal-intro {
+          color: #93c5fd;
+          font-size: 0.78rem;
+          line-height: 1.5;
+          margin-top: -6px;
+        }
+
+        .legal-card {
+          display: grid;
+          gap: 10px;
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          background: rgba(15, 23, 42, 0.66);
+          border-radius: 18px;
+          padding: 14px;
+        }
+
+        .legal-check {
+          display: flex;
+          align-items: flex-start;
+          gap: 11px;
+          color: #bfdbfe;
+          cursor: pointer;
+        }
+
+        .legal-check input {
+          width: 18px;
+          min-width: 18px;
+          height: 18px;
+          min-height: 18px;
+          margin-top: 3px;
+          accent-color: #2563eb;
+          cursor: pointer;
+        }
+
+        .legal-check span {
+          display: grid;
+          gap: 4px;
+        }
+
+        .legal-check strong {
+          color: #f8fafc;
+          font-size: 0.86rem;
+          line-height: 1.35;
+        }
+
+        .legal-check small {
+          color: #94a3b8;
+          font-size: 0.76rem;
+          font-weight: 700;
+          line-height: 1.45;
+        }
+
+        .legal-link {
+          display: inline-flex;
+          width: fit-content;
+          color: #fbbf24;
+          font-size: 0.78rem;
+          font-weight: 950;
+          text-decoration: underline;
+          text-underline-offset: 3px;
+        }
+
         .message {
           border-radius: 16px;
           padding: 13px 15px;
@@ -640,3 +856,4 @@ export default function Cadastro() {
     </main>
   )
 }
+

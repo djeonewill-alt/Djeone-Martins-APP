@@ -3,6 +3,10 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC_ROUTES = [
   "/cadastro",
+  "/excluir-conta",
+  "/termos-de-assinatura-e-cobranca",
+  "/termos-de-uso",
+  "/politica-de-privacidade",
   "/auth/callback",
   "/lista-espera",
 ];
@@ -111,3 +115,4 @@ export const config = {
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|css|js|map)$).*)",
   ],
 };
+
