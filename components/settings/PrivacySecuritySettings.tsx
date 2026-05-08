@@ -37,6 +37,13 @@ export default function PrivacySecuritySettings({
       />
 
       <SettingsOptionItem
+        icon="📄"
+        title="Solicitar cópia dos meus dados"
+        subtitle="Registre uma solicitação para receber uma cópia dos dados associados à sua conta."
+        onClick={() => router.push('/solicitar-dados')}
+      />
+
+      <SettingsOptionItem
         icon="🗑️"
         title="Excluir minha conta"
         subtitle="Solicite a exclusão da sua conta e dos dados associados."
