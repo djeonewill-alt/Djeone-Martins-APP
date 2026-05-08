@@ -2,6 +2,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC_ROUTES = [
+  "/sw.js",
+  "/manifest.webmanifest",
+  "/manifest.json",
   "/cadastro",
   "/excluir-conta",
   "/solicitar-dados",
@@ -116,5 +119,6 @@ export const config = {
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|css|js|map)$).*)",
   ],
 };
+
 
 
