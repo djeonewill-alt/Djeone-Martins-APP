@@ -245,22 +245,8 @@ export default function AdminDashboardPage() {
       tone: "blue",
     },
     {
-      title: "Nova série",
-      description: "Criar uma nova jornada devocional para o aplicativo.",
-      href: "/admin/nova-serie",
-      icon: "📚",
-      tone: "green",
-    },
-    {
-      title: "Episódios",
-      description: "Editar, revisar e gerenciar episódios publicados.",
-      href: "/admin/episodios",
-      icon: "🎧",
-      tone: "purple",
-    },
-    {
-      title: "Séries",
-      description: "Organizar séries, capas, títulos e ordem de exibição.",
+      title: "Podcasts",
+      description: "Organizar podcasts, capas, episódios, destaque e ordem de exibição.",
       href: "/admin/series",
       icon: "🗂️",
       tone: "gold",
@@ -295,7 +281,7 @@ export default function AdminDashboardPage() {
     {
       title: "Conteúdos disponíveis",
       value: stats.episodes + stats.series,
-      description: "séries e episódios disponíveis no app",
+      description: "podcasts e episódios disponíveis no app",
       icon: "📈",
       tone: "green",
     },
@@ -331,9 +317,9 @@ export default function AdminDashboardPage() {
 
   const internalContentMetrics: MetricCard[] = [
     {
-      title: "Séries",
+      title: "Podcasts",
       value: stats.series,
-      description: "jornadas devocionais cadastradas",
+      description: "podcasts devocionais cadastrados",
       icon: "📚",
       tone: "green",
     },
@@ -407,7 +393,7 @@ export default function AdminDashboardPage() {
           <h1>Djeone Martins</h1>
 
           <p>
-            Acesse o painel ministerial para gerenciar devocionais, séries,
+            Acesse o painel ministerial para gerenciar devocionais, podcasts,
             orações e conteúdos do aplicativo.
           </p>
 
@@ -466,7 +452,7 @@ export default function AdminDashboardPage() {
           <h2>Gerenciar aplicativo</h2>
           <p>
             {todayLabel}. Comece pelas ações principais: publicar conteúdo,
-            organizar séries, acompanhar orações ou abrir o app.
+            organizar podcasts, acompanhar orações ou abrir o app.
           </p>
         </div>
 

@@ -1,4 +1,4 @@
-import { createSupabaseBrowserClient } from "./supabase/browser";
+﻿import { createSupabaseBrowserClient } from "./supabase/browser";
 
 export const supabase = createSupabaseBrowserClient();
 
@@ -98,6 +98,7 @@ export type Episode = {
   created_at?: string | null;
   cover_image_url?: string | null;
   status?: string | null;
+  is_preview?: boolean | null;
   scheduled_publish_at?: string | null;
   transcription_text?: string | null;
   transcription_status?: string | null;

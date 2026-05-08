@@ -95,13 +95,13 @@ export default function TabMais({
           </h1>
 
           <p className="mt-3 text-sm leading-relaxed text-slate-400">
-            Acesse séries, contribuições, projetos e recursos extras do app.
+            Acesse podcasts, contribuições, projetos e recursos extras do app.
           </p>
         </div>
 
         <section className="space-y-4">
           <MoreFeatureCard
-            title="Séries devocionais"
+            title="Podcasts devocionais"
             subtitle="Ouça jornadas bíblicas, devocionais antigos e conteúdos organizados por tema."
             icon="🎧"
             badge="Ouvir"
@@ -138,7 +138,7 @@ export default function TabMais({
 
           <MoreFeatureCard
             title="Assinatura"
-            subtitle="Séries premium e recursos avançados ficarão disponíveis quando a área premium for ativada."
+            subtitle="Podcasts premium e recursos avançados ficarão disponíveis quando a área premium for ativada."
             icon="⭐"
             badge="Premium"
             accent="purple"
@@ -160,4 +160,5 @@ export default function TabMais({
     </div>
   )
 }
+
 

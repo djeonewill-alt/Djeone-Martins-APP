@@ -1,73 +1,103 @@
-'use client'
+﻿'use client'
 
-import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 
-type Series = {
+import { supabase } from '@/lib/supabase'
+
+type SeriesRow = {
   id: string
   title: string
-  bible_book: string
   description: string | null
   cover_image_url: string | null
-  is_free: boolean
-  is_current: boolean
-  created_at: string
+  book_name: string | null
+  bible_book: string | null
+  icon_emoji: string | null
+  is_free: boolean | null
+  is_current: boolean | null
+  total_episodes: number | null
+  order_index: number | null
+  created_at: string | null
+  updated_at: string | null
   episode_count?: number
 }
 
-export default function GerenciarSeries() {
-  const [series, setSeries] = useState<Series[]>([])
+function formatDate(date?: string | null) {
+  if (!date) return 'Sem data'
+
+  return new Date(date).toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+export default function AdminSeriesPage() {
+  const [series, setSeries] = useState<SeriesRow[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
 
   useEffect(() => {
     loadSeries()
   }, [])
 
-  const loadSeries = async () => {
+  async function loadSeries() {
     try {
-      const { data: seriesData, error } = await supabase
+      setLoading(true)
+
+      const { data, error } = await supabase
         .from('series')
         .select('*')
+        .order('order_index', { ascending: true })
         .order('created_at', { ascending: false })
 
       if (error) throw error
 
-      // Contar episódios de cada série
-      const seriesWithCount = await Promise.all(
-        (seriesData || []).map(async (s) => {
-          const { count } = await supabase
+      const rows = await Promise.all(
+        (data || []).map(async (serie) => {
+          const { count, error: countError } = await supabase
             .from('episodes')
-            .select('id', { count: 'exact' })
-            .eq('series_id', s.id)
+            .select('id', { count: 'exact', head: true })
+            .eq('series_id', serie.id)
 
-          return { ...s, episode_count: count || 0 }
+          if (countError) {
+            console.error('Erro ao contar episódios:', countError)
+          }
+
+          return {
+            ...serie,
+            episode_count: count || 0,
+          } as SeriesRow
         })
       )
 
-      setSeries(seriesWithCount)
+      setSeries(rows)
     } catch (error) {
       console.error('Erro ao carregar séries:', error)
+      alert('Não foi possível carregar as séries agora.')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleDelete = async (serie: Series) => {
-    // Verificar se tem episódios
-    if (serie.episode_count && serie.episode_count > 0) {
-      alert(`❌ Esta série tem ${serie.episode_count} episódio(s)!\n\nExclua os episódios primeiro.`)
+  async function handleDelete(serie: SeriesRow) {
+    if ((serie.episode_count || 0) > 0) {
+      alert(
+        'Esta série possui episódios vinculados. Para evitar perda de organização, remova ou mova os episódios antes de excluir a série.'
+      )
       return
     }
 
-    const confirmDelete = confirm(
-      `❌ Tem certeza que deseja excluir?\n\n"${serie.title}"\n\n⚠️ Esta ação não pode ser desfeita!`
+    const confirmed = confirm(
+      `Excluir a série "${serie.title}"?\n\nEsta ação não pode ser desfeita.`
     )
 
-    if (!confirmDelete) return
+    if (!confirmed) return
 
     try {
+      setActionLoadingId(serie.id)
+
       const { error } = await supabase
         .from('series')
         .delete()
@@ -75,336 +105,277 @@ export default function GerenciarSeries() {
 
       if (error) throw error
 
-      alert('✅ Série excluída com sucesso!')
-      loadSeries()
+      await loadSeries()
     } catch (error) {
       console.error('Erro ao excluir série:', error)
-      alert('❌ Erro ao excluir série. Tente novamente.')
+      alert('Não foi possível excluir a série agora.')
+    } finally {
+      setActionLoadingId(null)
     }
   }
 
-  const filteredSeries = series.filter(s => 
-    s.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.bible_book.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const filteredSeries = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase()
 
-  if (loading) {
-    return (
-      <div className="admin-series-page min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-4xl mb-2">⏳</div>
-          <p className="text-slate-400">Carregando séries...</p>
-        </div>
-      </div>
+    if (!term) return series
+
+    return series.filter((serie) => {
+      const title = serie.title.toLowerCase()
+      const book =
+        serie.bible_book?.toLowerCase() ||
+        serie.book_name?.toLowerCase() ||
+        ''
+      const description = serie.description?.toLowerCase() || ''
+
+      return (
+        title.includes(term) ||
+        book.includes(term) ||
+        description.includes(term)
+      )
+    })
+  }, [searchTerm, series])
+
+  const stats = useMemo(() => {
+    const totalEpisodes = series.reduce(
+      (sum, serie) => sum + (serie.episode_count || 0),
+      0
     )
-  }
+
+    return {
+      totalSeries: series.length,
+      totalEpisodes,
+      freeSeries: series.filter((serie) => serie.is_free !== false).length,
+      currentSeries: series.filter((serie) => serie.is_current).length,
+    }
+  }, [series])
 
   return (
-    <div className="admin-series-page min-h-screen bg-slate-950">
-      <div className="bg-slate-900 border-b border-slate-800">
-        <div className="max-w-4xl mx-auto p-6">
-          <Link href="/admin" className="text-slate-400 hover:text-white mb-3 inline-block text-sm">
-            ← Voltar
-          </Link>
-          <h1 className="text-2xl font-bold text-white">📚 Gerenciar Séries</h1>
-          <p className="text-slate-400 text-sm mt-1">
-            {series.length} {series.length === 1 ? 'série' : 'séries'} criadas
+    <main className="min-h-screen bg-slate-950 px-5 py-8 text-white">
+      <section className="mx-auto max-w-6xl">
+        <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <Link
+              href="/admin"
+              className="inline-flex rounded-full border border-white/10 bg-slate-900/80 px-4 py-2 text-sm font-black text-blue-200 active:scale-[0.98]"
+            >
+              ← Voltar ao painel
+            </Link>
+
+            <p className="mt-7 text-[11px] font-black uppercase tracking-[0.24em] text-blue-300">
+              Conteúdo
+            </p>
+
+            <h1 className="mt-2 text-4xl font-black leading-none tracking-[-0.07em] sm:text-5xl">
+              Podcasts devocionais
+            </h1>
+
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-400">
+              Organize séries como Salmo 23, Atos, João e outras jornadas em
+              áudio. Esta área foi pensada para trabalho no desktop.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href="/admin/nova-serie"
+              className="rounded-2xl bg-blue-600 px-5 py-3 text-sm font-black text-white shadow-xl shadow-blue-950/20 active:scale-[0.98]"
+            >
+              + Novo podcast
+            </Link>
+
+            <Link
+              href="/admin/novo-episodio"
+              className="rounded-2xl border border-white/10 bg-slate-900 px-5 py-3 text-sm font-black text-slate-100 active:scale-[0.98]"
+            >
+              + Novo episódio
+            </Link>
+          </div>
+        </div>
+
+        <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-[28px] border border-white/10 bg-slate-900/70 p-5">
+            <p className="text-3xl font-black">{loading ? '...' : stats.totalSeries}</p>
+            <p className="mt-1 text-sm font-bold text-slate-400">podcasts criados</p>
+          </div>
+
+          <div className="rounded-[28px] border border-white/10 bg-slate-900/70 p-5">
+            <p className="text-3xl font-black">{loading ? '...' : stats.totalEpisodes}</p>
+            <p className="mt-1 text-sm font-bold text-slate-400">episódios vinculados</p>
+          </div>
+
+          <div className="rounded-[28px] border border-white/10 bg-slate-900/70 p-5">
+            <p className="text-3xl font-black">{loading ? '...' : stats.freeSeries}</p>
+            <p className="mt-1 text-sm font-bold text-slate-400">podcasts gratuitos</p>
+          </div>
+
+          <div className="rounded-[28px] border border-white/10 bg-slate-900/70 p-5">
+            <p className="text-3xl font-black">{loading ? '...' : stats.currentSeries}</p>
+            <p className="mt-1 text-sm font-bold text-slate-400">podcasts em destaque</p>
+          </div>
+        </div>
+
+        <div className="mb-8 rounded-[30px] border border-amber-300/20 bg-amber-300/10 p-5">
+          <p className="text-sm font-black text-amber-100">
+            Dados técnicos recomendados para capas
           </p>
-        </div>
-      </div>
 
-      <div className="max-w-4xl mx-auto p-5">
-        <div className="mb-5">
+          <div className="mt-3 grid gap-3 text-sm leading-6 text-amber-50/90 md:grid-cols-2">
+            <p>
+              Use imagens horizontais em <strong>16:9</strong>, idealmente
+              <strong> 1920 x 1080 px</strong>. Mantenha rostos, textos e
+              elementos importantes no centro para evitar cortes.
+            </p>
+
+            <p>
+              Formato recomendado: <strong>JPG ou PNG</strong>. Peso ideal:
+              até <strong>500 KB</strong>. Evite texto muito perto das bordas.
+            </p>
+          </div>
+        </div>
+
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <input
-            type="text"
-            placeholder="🔍 Buscar por título ou livro..."
+            type="search"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-800 text-white rounded-lg p-3 focus:border-blue-500 outline-none placeholder-slate-500"
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Buscar por título, livro ou descrição..."
+            className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-bold text-white outline-none placeholder:text-slate-600 focus:border-blue-300/60 sm:max-w-md"
           />
+
+          <button
+            type="button"
+            onClick={loadSeries}
+            className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-black text-slate-200 active:scale-[0.98]"
+          >
+            Atualizar
+          </button>
         </div>
 
-        {filteredSeries.length === 0 ? (
-          <div className="bg-slate-900 rounded-xl p-8 text-center border border-slate-800">
-            <div className="text-6xl mb-4">📭</div>
-            <p className="text-slate-400">
-              {searchTerm ? 'Nenhuma série encontrada' : 'Nenhuma série criada ainda'}
+        {loading ? (
+          <div className="rounded-[30px] border border-white/10 bg-slate-900/70 p-8 text-sm font-bold text-slate-400">
+            Carregando séries...
+          </div>
+        ) : filteredSeries.length === 0 ? (
+          <div className="rounded-[30px] border border-white/10 bg-slate-900/70 p-8 text-center">
+            <p className="text-5xl">📚</p>
+            <h2 className="mt-4 text-2xl font-black tracking-[-0.05em]">
+              Nenhuma série encontrada
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-slate-400">
+              {searchTerm
+                ? 'Tente buscar por outro termo.'
+                : 'Crie a primeira série para começar a organizar seus episódios.'}
             </p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {filteredSeries.map((serie) => (
-              <div
-                key={serie.id}
-                className="bg-slate-900 border border-slate-800 rounded-xl p-4 hover:border-slate-700 transition-colors"
-              >
-                <div className="flex items-start gap-4">
-                  {/* Imagem da série */}
-                  <div className="w-16 h-20 bg-slate-800 rounded-lg overflow-hidden flex-shrink-0">
-                    {serie.cover_image_url ? (
-                      <img 
-                        src={serie.cover_image_url} 
-                        alt={serie.title}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-slate-600">
-                        📚
+          <div className="grid gap-4">
+            {filteredSeries.map((serie) => {
+              const book = serie.bible_book || serie.book_name || 'Sem livro'
+              const isDeleting = actionLoadingId === serie.id
+
+              return (
+                <article
+                  key={serie.id}
+                  className="rounded-[30px] border border-white/10 bg-slate-900/70 p-4 shadow-2xl shadow-black/20"
+                >
+                  <div className="grid gap-5 lg:grid-cols-[220px_1fr_auto] lg:items-start">
+                    <div className="relative h-[124px] overflow-hidden rounded-[24px] border border-white/10 bg-slate-950 lg:h-[140px]">
+                      {serie.cover_image_url ? (
+                        <img
+                          src={serie.cover_image_url}
+                          alt={serie.title}
+                          className="absolute inset-0 h-full w-full object-cover object-center"
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-blue-950 via-slate-950 to-amber-950/30 text-5xl">
+                          {serie.icon_emoji || '📖'}
+                        </div>
+                      )}
+
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                    </div>
+
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap gap-2">
+                        {serie.is_current && (
+                          <span className="rounded-full border border-emerald-300/20 bg-emerald-500/10 px-3 py-1 text-xs font-black text-emerald-100">
+                            Destaque atual
+                          </span>
+                        )}
+
+                        {serie.is_free === false ? (
+                          <span className="rounded-full border border-amber-300/20 bg-amber-500/10 px-3 py-1 text-xs font-black text-amber-100">
+                            Premium
+                          </span>
+                        ) : (
+                          <span className="rounded-full border border-blue-300/20 bg-blue-500/10 px-3 py-1 text-xs font-black text-blue-100">
+                            Gratuita
+                          </span>
+                        )}
+
+                        <span className="rounded-full border border-white/10 bg-slate-950 px-3 py-1 text-xs font-black text-slate-300">
+                          {serie.episode_count || 0} episódios
+                        </span>
                       </div>
-                    )}
-                  </div>
 
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-white mb-1">
-                      {serie.title}
-                    </h3>
-                    
-                    <p className="text-sm text-slate-400 mb-2">
-                      📖 {serie.bible_book}
-                    </p>
+                      <h2 className="mt-4 text-2xl font-black leading-tight tracking-[-0.05em] text-white">
+                        {serie.title}
+                      </h2>
 
-                    {serie.description && (
-                      <p className="text-sm text-slate-500 line-clamp-1 mb-2">
-                        {serie.description}
+                      <p className="mt-1 text-sm font-bold text-blue-200">
+                        {serie.icon_emoji || '📖'} {book}
                       </p>
-                    )}
 
-                    <div className="flex items-center gap-4 text-xs text-slate-500">
-                      <span>🎙️ {serie.episode_count} episódio(s)</span>
-                      {serie.is_current && (
-                        <span className="text-blue-400">⭐ Série Atual</span>
+                      {serie.description && (
+                        <p className="mt-3 line-clamp-2 max-w-2xl text-sm leading-6 text-slate-400">
+                          {serie.description}
+                        </p>
                       )}
-                      {serie.is_free && (
-                        <span className="text-green-400">✅ Gratuita</span>
-                      )}
+
+                      <p className="mt-3 text-xs font-bold text-slate-600">
+                        Criada em {formatDate(serie.created_at)}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-3 lg:w-[180px] lg:flex-col">
+                      <Link
+                        href={`/admin/series/${serie.id}`}
+                        className="rounded-2xl bg-blue-600 px-4 py-3 text-center text-sm font-black text-white active:scale-[0.98]"
+                      >
+                        Editar série
+                      </Link>
+
+                      <Link
+                        href={`/admin/series/${serie.id}/episodios`}
+                        className="rounded-2xl border border-amber-300/20 bg-amber-500/10 px-4 py-3 text-center text-sm font-black text-amber-100 active:scale-[0.98]"
+                      >
+                        Gerenciar episódios
+                      </Link>
+
+                      <Link
+                        href={`/admin/novo-episodio?series_id=${serie.id}`}
+                        className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-center text-sm font-black text-slate-100 active:scale-[0.98]"
+                      >
+                        Novo episódio
+                      </Link>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(serie)}
+                        disabled={isDeleting}
+                        className="rounded-2xl border border-red-300/20 bg-red-500/10 px-4 py-3 text-sm font-black text-red-100 active:scale-[0.98] disabled:opacity-50"
+                      >
+                        {isDeleting ? 'Excluindo...' : 'Excluir'}
+                      </button>
                     </div>
                   </div>
-
-                  <div className="flex flex-col gap-2">
-                    <Link
-                      href={`/admin/series/${serie.id}`}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold transition-colors text-sm"
-                    >
-                      ✏️ Editar
-                    </Link>
-                    <button
-                      onClick={() => handleDelete(serie)}
-                      className="bg-slate-800 hover:bg-red-600 text-slate-300 hover:text-white px-4 py-2 rounded-lg font-semibold transition-colors text-sm"
-                    >
-                      🗑️ Excluir
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
+                </article>
+              )
+            })}
           </div>
         )}
-      </div>
-    
-      <style jsx global>{`
-        .admin-series-page {
-          min-height: 100vh !important;
-          background:
-            radial-gradient(circle at top left, rgba(37, 99, 235, 0.18), transparent 34rem),
-            radial-gradient(circle at top right, rgba(245, 158, 11, 0.14), transparent 30rem),
-            #030712 !important;
-          color: #f8fafc !important;
-        }
-
-        .admin-series-page > div:first-child {
-          background:
-            linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 64, 175, 0.28)) !important;
-          border-bottom: 1px solid rgba(148, 163, 184, 0.16) !important;
-          box-shadow: 0 20px 80px rgba(0, 0, 0, 0.22) !important;
-          position: relative !important;
-          overflow: hidden !important;
-        }
-
-        .admin-series-page > div:first-child::before {
-          content: "" !important;
-          position: absolute !important;
-          inset: 0 !important;
-          background:
-            radial-gradient(circle at 12% 20%, rgba(96, 165, 250, 0.18), transparent 28rem),
-            radial-gradient(circle at 88% 20%, rgba(245, 158, 11, 0.12), transparent 26rem) !important;
-          pointer-events: none !important;
-        }
-
-        .admin-series-page > div:first-child > div,
-        .admin-series-page > div:nth-child(2) {
-          max-width: 1180px !important;
-          margin-left: auto !important;
-          margin-right: auto !important;
-          position: relative !important;
-          z-index: 1 !important;
-        }
-
-        .admin-series-page > div:first-child > div {
-          padding-top: 34px !important;
-          padding-bottom: 28px !important;
-        }
-
-        .admin-series-page > div:nth-child(2) {
-          padding-top: 32px !important;
-          padding-bottom: 64px !important;
-        }
-
-        .admin-series-page h1 {
-          font-size: clamp(2.1rem, 4vw, 3.2rem) !important;
-          line-height: 0.98 !important;
-          letter-spacing: -0.07em !important;
-          color: #f8fafc !important;
-        }
-
-        .admin-series-page h1::after {
-          content: "Admin" !important;
-          display: inline-flex !important;
-          margin-left: 12px !important;
-          transform: translateY(-5px) !important;
-          font-size: 0.72rem !important;
-          letter-spacing: 0.18em !important;
-          text-transform: uppercase !important;
-          color: #93c5fd !important;
-          background: rgba(59, 130, 246, 0.14) !important;
-          border: 1px solid rgba(147, 197, 253, 0.22) !important;
-          padding: 7px 10px !important;
-          border-radius: 999px !important;
-        }
-
-        .admin-series-page h2,
-        .admin-series-page h3 {
-          color: #f8fafc !important;
-          letter-spacing: -0.04em !important;
-        }
-
-        .admin-series-page a[href="/admin"] {
-          display: inline-flex !important;
-          align-items: center !important;
-          gap: 6px !important;
-          color: #bfdbfe !important;
-          background: rgba(15, 23, 42, 0.58) !important;
-          border: 1px solid rgba(148, 163, 184, 0.18) !important;
-          padding: 8px 12px !important;
-          border-radius: 999px !important;
-          text-decoration: none !important;
-        }
-
-        .admin-series-page input {
-          background: rgba(2, 6, 23, 0.72) !important;
-          border: 1px solid rgba(148, 163, 184, 0.24) !important;
-          color: #f8fafc !important;
-          border-radius: 16px !important;
-          padding: 13px 15px !important;
-          min-height: 48px !important;
-          outline: none !important;
-        }
-
-        .admin-series-page input:focus {
-          border-color: rgba(147, 197, 253, 0.62) !important;
-          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12) !important;
-        }
-
-        .admin-series-page .bg-slate-900 {
-          background:
-            linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(15, 23, 42, 0.72)) !important;
-          border: 1px solid rgba(148, 163, 184, 0.16) !important;
-          box-shadow: 0 22px 70px rgba(0, 0, 0, 0.22) !important;
-          border-radius: 26px !important;
-        }
-
-        .admin-series-page .bg-slate-800 {
-          background: rgba(15, 23, 42, 0.74) !important;
-          border: 1px solid rgba(148, 163, 184, 0.16) !important;
-        }
-
-        .admin-series-page .space-y-3 > div {
-          transition:
-            transform 0.2s ease,
-            border-color 0.2s ease,
-            background 0.2s ease !important;
-        }
-
-        .admin-series-page .space-y-3 > div:hover {
-          transform: translateY(-2px) !important;
-          border-color: rgba(147, 197, 253, 0.34) !important;
-        }
-
-        .admin-series-page button,
-        .admin-series-page a {
-          border-radius: 16px !important;
-          font-weight: 900 !important;
-          transition:
-            transform 0.2s ease,
-            border-color 0.2s ease,
-            background 0.2s ease,
-            opacity 0.2s ease !important;
-        }
-
-        .admin-series-page button:hover,
-        .admin-series-page a:hover {
-          transform: translateY(-1px);
-        }
-
-        .admin-series-page .bg-blue-600 {
-          background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
-          color: #ffffff !important;
-          box-shadow: 0 14px 34px rgba(37, 99, 235, 0.18) !important;
-        }
-
-        .admin-series-page .hover\:bg-red-600:hover {
-          background: linear-gradient(135deg, #e11d48, #9f1239) !important;
-          color: #ffffff !important;
-        }
-
-        .admin-series-page .text-slate-400,
-        .admin-series-page .text-slate-500,
-        .admin-series-page .text-slate-300,
-        .admin-series-page .text-slate-600 {
-          color: #bfdbfe !important;
-        }
-
-        .admin-series-page .text-blue-400 {
-          color: #93c5fd !important;
-        }
-
-        .admin-series-page .text-green-400 {
-          color: #86efac !important;
-        }
-
-        .admin-series-page .border-slate-800,
-        .admin-series-page .border-slate-700 {
-          border-color: rgba(148, 163, 184, 0.18) !important;
-        }
-
-        .admin-series-page img {
-          border-radius: 18px !important;
-        }
-
-        .admin-series-page ::placeholder {
-          color: rgba(191, 219, 254, 0.46) !important;
-        }
-
-        @media (max-width: 768px) {
-          .admin-series-page > div:first-child > div,
-          .admin-series-page > div:nth-child(2) {
-            padding-left: 14px !important;
-            padding-right: 14px !important;
-          }
-
-          .admin-series-page h1 {
-            font-size: 2.1rem !important;
-          }
-
-          .admin-series-page h1::after {
-            display: none !important;
-          }
-
-          .admin-series-page .space-y-3 > div > div {
-            flex-direction: column !important;
-          }
-        }
-      `}</style>
-
-</div>
+      </section>
+    </main>
   )
 }
+

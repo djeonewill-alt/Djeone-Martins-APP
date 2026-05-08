@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 
 function urlBase64ToUint8Array(base64String: string) {
@@ -10,11 +10,25 @@ function urlBase64ToUint8Array(base64String: string) {
   const rawData = window.atob(base64)
   const outputArray = new Uint8Array(rawData.length)
 
-  for (let i = 0; i < rawData.length; i += 1) {
+  for (let i = 0; i < rawData.length; ++i) {
     outputArray[i] = rawData.charCodeAt(i)
   }
 
   return outputArray
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message
+
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error
+  ) {
+    return String((error as { message?: unknown }).message)
+  }
+
+  return String(error)
 }
 
 export function usePushNotifications() {
@@ -36,7 +50,7 @@ export function usePushNotifications() {
 
       setIsSubscribed(!!subscription)
     } catch (error) {
-      console.error('Erro ao verificar notificações:', error)
+      console.error('[push] Erro ao verificar notificações:', error)
     }
   }
 
@@ -44,7 +58,7 @@ export function usePushNotifications() {
     const userId = localStorage.getItem('user_id')
 
     if (!userId) {
-      alert('❌ Faça login para ativar notificações!')
+      alert('❌ Faça login para ativar notificações.')
       return false
     }
 
@@ -63,10 +77,21 @@ export function usePushNotifications() {
     setLoading(true)
 
     try {
+      console.log('[push] iniciando ativação', {
+        userId,
+        permission: Notification.permission,
+        hasVapidPublicKey: Boolean(vapidPublicKey),
+        vapidPublicKeyLength: vapidPublicKey.length,
+      })
+
       const registration = await navigator.serviceWorker.register('/sw.js')
       await navigator.serviceWorker.ready
 
+      console.log('[push] service worker pronto')
+
       const permission = await Notification.requestPermission()
+
+      console.log('[push] permissão recebida:', permission)
 
       if (permission !== 'granted') {
         alert('❌ Permissão de notificações negada.')
@@ -77,10 +102,13 @@ export function usePushNotifications() {
       const existingSubscription = await registration.pushManager.getSubscription()
 
       if (existingSubscription) {
+        console.log('[push] removendo inscrição antiga')
         await existingSubscription.unsubscribe()
       }
 
       const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey)
+
+      console.log('[push] criando nova inscrição no navegador')
 
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
@@ -88,6 +116,12 @@ export function usePushNotifications() {
       })
 
       const subscriptionData = subscription.toJSON()
+
+      console.log('[push] inscrição criada', {
+        endpoint: subscriptionData.endpoint,
+        hasP256dh: Boolean(subscriptionData.keys?.p256dh),
+        hasAuth: Boolean(subscriptionData.keys?.auth),
+      })
 
       const { error } = await supabase
         .from('push_subscriptions')
@@ -105,14 +139,20 @@ export function usePushNotifications() {
           }
         )
 
-      if (error) throw error
+      if (error) {
+        console.error('[push] erro Supabase ao salvar inscrição:', error)
+        throw error
+      }
 
       setIsSubscribed(true)
       alert('✅ Notificações ativadas!')
       return true
     } catch (error) {
-      console.error('Erro ao ativar notificações:', error)
-      alert('❌ Erro ao ativar notificações.')
+      const message = getErrorMessage(error)
+
+      console.error('[push] erro real ao ativar notificações:', error)
+
+      alert(`❌ Erro ao ativar notificações: ${message}`)
       return false
     } finally {
       setLoading(false)
@@ -141,8 +181,10 @@ export function usePushNotifications() {
       setIsSubscribed(false)
       alert('✅ Notificações desativadas!')
     } catch (error) {
-      console.error('Erro ao desativar notificações:', error)
-      alert('❌ Erro ao desativar notificações.')
+      const message = getErrorMessage(error)
+
+      console.error('[push] erro real ao desativar notificações:', error)
+      alert(`❌ Erro ao desativar notificações: ${message}`)
     } finally {
       setLoading(false)
     }
@@ -155,3 +197,4 @@ export function usePushNotifications() {
     unsubscribe,
   }
 }
+

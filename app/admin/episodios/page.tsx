@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -8,7 +8,9 @@ type Episode = {
   id: string
   title: string
   bible_reference: string
+  series_id: string | null
   episode_number: number
+  is_preview: boolean
   audio_url: string
   duration_seconds: number
   created_at: string
@@ -43,15 +45,54 @@ export default function GerenciarEpisodios() {
       if (error) throw error
       setEpisodes(data || [])
     } catch (error) {
-      console.error('Erro ao carregar episódios:', error)
+      console.error('Erro ao carregar episÃ³dios:', error)
     } finally {
       setLoading(false)
     }
   }
 
+
+  const handleTogglePreview = async (episode: Episode) => {
+    const nextValue = !episode.is_preview
+
+    const confirmed = confirm(
+      nextValue
+        ? 'Marcar este episódio como degustativo?'
+        : 'Remover este episódio como degustativo?'
+    )
+
+    if (!confirmed) return
+
+    try {
+      if (nextValue && episode.series_id) {
+        await supabase
+          .from('episodes')
+          .update({ is_preview: false })
+          .eq('series_id', episode.series_id)
+      }
+
+      const { error } = await supabase
+        .from('episodes')
+        .update({ is_preview: nextValue })
+        .eq('id', episode.id)
+
+      if (error) throw error
+
+      alert(
+        nextValue
+          ? 'Episódio marcado como degustativo.'
+          : 'Episódio removido dos degustativos.'
+      )
+
+      loadEpisodes()
+    } catch (error) {
+      console.error('Erro ao atualizar degustativo:', error)
+      alert('Não foi possível atualizar o episódio degustativo agora.')
+    }
+  }
   const handleDelete = async (episode: Episode) => {
     const confirmDelete = confirm(
-      `❌ Tem certeza que deseja excluir?\n\n📖 ${episode.bible_reference}\n"${episode.title}"\n\n⚠️ Esta ação não pode ser desfeita!`
+      `âŒ Tem certeza que deseja excluir?\n\nðŸ“– ${episode.bible_reference}\n"${episode.title}"\n\nâš ï¸ Esta aÃ§Ã£o nÃ£o pode ser desfeita!`
     )
 
     if (!confirmDelete) return
@@ -64,11 +105,11 @@ export default function GerenciarEpisodios() {
 
       if (error) throw error
 
-      alert('✅ Episódio excluído com sucesso!')
+      alert('âœ… EpisÃ³dio excluÃ­do com sucesso!')
       loadEpisodes()
     } catch (error) {
-      console.error('Erro ao excluir episódio:', error)
-      alert('❌ Erro ao excluir episódio. Tente novamente.')
+      console.error('Erro ao excluir episÃ³dio:', error)
+      alert('âŒ Erro ao excluir episÃ³dio. Tente novamente.')
     }
   }
 
@@ -96,8 +137,8 @@ export default function GerenciarEpisodios() {
     return (
       <div className="admin-episodes-page min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-4xl mb-2">⏳</div>
-          <p className="text-gray-600">Carregando episódios...</p>
+          <div className="text-4xl mb-2">â³</div>
+          <p className="text-gray-600">Carregando episÃ³dios...</p>
         </div>
       </div>
     )
@@ -108,11 +149,11 @@ export default function GerenciarEpisodios() {
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6">
         <div className="max-w-4xl mx-auto">
           <Link href="/admin" className="text-blue-100 hover:text-white mb-2 inline-block">
-            ← Voltar
+            â† Voltar
           </Link>
-          <h1 className="text-2xl font-bold">📚 Gerenciar Episódios</h1>
+          <h1 className="text-2xl font-bold">ðŸ“š Gerenciar EpisÃ³dios</h1>
           <p className="text-blue-100 text-sm mt-1">
-            {episodes.length} {episodes.length === 1 ? 'episódio' : 'episódios'} publicados
+            {episodes.length} {episodes.length === 1 ? 'episÃ³dio' : 'episÃ³dios'} publicados
           </p>
         </div>
       </div>
@@ -121,7 +162,7 @@ export default function GerenciarEpisodios() {
         <div className="mb-5">
           <input
             type="text"
-            placeholder="🔍 Buscar por título ou referência..."
+            placeholder="ðŸ” Buscar por tÃ­tulo ou referÃªncia..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-500 outline-none"
@@ -130,9 +171,9 @@ export default function GerenciarEpisodios() {
 
         {filteredEpisodes.length === 0 ? (
           <div className="bg-white rounded-xl p-8 text-center shadow">
-            <div className="text-6xl mb-4">📭</div>
+            <div className="text-6xl mb-4">ðŸ“­</div>
             <p className="text-gray-600">
-              {searchTerm ? 'Nenhum episódio encontrado' : 'Nenhum episódio publicado ainda'}
+              {searchTerm ? 'Nenhum episÃ³dio encontrado' : 'Nenhum episÃ³dio publicado ainda'}
             </p>
           </div>
         ) : (
@@ -145,14 +186,14 @@ export default function GerenciarEpisodios() {
                 <div className="flex items-start gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xl">{episode.series?.icon_emoji || '🎙️'}</span>
+                      <span className="text-xl">{episode.series?.icon_emoji || 'ðŸŽ™ï¸'}</span>
                       <span className="text-xs text-gray-500">
-                        {episode.series?.title || 'Sem série'}
+                        {episode.series?.title || 'Sem sÃ©rie'}
                       </span>
                     </div>
                     
                     <h3 className="font-bold text-gray-900 mb-1">
-                      📖 {episode.bible_reference}
+                      ðŸ“– {episode.bible_reference}
                     </h3>
                     
                     <p className="text-sm text-gray-700 line-clamp-1 mb-2">
@@ -160,18 +201,24 @@ export default function GerenciarEpisodios() {
                     </p>
 
                     <div className="flex items-center gap-4 text-xs text-gray-500">
-                      <span>Episódio #{episode.episode_number}</span>
-                      <span>⏱️ {formatDuration(episode.duration_seconds)}</span>
-                      <span>📅 {formatDate(episode.created_at)}</span>
+                      <span>EpisÃ³dio #{episode.episode_number}</span>
+                      <span>â±ï¸ {formatDuration(episode.duration_seconds)}</span>
+                      <span>ðŸ“… {formatDate(episode.created_at)}</span>
                     </div>
                   </div>
 
                   <div className="flex flex-col gap-2">
                     <button
+                      onClick={() => handleTogglePreview(episode)}
+                      className="bg-amber-100 text-amber-700 px-4 py-2 rounded-lg font-semibold hover:bg-amber-200 transition-colors"
+                    >
+                      {episode.is_preview ? "Remover degustativo" : "Marcar degustativo"}
+                    </button>
+                    <button
                       onClick={() => handleDelete(episode)}
                       className="bg-red-100 text-red-700 px-4 py-2 rounded-lg font-semibold hover:bg-red-200 transition-colors"
                     >
-                      🗑️ Excluir
+                      ðŸ—‘ï¸ Excluir
                     </button>
                   </div>
                 </div>
