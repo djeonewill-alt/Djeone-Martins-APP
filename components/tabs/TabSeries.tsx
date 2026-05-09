@@ -739,14 +739,49 @@ export default function TabSeries() {
 
       if (error) throw error
 
-      setSeries(data || [])
+      const podcastRows = (data || []) as Series[]
+      const podcastIds = podcastRows.map((serie) => serie.id)
+
+      if (podcastIds.length === 0) {
+        setSeries([])
+        return
+      }
+
+      const { data: episodeRows, error: episodeCountError } = await supabase
+        .from('episodes')
+        .select('series_id')
+        .eq('status', 'published')
+        .in('series_id', podcastIds)
+
+      if (episodeCountError) throw episodeCountError
+
+      const countByPodcast = new Map<string, number>()
+
+      for (const episode of episodeRows || []) {
+        const seriesId = episode.series_id
+
+        if (!seriesId) continue
+
+        countByPodcast.set(seriesId, (countByPodcast.get(seriesId) || 0) + 1)
+      }
+
+      const podcastsWithRealCount = podcastRows.map((serie) => {
+        const realCount = countByPodcast.get(serie.id) || 0
+
+        return {
+          ...serie,
+          total_episodes: realCount,
+          episode_count: realCount,
+        }
+      })
+
+      setSeries(podcastsWithRealCount)
     } catch (error) {
       console.error('Erro ao carregar podcasts:', error)
     } finally {
       setLoading(false)
     }
   }
-
   async function openSeries(serie: Series) {
     setSelectedSeries(serie)
     setSelectedEpisode(null)
