@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -77,6 +77,7 @@ export default function TabHoje({
           )
         `)
         .or('status.eq.published,status.is.null')
+        .eq('show_on_today', true)
         .order('published_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
         .limit(1)

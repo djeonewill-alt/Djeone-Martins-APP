@@ -205,7 +205,7 @@ export default function AdminPodcastEpisodesPage() {
             </Link>
 
             <Link
-              href={`/admin/novo-episodio?series_id=${podcastId}`}
+              href={`/admin/series/${podcastId}/episodios/novo`}
               className="rounded-2xl bg-blue-600 px-5 py-3 text-sm font-black text-white shadow-xl shadow-blue-950/20 active:scale-[0.98]"
             >
               + Novo episódio

@@ -421,7 +421,7 @@ export default function EditarSeriePage() {
             </Link>
 
             <Link
-              href={`/admin/novo-episodio?series_id=${seriesId}`}
+              href={`/admin/series/${seriesId}/episodios/novo`}
               className="flex-1 rounded-2xl border border-white/10 bg-slate-950 px-5 py-4 text-center text-sm font-black text-slate-100 active:scale-[0.98]"
             >
               Novo episódio

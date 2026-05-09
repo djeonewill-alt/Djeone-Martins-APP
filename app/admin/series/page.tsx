@@ -187,7 +187,7 @@ export default function AdminSeriesPage() {
               href="/admin/novo-episodio"
               className="rounded-2xl border border-white/10 bg-slate-900 px-5 py-3 text-sm font-black text-slate-100 active:scale-[0.98]"
             >
-              + Novo episódio
+              + Episódio diário
             </Link>
           </div>
         </div>
@@ -353,7 +353,7 @@ export default function AdminSeriesPage() {
                       </Link>
 
                       <Link
-                        href={`/admin/novo-episodio?series_id=${serie.id}`}
+                        href={`/admin/series/${serie.id}/episodios/novo`}
                         className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-center text-sm font-black text-slate-100 active:scale-[0.98]"
                       >
                         Novo episódio
