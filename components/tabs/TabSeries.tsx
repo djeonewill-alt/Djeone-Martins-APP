@@ -162,8 +162,8 @@ function PremiumLockedModal({
             </p>
 
             <p className="mt-2 text-xs font-semibold leading-5 text-amber-50/90">
-              Quando a assinatura estiver disponível, os episódios premium
-              poderão ser liberados para assinantes.
+              Quando sua assinatura estiver ativa, os episódios premium
+              serão liberados automaticamente para sua conta.
             </p>
           </div>
 
@@ -667,14 +667,67 @@ export default function TabSeries() {
   const [episodes, setEpisodes] = useState<Episode[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingEpisodes, setLoadingEpisodes] = useState(false)
-
-  // Temporário: enquanto a área de pagamento não está ativa,
-  // todos os usuários são tratados como gratuitos.
-  const isPremiumUser = false
+  const [isPremiumUser, setIsPremiumUser] = useState(false)
 
   useEffect(() => {
     loadSeries()
   }, [])
+
+  useEffect(() => {
+    loadPremiumStatus()
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(() => {
+      loadPremiumStatus()
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  async function loadPremiumStatus() {
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser()
+
+      if (userError) throw userError
+
+      if (!user) {
+        setIsPremiumUser(false)
+        return
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('is_premium, premium_expires_at')
+        .eq('auth_user_id', user.id)
+        .maybeSingle()
+
+      if (profileError) throw profileError
+
+      const isPremium = Boolean(profile?.is_premium)
+      const premiumExpiresAt =
+        typeof profile?.premium_expires_at === 'string'
+          ? profile.premium_expires_at
+          : null
+
+      const expiresTimestamp = premiumExpiresAt
+        ? new Date(premiumExpiresAt).getTime()
+        : null
+
+      const hasExpired =
+        typeof expiresTimestamp === 'number' &&
+        Number.isFinite(expiresTimestamp) &&
+        expiresTimestamp < Date.now()
+
+      setIsPremiumUser(isPremium && !hasExpired)
+    } catch (error) {
+      console.error('Erro ao carregar status premium:', error)
+      setIsPremiumUser(false)
+    }
+  }
 
   async function loadSeries() {
     try {
