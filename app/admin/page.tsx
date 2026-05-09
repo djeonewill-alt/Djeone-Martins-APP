@@ -259,6 +259,13 @@ export default function AdminDashboardPage() {
       tone: "rose",
     },
     {
+      title: "Interesses Premium",
+      description: "Ver áreas que os usuários querem fortalecer nas futuras jornadas.",
+      href: "/admin/premium-interesses",
+      icon: "⭐",
+      tone: "purple",
+    },
+    {
       title: "Ver app",
       description: "Abrir a experiência pública do aplicativo.",
       href: "/",
