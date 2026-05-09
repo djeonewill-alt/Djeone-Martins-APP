@@ -75,7 +75,7 @@ export default function AdminSeriesPage() {
       setSeries(rows)
     } catch (error) {
       console.error('Erro ao carregar podcasts:', error)
-      alert('Não foi possível carregar as podcasts agora.')
+      alert('Não foi possível carregar os podcasts agora.')
     } finally {
       setLoading(false)
     }

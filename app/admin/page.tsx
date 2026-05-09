@@ -53,7 +53,7 @@ type MetricCard = {
 };
 
 const ADMIN_STORAGE_KEY = "djeone_admin_logged";
-const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "admin-dev";
+const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "";
 
 const supabase: SupabaseClient | null = createSupabaseBrowserClient() as SupabaseClient;
 
@@ -115,7 +115,7 @@ function getTodayLabel() {
 }
 
 export default function AdminDashboardPage() {
-  const [isLogged, setIsLogged] = useState(true);
+  const [isLogged, setIsLogged] = useState(false);
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [stats, setStats] = useState<AdminStats>(initialStats);
@@ -136,53 +136,39 @@ export default function AdminDashboardPage() {
       const [
         series,
         episodes,
-        scheduledByPublishedAt,
-        scheduledByScheduledAt,
+        scheduledEpisodes,
         dailyQuotes,
-        publicPrayers,
+        totalPrayerRequests,
         privatePrayers,
-        answeredByStatus,
-        answeredByBoolean,
         prayerInteractions,
         prayerEncouragements,
-        favorites,
-        notifications,
         usersFromProfiles,
-        usersFromDevices,
-        readingProgress,
       ] = await Promise.all([
         safeCount("series"),
         safeCount("episodes"),
-        safeCount("episodes", (query) => query.gte("published_at", nowIso)),
-        safeCount("episodes", (query) => query.gte("scheduled_at", nowIso)),
+        safeCount("episodes", (query) => query.gte("scheduled_publish_at", nowIso)),
         safeCount("daily_quotes"),
-        safeCount("prayer_requests", (query) => query.eq("is_public", true)),
-        safeCount("prayer_requests", (query) => query.eq("is_public", false)),
-        safeCount("prayer_requests", (query) => query.eq("status", "answered")),
-        safeCount("prayer_requests", (query) => query.eq("is_answered", true)),
+        safeCount("prayer_requests"),
+        safeCount("prayer_requests", (query) => query.eq("is_private", true)),
         safeCount("prayer_interactions"),
         safeCount("prayer_encouragements"),
-        safeCount("favorites"),
-        safeCount("notifications"),
         safeCount("profiles"),
-        safeCount("device_profiles"),
-        safeCount("reading_progress"),
       ]);
 
       setStats({
         series,
         episodes,
-        scheduledEpisodes: Math.max(scheduledByPublishedAt, scheduledByScheduledAt),
+        scheduledEpisodes,
         dailyQuotes,
-        publicPrayers,
+        publicPrayers: Math.max(totalPrayerRequests - privatePrayers, 0),
         privatePrayers,
-        answeredPrayers: Math.max(answeredByStatus, answeredByBoolean),
+        answeredPrayers: 0,
         prayerInteractions,
         prayerEncouragements,
-        favorites,
-        notifications,
-        users: Math.max(usersFromProfiles, usersFromDevices),
-        readingProgress,
+        favorites: 0,
+        notifications: 0,
+        users: usersFromProfiles,
+        readingProgress: 0,
       });
 
       setLastUpdated(
@@ -193,14 +179,15 @@ export default function AdminDashboardPage() {
         }).format(new Date())
       );
     } catch {
-      setLoadError("Não foi possível carregar os dados do painel agora.");
+      setLoadError("Nao foi possivel carregar os dados do painel agora.");
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    setIsLogged(true);
+    const storedAdminLogin = window.localStorage.getItem(ADMIN_STORAGE_KEY);
+    setIsLogged(storedAdminLogin === "true");
   }, []);
 
   useEffect(() => {
@@ -211,6 +198,11 @@ export default function AdminDashboardPage() {
 
   function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!ADMIN_PASSWORD) {
+      setLoginError("Senha administrativa não configurada no ambiente.");
+      return;
+    }
 
     if (password.trim() === ADMIN_PASSWORD) {
       window.localStorage.setItem(ADMIN_STORAGE_KEY, "true");
