@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 type TabMaisProps = {
   onOpenSeries?: () => void
@@ -137,10 +137,10 @@ export default function TabMais({
           />
 
           <MoreFeatureCard
-            title="Assinatura"
-            subtitle="Podcasts premium e recursos avançados ficarão disponíveis quando a área premium for ativada."
+            title="Jornadas Premium"
+            subtitle="Em breve: jornadas guiadas de oração, vida devocional, família, fortalecimento espiritual e aprofundamento bíblico."
             icon="⭐"
-            badge="Premium"
+            badge="Em breve"
             accent="purple"
             disabled
           />
