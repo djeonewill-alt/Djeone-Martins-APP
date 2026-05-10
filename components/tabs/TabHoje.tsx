@@ -250,17 +250,43 @@ export default function TabHoje({
 
   if (!todayEpisode) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950">
-        <div className="p-5 text-center">
-          <div className="mb-4 text-6xl">📖</div>
+      <div className="bg-slate-950 pb-10 pt-0">
+        <div className="mx-auto w-full max-w-2xl px-5 pb-2 pt-4">
+          <section className="rounded-[30px] border border-white/10 bg-slate-900/80 p-6 text-center shadow-[0_22px_70px_rgba(0,0,0,0.28)]">
+            <div className="mb-4 text-5xl">{'\uD83D\uDCD6'}</div>
 
-          <h3 className="mb-2 text-xl font-bold text-white">
-            Nenhum devocional publicado
-          </h3>
+            <h3 className="mb-2 text-xl font-black tracking-[-0.04em] text-white">
+              Nenhum devocional publicado
+            </h3>
 
-          <p className="text-slate-400">
-            Aguarde o próximo episódio!
-          </p>
+            <p className="mx-auto max-w-sm text-sm font-semibold leading-6 text-slate-400">
+              {'A Palavra do Dia ainda n\u00e3o foi publicada, mas voc\u00ea j\u00e1 pode continuar sua leitura, ora\u00e7\u00e3o e semeadura.'}
+            </p>
+          </section>
+
+          <div className="mt-6 space-y-6">
+            <TodayActionCard
+              eyebrow="Leitura de hoje"
+              title={readingSummary.title}
+              subtitle={readingSummary.subtitle}
+              meta={readingSummary.meta}
+              icon={'\uD83D\uDCD6'}
+              accent="blue"
+              onClick={onOpenReading || (() => {})}
+            />
+
+            <TodayActionCard
+              eyebrow={'Ora\u00e7\u00e3o de hoje'}
+              title={TODAY_PRAYER_GUIDE.title}
+              subtitle={TODAY_PRAYER_GUIDE.bibleReference + ' \u00b7 ' + TODAY_PRAYER_GUIDE.subtitle}
+              meta={TODAY_PRAYER_GUIDE.estimatedMinutes + 'min guiados'}
+              icon={'\uD83D\uDE4F'}
+              accent="gold"
+              onClick={onOpenPrayer || (() => {})}
+            />
+
+            <ContributionBanner onClick={onOpenOferta || (() => {})} />
+          </div>
         </div>
       </div>
     )

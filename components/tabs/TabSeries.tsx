@@ -192,11 +192,12 @@ function PodcastBadges({
   const isPremium = serie.is_free === false
   const showPremiumSeal = isPremium && !isPremiumUser
   const count = episodeCount ?? serie.total_episodes ?? 0
+  const episodeLabel = count === 1 ? 'episódio' : 'episódios'
 
   return (
-    <div className="absolute left-3 top-3 flex flex-wrap gap-2">
+    <div className="absolute bottom-3 left-3 flex origin-bottom-left scale-[0.70] flex-wrap gap-1.5 opacity-85">
       {showPremiumSeal && <SeriesBadge tone="gold">Premium</SeriesBadge>}
-      <SeriesBadge tone="dark">{count} episódios</SeriesBadge>
+      <SeriesBadge tone="dark">{count} {episodeLabel}</SeriesBadge>
     </div>
   )
 }
@@ -386,11 +387,11 @@ function EpisodeThumbCard({
           <div className="absolute inset-0 bg-gradient-to-br from-blue-950 via-slate-950 to-amber-950/30" />
         )}
 
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/28 to-black/5" />
+        <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/30 to-transparent" />
 
-        <div className="absolute left-3 top-3 flex flex-wrap gap-2">
+        <div className="absolute bottom-3 left-3 flex origin-bottom-left scale-[0.72] flex-wrap gap-1.5 opacity-90">
           {locked ? (
-            <SeriesBadge tone="gold">🔒 Premium</SeriesBadge>
+            <SeriesBadge tone="gold">{'\\uD83D\\uDD12'} Premium</SeriesBadge>
           ) : preview ? (
             <SeriesBadge tone="green">Degustativo</SeriesBadge>
           ) : null}
@@ -398,21 +399,6 @@ function EpisodeThumbCard({
           {episode.episode_number && (
             <SeriesBadge>Ep. {episode.episode_number}</SeriesBadge>
           )}
-
-          {episode.bible_reference && (
-            <SeriesBadge tone="green">{episode.bible_reference}</SeriesBadge>
-          )}
-        </div>
-
-        <div className="absolute bottom-4 left-4 right-4">
-          <h3 className="line-clamp-2 text-2xl font-black leading-[0.95] tracking-[-0.06em] text-white drop-shadow-[0_4px_16px_rgba(0,0,0,0.86)]">
-            {episode.title}
-          </h3>
-
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-300">
-            {episode.published_at && <span>{formatDate(episode.published_at)}</span>}
-            {episode.duration_seconds && <span>• {formatDuration(episode.duration_seconds)}</span>}
-          </div>
         </div>
       </div>
 
@@ -562,7 +548,7 @@ function PodcastDetail({
               iconSize="text-8xl"
             />
 
-            <div className="absolute left-4 top-4 flex flex-wrap gap-2">
+            <div className="absolute bottom-4 left-4 flex origin-bottom-left scale-[0.78] flex-wrap gap-1.5 opacity-90">
               {isFreeUserViewingPremium && <SeriesBadge tone="gold">Premium</SeriesBadge>}
               <SeriesBadge tone="dark">
                 {episodes.length || serie.total_episodes || 0} episódios
@@ -573,8 +559,7 @@ function PodcastDetail({
           <div className="mb-6 rounded-[30px] border border-white/10 bg-slate-900/70 p-5">
             <div className="flex flex-wrap gap-2">
               {serie.is_current && <SeriesBadge tone="green">Atual</SeriesBadge>}
-              {isFreeUserViewingPremium && <SeriesBadge tone="gold">Premium</SeriesBadge>}
-              {!isPremiumPodcast && <SeriesBadge>Gratuito</SeriesBadge>}
+              {isFreeUserViewingPremium && <SeriesBadge tone="gold">Premium</SeriesBadge>}
             </div>
 
             <h1 className="mt-4 text-4xl font-black leading-[0.95] tracking-[-0.075em] text-white">
