@@ -92,6 +92,8 @@ export type Episode = {
   description?: string | null;
   bible_reference?: string | null;
   audio_url: string;
+  audio_url_compatible?: string | null;
+  audio_compatible_type?: string | null;
   duration_seconds?: number | null;
   episode_number?: number | null;
   published_at?: string | null;

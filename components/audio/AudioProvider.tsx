@@ -1,4 +1,5 @@
 ﻿'use client'
+import { getPreferredAudioUrl } from '@/lib/audio/compatibleAudio'
 
 import { createContext, useContext, useState, useRef, useEffect } from 'react'
 
@@ -13,6 +14,8 @@ type Episode = {
   title: string
   bible_reference: string
   audio_url: string
+  audio_url_compatible?: string | null
+  audio_compatible_type?: string | null
   duration_seconds: number
   icon_emoji?: string
   series_title?: string
@@ -113,7 +116,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   if (!audioRef.current) return
 
   if (currentEpisode?.id !== episode.id) {
-    audioRef.current.src = episode.audio_url
+    audioRef.current.src = getPreferredAudioUrl(episode)
     setCurrentEpisode(episode)
     setCurrentTime(0)
     

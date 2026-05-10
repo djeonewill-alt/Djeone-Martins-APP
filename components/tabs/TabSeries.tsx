@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import EpisodeAudioPlayer from '@/components/audio/EpisodeAudioPlayer'
+import { getPreferredAudioUrl } from '@/lib/audio/compatibleAudio'
 import { supabase } from '@/lib/supabase'
 import type { Series } from '@/lib/supabase'
 
@@ -18,6 +19,8 @@ type Episode = {
   description: string | null
   bible_reference: string | null
   audio_url: string
+  audio_url_compatible: string | null
+  audio_compatible_type: string | null
   duration_seconds: number | null
   episode_number: number | null
   published_at: string | null
@@ -470,7 +473,7 @@ function EpisodeDetail({
             )}
             <EpisodeAudioPlayer
               episodeId={episode.id}
-              src={episode.audio_url}
+              src={getPreferredAudioUrl(episode)}
               title={episode.title}
               subtitle={episode.bible_reference || undefined}
               segments={episode.transcription_segments}
@@ -559,7 +562,7 @@ function PodcastDetail({
           <div className="mb-6 rounded-[30px] border border-white/10 bg-slate-900/70 p-5">
             <div className="flex flex-wrap gap-2">
               {serie.is_current && <SeriesBadge tone="green">Atual</SeriesBadge>}
-              {isFreeUserViewingPremium && <SeriesBadge tone="gold">Premium</SeriesBadge>}
+              {isFreeUserViewingPremium && <SeriesBadge tone="gold">Premium</SeriesBadge>}
             </div>
 
             <h1 className="mt-4 text-4xl font-black leading-[0.95] tracking-[-0.075em] text-white">
@@ -778,7 +781,7 @@ export default function TabSeries() {
       const { data, error } = await supabase
         .from('episodes')
         .select(
-          'id, series_id, title, description, bible_reference, audio_url, duration_seconds, episode_number, published_at, created_at, cover_image_url, status, is_preview, transcription_segments'
+          'id, series_id, title, description, bible_reference, audio_url, audio_url_compatible, audio_compatible_type, duration_seconds, episode_number, published_at, created_at, cover_image_url, status, is_preview, transcription_text, transcription_segments'
         )
         .eq('series_id', serie.id)
         .eq('status', 'published')

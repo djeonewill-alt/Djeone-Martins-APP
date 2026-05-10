@@ -132,6 +132,8 @@ export default function TabFavoritos() {
                   title: episode.title,
                   bible_reference: episode.bible_reference || '',
                   audio_url: episode.audio_url,
+                  audio_url_compatible: episode.audio_url_compatible,
+                  audio_compatible_type: episode.audio_compatible_type,
                   duration_seconds: episode.duration_seconds || 0,
                 })}
                 className="flex-shrink-0 w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 transition-colors"

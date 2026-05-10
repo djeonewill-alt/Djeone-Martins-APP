@@ -160,7 +160,10 @@ export default function TabHoje({
       id: todayEpisode.id,
       title: todayEpisode.title,
       bible_reference: todayEpisode.bible_reference || '',
+      audio_url_compatible: todayEpisode.audio_url_compatible,
+      audio_compatible_type: todayEpisode.audio_compatible_type,
       audio_url: todayEpisode.audio_url,
+
       duration_seconds: todayEpisode.duration_seconds || 0,
       icon_emoji: todayEpisode.series?.icon_emoji,
       series_title: todayEpisode.series?.title,

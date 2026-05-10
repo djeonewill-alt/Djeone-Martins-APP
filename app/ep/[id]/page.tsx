@@ -87,6 +87,10 @@ export default function EpisodePage() {
       title: typedEpisode.title,
       bible_reference: typedEpisode.bible_reference || '',
       audio_url: typedEpisode.audio_url,
+
+      audio_url_compatible: typedEpisode.audio_url_compatible,
+      audio_compatible_type: typedEpisode.audio_compatible_type,
+
       duration_seconds: typedEpisode.duration_seconds || 0,
       series_title: typedEpisode.series?.title,
       icon_emoji: typedEpisode.series?.icon_emoji || '🎙️',
