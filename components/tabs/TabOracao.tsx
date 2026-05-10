@@ -2,11 +2,11 @@
 
 import { FormEvent, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { registerGamificationEvent } from '@/lib/gamification/client'
 import type { PrayerRequest } from '@/lib/supabase'
 import MyPrayerRequests from './prayer/MyPrayerRequests'
-import PrayerLearning from './prayer/PrayerLearning'
+import PrayerMap from './prayer/PrayerMap'
 import PrayerTabs from './prayer/PrayerTabs'
-import PrayerToday from './prayer/PrayerToday'
 import PrayerWall from './prayer/PrayerWall'
 import {
   getLocalArray,
@@ -23,7 +23,7 @@ const PRAYED_IDS_KEY = 'djeone-prayed-ids-v1'
 const ENCOURAGEMENT_IDS_KEY = 'djeone-encouragement-ids-v1'
 
 export default function TabOracao() {
-  const [activeSubTab, setActiveSubTab] = useState<PrayerSubTab>('hoje')
+  const [activeSubTab, setActiveSubTab] = useState<PrayerSubTab>('mural')
 
   const [prayers, setPrayers] = useState<PrayerRequest[]>([])
   const [myPrayers, setMyPrayers] = useState<PrayerRequest[]>([])
@@ -234,6 +234,15 @@ export default function TabOracao() {
         const nextIds = Array.from(new Set([data.id, ...currentIds]))
 
         setLocalArray(MY_PRAYER_IDS_KEY, nextIds)
+
+        await registerGamificationEvent({
+          eventType: 'create_prayer_request',
+          referenceId: data.id,
+          metadata: {
+            isPrivate,
+            source: 'prayer_wall',
+          },
+        })
       }
 
       setNewPrayer('')
@@ -280,6 +289,14 @@ export default function TabOracao() {
         ...current,
         [prayer.id]: (current[prayer.id] || 0) + 1,
       }))
+
+      await registerGamificationEvent({
+        eventType: 'pray_for_request',
+        referenceId: prayer.id,
+        metadata: {
+          source: 'prayer_wall',
+        },
+      })
     } catch (error) {
       console.error('Erro ao registrar oração:', error)
       alert('Não foi possível registrar sua oração agora.')
@@ -324,6 +341,16 @@ export default function TabOracao() {
             ...(current[prayer.id] || []),
           ],
         }))
+
+        await registerGamificationEvent({
+          eventType: 'send_encouragement',
+          referenceId: prayer.id,
+          metadata: {
+            encouragementId: data.id,
+            message,
+            source: 'prayer_wall',
+          },
+        })
       }
     } catch (error) {
       console.error('Erro ao enviar encorajamento:', error)
@@ -383,6 +410,14 @@ export default function TabOracao() {
 
       if (error) throw error
 
+      await registerGamificationEvent({
+        eventType: 'mark_prayer_answered',
+        referenceId: prayer.id,
+        metadata: {
+          source: 'my_prayers',
+        },
+      })
+
       await loadPrayers(deviceId || getOrCreateDeviceId())
       await loadMyPrayers()
     } catch (error) {
@@ -404,7 +439,7 @@ export default function TabOracao() {
           </h1>
 
           <p className="mt-3 text-sm leading-relaxed text-slate-400">
-            Compartilhe pedidos, ore pela comunidade e aprenda a desenvolver uma vida de oração.
+            Compartilhe pedidos, ore pela comunidade e acompanhe o futuro Mapa de Oração.
           </p>
         </div>
 
@@ -412,13 +447,6 @@ export default function TabOracao() {
           activeTab={activeSubTab}
           onChange={setActiveSubTab}
         />
-
-        {activeSubTab === 'hoje' && (
-          <PrayerToday
-            onOpenWall={() => setActiveSubTab('mural')}
-            onOpenLearning={() => setActiveSubTab('aprender')}
-          />
-        )}
 
         {activeSubTab === 'mural' && (
           <PrayerWall
@@ -457,7 +485,14 @@ export default function TabOracao() {
           />
         )}
 
-        {activeSubTab === 'aprender' && <PrayerLearning />}
+        {activeSubTab === 'mapa' && (
+          <PrayerMap
+            onOpenWall={() => {
+              setShowForm(true)
+              setActiveSubTab('mural')
+            }}
+          />
+        )}
       </div>
     </div>
   )

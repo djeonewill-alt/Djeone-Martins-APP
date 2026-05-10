@@ -1,4 +1,36 @@
-﻿import { PRAYER_LEARNING_ITEMS } from './mockData'
+import PremiumIconTile, { type PremiumIconTone } from '@/components/icons/PremiumIconTile'
+﻿import PrayerSvgIcon, { type PrayerSvgIconName } from '@/components/icons/PrayerSvgIcon'
+import { PRAYER_LEARNING_ITEMS } from './mockData'
+
+function getLearningIconName(id: string): PrayerSvgIconName {
+  switch (id) {
+    case 'o-que-e-oracao':
+      return 'heart'
+    case 'orar-com-a-palavra':
+      return 'open-bible'
+    case 'intercessao':
+      return 'hands'
+    case 'perseveranca':
+      return 'flame'
+    default:
+      return 'light'
+  }
+}
+
+function getLearningIconTone(id: string): PremiumIconTone {
+  switch (id) {
+    case 'o-que-e-oracao':
+      return 'rose'
+    case 'orar-com-a-palavra':
+      return 'amber'
+    case 'intercessao':
+      return 'cyan'
+    case 'perseveranca':
+      return 'fire'
+    default:
+      return 'sky'
+  }
+}
 
 export default function PrayerLearning() {
   return (
@@ -7,6 +39,9 @@ export default function PrayerLearning() {
         <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-yellow-500/15 blur-3xl" />
 
         <div className="relative">
+          <PremiumIconTile tone="amber" size="lg" className="mb-5">
+            <PrayerSvgIcon name="light" className="h-8 w-8" />
+          </PremiumIconTile>
           <p className="text-xs font-black uppercase tracking-[0.2em] text-yellow-200">
             Aprender
           </p>
@@ -29,9 +64,9 @@ export default function PrayerLearning() {
             className="w-full rounded-[30px] border border-white/10 bg-slate-900/80 p-5 text-left shadow-[0_16px_45px_rgba(0,0,0,0.22)]"
           >
             <div className="flex items-start gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px] bg-blue-500/10 text-3xl">
-                {item.icon}
-              </div>
+              <PremiumIconTile tone={getLearningIconTone(item.id)} size="md">
+                <PrayerSvgIcon name={getLearningIconName(item.id)} className="h-8 w-8" />
+              </PremiumIconTile>
 
               <div className="min-w-0 flex-1">
                 <div className="flex items-start justify-between gap-3">

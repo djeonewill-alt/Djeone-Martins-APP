@@ -6,10 +6,9 @@ type PrayerTabsProps = {
 }
 
 const tabs: Array<{ id: PrayerSubTab; label: string }> = [
-  { id: 'hoje', label: 'Hoje' },
   { id: 'mural', label: 'Mural' },
   { id: 'meus', label: 'Meus' },
-  { id: 'aprender', label: 'Aprender' },
+  { id: 'mapa', label: 'Mapa' },
 ]
 
 export default function PrayerTabs({
@@ -18,7 +17,7 @@ export default function PrayerTabs({
 }: PrayerTabsProps) {
   return (
     <div className="mb-6 rounded-[28px] border border-white/10 bg-white/[0.035] p-1.5 shadow-[0_16px_45px_rgba(0,0,0,0.22)] backdrop-blur-xl">
-      <div className="grid grid-cols-4 gap-1">
+      <div className="grid grid-cols-3 gap-1">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id
 

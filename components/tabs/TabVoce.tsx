@@ -1,6 +1,8 @@
-﻿'use client'
+'use client'
 
 import { useEffect, useState } from 'react'
+import MinhaJornadaPreview from '@/components/gamification/MinhaJornadaPreview'
+import AchievementsDetail from '@/components/gamification/AchievementsDetail'
 import { calculateReadingStats } from './reading/planUtils'
 import {
   DEFAULT_READING_STATE,
@@ -11,12 +13,19 @@ type TabVoceProps = {
   onOpenFavoritos?: () => void
 }
 
+type UserSubTab = 'jornada' | 'trilhas'
+
 type UserMetric = {
   label: string
   value: string | number
   helper: string
   accent: 'blue' | 'gold' | 'green' | 'purple' | 'cyan'
 }
+
+const userTabs: Array<{ id: UserSubTab; label: string }> = [
+  { id: 'jornada', label: 'Jornada' },
+  { id: 'trilhas', label: 'Trilhas' },
+]
 
 function getLocalArray(key: string) {
   if (typeof window === 'undefined') return []
@@ -57,7 +66,7 @@ function MetricCard({
             : 'border-blue-300/15 bg-blue-500/10 text-blue-100'
 
   return (
-    <div className={`rounded-[26px] border p-4 ${accentClass}`}>
+    <div className={'rounded-[26px] border p-4 ' + accentClass}>
       <p className="text-3xl font-black tracking-[-0.06em]">
         {value}
       </p>
@@ -78,58 +87,138 @@ function ProgressBar({ value }: { value: number }) {
     <div className="h-2 overflow-hidden rounded-full bg-white/10">
       <div
         className="h-full rounded-full bg-gradient-to-r from-blue-500 via-cyan-300 to-blue-400 shadow-[0_0_18px_rgba(96,165,250,0.55)]"
-        style={{ width: `${Math.min(Math.max(value, 0), 100)}%` }}
+        style={{ width: Math.min(Math.max(value, 0), 100) + '%' }}
       />
     </div>
   )
 }
 
-function UserActionButton({
-  title,
-  subtitle,
-  icon,
-  onClick,
-  disabled = false,
+function UserTabs({
+  activeTab,
+  onChange,
 }: {
-  title: string
-  subtitle: string
-  icon: string
-  onClick?: () => void
-  disabled?: boolean
+  activeTab: UserSubTab
+  onChange: (tab: UserSubTab) => void
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={
-        disabled
-          ? 'relative w-full overflow-hidden rounded-[30px] border border-white/10 bg-white/[0.025] p-5 text-left opacity-70'
-          : 'relative w-full overflow-hidden rounded-[30px] border border-white/10 bg-slate-900/80 p-5 text-left shadow-[0_16px_45px_rgba(0,0,0,0.24)] active:scale-[0.99]'
-      }
-    >
-      <div className="pointer-events-none absolute -right-14 -top-14 h-32 w-32 rounded-full bg-blue-500/12 blur-3xl" />
+    <div className="mb-6 rounded-[28px] border border-white/10 bg-white/[0.035] p-1.5 shadow-[0_16px_45px_rgba(0,0,0,0.22)] backdrop-blur-xl">
+      <div className="grid grid-cols-2 gap-1">
+        {userTabs.map((tab) => {
+          const isActive = activeTab === tab.id
 
-      <div className="relative flex items-start gap-4">
-        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px] border border-white/10 bg-white/[0.055] text-2xl">
-          {icon}
-        </div>
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => onChange(tab.id)}
+              className={
+                isActive
+                  ? 'relative rounded-[20px] bg-slate-950 px-2 py-3 text-[10px] font-black uppercase tracking-[0.1em] text-white shadow-[inset_0_0_0_1px_rgba(96,165,250,0.22),0_10px_28px_rgba(37,99,235,0.18)]'
+                  : 'rounded-[20px] px-2 py-3 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500 transition-all hover:text-slate-300'
+              }
+            >
+              <span>{tab.label}</span>
 
-        <div className="min-w-0 flex-1">
-          <h3 className="text-lg font-black tracking-[-0.04em] text-white">
-            {title}
-          </h3>
-
-          <p className="mt-1 text-sm leading-relaxed text-slate-500">
-            {subtitle}
-          </p>
-        </div>
+              {isActive && (
+                <span className="absolute bottom-1.5 left-1/2 h-1 w-7 -translate-x-1/2 rounded-full bg-blue-400 shadow-[0_0_18px_rgba(96,165,250,0.75)]" />
+              )}
+            </button>
+          )
+        })}
       </div>
-    </button>
+    </div>
   )
 }
 
-export default function TabVoce({ onOpenFavoritos }: TabVoceProps) {
+function ActivityPanel({
+  biblePercentage,
+  chaptersRead,
+  prayedCount,
+  shareCount,
+  encouragementCount,
+}: {
+  biblePercentage: number
+  chaptersRead: number
+  prayedCount: number
+  shareCount: number
+  encouragementCount: number
+}) {
+  return (
+    <div className="space-y-5">
+      <section className="relative overflow-hidden rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-[0_22px_70px_rgba(0,0,0,0.35)]">
+        <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-blue-500/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -left-24 h-56 w-56 rounded-full bg-cyan-400/10 blur-3xl" />
+
+        <div className="relative">
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-blue-300">
+            Atividade pessoal
+          </p>
+
+          <div className="mt-4 flex items-end justify-between gap-4">
+            <div>
+              <h2 className="text-4xl font-black tracking-[-0.075em] text-white">
+                {biblePercentage}%
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-400">
+                da Bíblia marcada como lida
+              </p>
+            </div>
+
+            <div className="rounded-[22px] border border-blue-300/15 bg-blue-500/10 px-4 py-3 text-right">
+              <p className="text-2xl font-black text-blue-100">
+                {chaptersRead}
+              </p>
+
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-blue-200/70">
+                capítulos
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5">
+            <ProgressBar value={biblePercentage} />
+          </div>
+        </div>
+      </section>
+
+      <section className="grid grid-cols-2 gap-3">
+        <MetricCard
+          label="Leitura"
+          value={chaptersRead}
+          helper="capítulos lidos"
+          accent="blue"
+        />
+
+        <MetricCard
+          label="Oração"
+          value={prayedCount}
+          helper="pedidos intercedidos"
+          accent="gold"
+        />
+
+        <MetricCard
+          label="Evangelismo"
+          value={shareCount}
+          helper="compartilhamentos"
+          accent="purple"
+        />
+
+        <MetricCard
+          label="Encorajar"
+          value={encouragementCount}
+          helper="mensagens enviadas"
+          accent="cyan"
+        />
+      </section>
+    </div>
+  )
+}
+
+export default function TabVoce(_props: TabVoceProps) {
+  void _props
+
+  const [activeUserSubTab, setActiveUserSubTab] = useState<UserSubTab>('jornada')
   const [chaptersRead, setChaptersRead] = useState(0)
   const [biblePercentage, setBiblePercentage] = useState(0)
   const [prayedCount, setPrayedCount] = useState(0)
@@ -167,146 +256,46 @@ export default function TabVoce({ onOpenFavoritos }: TabVoceProps) {
           </h1>
 
           <p className="mt-3 text-sm leading-relaxed text-slate-400">
-            Acompanhe seu crescimento, favoritos, oração, leitura e conquistas no discipulado diário.
+            Acompanhe sua caminhada, suas trilhas e os frutos de constância no discipulado diário.
           </p>
         </div>
 
-        <section className="relative mb-5 overflow-hidden rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-[0_22px_70px_rgba(0,0,0,0.35)]">
-          <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-blue-500/20 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-24 -left-24 h-56 w-56 rounded-full bg-cyan-400/10 blur-3xl" />
+        <UserTabs
+          activeTab={activeUserSubTab}
+          onChange={setActiveUserSubTab}
+        />
 
-          <div className="relative">
-            <p className="text-xs font-black uppercase tracking-[0.2em] text-blue-300">
-              Painel pessoal
-            </p>
-
-            <div className="mt-4 flex items-end justify-between gap-4">
-              <div>
-                <h2 className="text-4xl font-black tracking-[-0.075em] text-white">
-                  {biblePercentage}%
-                </h2>
-
-                <p className="mt-1 text-sm text-slate-400">
-                  da Bíblia marcada como lida
-                </p>
-              </div>
-
-              <div className="rounded-[22px] border border-blue-300/15 bg-blue-500/10 px-4 py-3 text-right">
-                <p className="text-2xl font-black text-blue-100">
-                  {chaptersRead}
-                </p>
-                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-blue-200/70">
-                  capítulos
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-5">
-              <ProgressBar value={biblePercentage} />
-            </div>
-          </div>
-        </section>
-
-        <section className="mb-5 grid grid-cols-2 gap-3">
-          <MetricCard
-            label="Leitura"
-            value={chaptersRead}
-            helper="capítulos lidos"
-            accent="blue"
+        {activeUserSubTab === 'jornada' && (
+          <MinhaJornadaPreview
+            chaptersRead={chaptersRead}
+            prayedCount={prayedCount}
+            shareCount={shareCount}
+            encouragementCount={encouragementCount}
+            myPrayerCount={myPrayerCount}
+            activitySlot={
+              <ActivityPanel
+                biblePercentage={biblePercentage}
+                chaptersRead={chaptersRead}
+                prayedCount={prayedCount}
+                shareCount={shareCount}
+                encouragementCount={encouragementCount}
+              />
+            }
           />
+        )}
 
-          <MetricCard
-            label="Oração"
-            value={prayedCount}
-            helper="pedidos intercedidos"
-            accent="gold"
+        {activeUserSubTab === 'trilhas' && (
+          <AchievementsDetail
+            chaptersRead={chaptersRead}
+            prayedCount={prayedCount}
+            shareCount={shareCount}
+            encouragementCount={encouragementCount}
+            myPrayerCount={myPrayerCount}
+            embedded
+            onBack={() => setActiveUserSubTab('jornada')}
           />
-
-          <MetricCard
-            label="Evangelismo"
-            value={shareCount}
-            helper="compartilhamentos"
-            accent="purple"
-          />
-
-          <MetricCard
-            label="Encorajar"
-            value={encouragementCount}
-            helper="mensagens enviadas"
-            accent="cyan"
-          />
-        </section>
-
-        <section className="mb-5 rounded-[34px] border border-white/10 bg-white/[0.04] p-5 shadow-[0_18px_55px_rgba(0,0,0,0.24)]">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-300">
-                Badges
-              </p>
-
-              <h2 className="mt-1 text-xl font-black">
-                Conquistas
-              </h2>
-            </div>
-
-            <span className="rounded-full border border-white/10 bg-slate-950/60 px-3 py-1 text-xs font-black text-blue-200">
-              Em breve
-            </span>
-          </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              ['📖', 'Leitor'],
-              ['🙏', 'Intercessor'],
-              ['📣', 'Evangelista'],
-              ['💙', 'Encorajador'],
-              ['🔥', 'Constante'],
-              ['🤲', 'Servo'],
-            ].map(([icon, label]) => (
-              <div
-                key={label}
-                className="rounded-[22px] border border-white/10 bg-slate-950/50 p-3 text-center"
-              >
-                <div className="text-2xl">{icon}</div>
-                <p className="mt-2 text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">
-                  {label}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="space-y-3">
-          <UserActionButton
-            title="Favoritos"
-            subtitle="Veja palavras, áudios e conteúdos que você salvou."
-            icon="♡"
-            onClick={onOpenFavoritos}
-          />
-
-          <UserActionButton
-            title="Notificações"
-            subtitle="Gerencie lembretes de devocional, leitura e oração."
-            icon="🔔"
-            disabled
-          />
-
-          <UserActionButton
-            title="Perfil"
-            subtitle="Atualize seus dados, foto e preferências pessoais."
-            icon="👤"
-            disabled
-          />
-
-          <UserActionButton
-            title="Assinatura"
-            subtitle="Recursos premium e planos personalizados no futuro."
-            icon="⭐"
-            disabled
-          />
-        </section>
+        )}
       </div>
     </div>
   )
 }
-

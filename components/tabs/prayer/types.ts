@@ -1,6 +1,6 @@
 ﻿import type { PrayerRequest } from '@/lib/supabase'
 
-export type PrayerSubTab = 'hoje' | 'mural' | 'meus' | 'aprender'
+export type PrayerSubTab = 'mural' | 'meus' | 'mapa'
 
 export type PrayerCategory =
   | 'familia'

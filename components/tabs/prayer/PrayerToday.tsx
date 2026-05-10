@@ -1,4 +1,6 @@
-﻿import { TODAY_PRAYER_GUIDE } from './mockData'
+import PremiumIconTile from '@/components/icons/PremiumIconTile'
+﻿import PrayerSvgIcon from '@/components/icons/PrayerSvgIcon'
+import { TODAY_PRAYER_GUIDE } from './mockData'
 
 type PrayerTodayProps = {
   onOpenWall: () => void
@@ -18,6 +20,9 @@ export default function PrayerToday({
         <div className="pointer-events-none absolute -bottom-24 -left-24 h-56 w-56 rounded-full bg-cyan-400/10 blur-3xl" />
 
         <div className="relative">
+          <PremiumIconTile tone="sky" size="lg" className="mb-5">
+            <PrayerSvgIcon name="guided-prayer" className="h-8 w-8" />
+          </PremiumIconTile>
           <p className="text-xs font-black uppercase tracking-[0.2em] text-blue-300">
             Oração guiada
           </p>
@@ -89,7 +94,9 @@ export default function PrayerToday({
           onClick={onOpenWall}
           className="rounded-[26px] border border-blue-300/15 bg-blue-500/10 p-4 text-left"
         >
-          <p className="text-2xl">🤲</p>
+          <PremiumIconTile tone="cyan" size="md">
+            <PrayerSvgIcon name="hands" className="h-8 w-8" />
+          </PremiumIconTile>
           <h3 className="mt-3 text-base font-black text-white">
             Orar por alguém
           </h3>
@@ -103,7 +110,9 @@ export default function PrayerToday({
           onClick={onOpenLearning}
           className="rounded-[26px] border border-yellow-300/15 bg-yellow-500/10 p-4 text-left"
         >
-          <p className="text-2xl">📖</p>
+          <PremiumIconTile tone="amber" size="md">
+            <PrayerSvgIcon name="open-bible" className="h-8 w-8" />
+          </PremiumIconTile>
           <h3 className="mt-3 text-base font-black text-white">
             Aprender a orar
           </h3>
