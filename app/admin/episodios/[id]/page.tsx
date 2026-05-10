@@ -20,6 +20,7 @@ type EpisodeRow = {
   is_preview: boolean
   published_at: string | null
   created_at: string | null
+  cover_image_url: string | null
   transcription_text: string | null
 }
 
@@ -39,6 +40,10 @@ export default function AdminEditEpisodePage() {
   const [status, setStatus] = useState('draft')
   const [isPreview, setIsPreview] = useState(false)
   const [transcriptionText, setTranscriptionText] = useState('')
+  const [coverImageUrl, setCoverImageUrl] = useState('')
+  const [coverFile, setCoverFile] = useState<File | null>(null)
+  const [uploadingCover, setUploadingCover] = useState(false)
+  const [coverUploadError, setCoverUploadError] = useState('')
 
   useEffect(() => {
     async function loadEpisode() {
@@ -48,7 +53,7 @@ export default function AdminEditEpisodePage() {
         const { data, error } = await supabase
           .from('episodes')
           .select(
-            'id, series_id, title, description, bible_reference, audio_url, duration_seconds, episode_number, status, is_preview, published_at, created_at, transcription_text'
+            'id, series_id, title, description, bible_reference, audio_url, duration_seconds, episode_number, status, is_preview, published_at, created_at, cover_image_url, transcription_text'
           )
           .eq('id', episodeId)
           .single()
@@ -69,6 +74,7 @@ export default function AdminEditEpisodePage() {
         setStatus(row.status || 'draft')
         setIsPreview(Boolean(row.is_preview))
         setTranscriptionText(row.transcription_text || '')
+        setCoverImageUrl(row.cover_image_url || '')
       } catch (error) {
         console.error('Erro ao carregar episódio:', error)
         alert('Não foi possível carregar este episódio.')
@@ -80,6 +86,61 @@ export default function AdminEditEpisodePage() {
 
     loadEpisode()
   }, [episodeId, router])
+
+  async function uploadCoverFile(): Promise<string> {
+    if (!coverFile) {
+      throw new Error('Selecione uma imagem de capa primeiro.')
+    }
+
+    const formData = new FormData()
+    formData.append('file', coverFile)
+    formData.append('type', 'cover')
+
+    const response = await fetch('/api/upload-audio', {
+      method: 'POST',
+      body: formData,
+    })
+
+    const result = await response.json()
+
+    if (!response.ok) {
+      throw new Error(result?.error || 'Nao foi possivel enviar a capa.')
+    }
+
+    if (!result?.url) {
+      throw new Error('Upload concluido, mas nenhuma URL de capa foi retornada.')
+    }
+
+    setCoverImageUrl(result.url)
+    setCoverFile(null)
+    return result.url
+  }
+
+  async function handleUploadCover() {
+    if (!coverFile) {
+      alert('Selecione uma imagem de capa primeiro.')
+      return
+    }
+
+    try {
+      setUploadingCover(true)
+      setCoverUploadError('')
+
+      await uploadCoverFile()
+    } catch (error) {
+      console.error('Erro ao enviar capa:', error)
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Nao foi possivel enviar a capa.'
+
+      setCoverUploadError(message)
+      alert(message)
+    } finally {
+      setUploadingCover(false)
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -120,12 +181,20 @@ export default function AdminEditEpisodePage() {
             ? null
             : episode.published_at
 
+      let finalCoverImageUrl = coverImageUrl
+
+      if (coverFile) {
+        setCoverUploadError('')
+        finalCoverImageUrl = await uploadCoverFile()
+      }
+
       const { error } = await supabase
         .from('episodes')
         .update({
           title: title.trim(),
           description: description.trim() || null,
           bible_reference: bibleReference.trim() || null,
+          cover_image_url: finalCoverImageUrl || null,
           episode_number: parsedEpisodeNumber,
           status,
           is_preview: isPreview,
@@ -210,6 +279,91 @@ export default function AdminEditEpisodePage() {
           className="mt-5 rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20 sm:p-7"
         >
           <div className="grid gap-6">
+            <section className="rounded-[28px] border border-amber-300/15 bg-amber-500/5 p-5">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.18em] text-amber-200">
+                    Capa do episodio
+                  </p>
+
+                  <p className="mt-2 text-sm leading-6 text-slate-400">
+                    Veja a capa atual ou envie uma nova imagem 16:9 para este episodio.
+                  </p>
+                </div>
+
+                {coverImageUrl && (
+                  <span className="rounded-full border border-emerald-300/20 bg-emerald-500/10 px-3 py-1 text-xs font-black text-emerald-100">
+                    Capa definida
+                  </span>
+                )}
+              </div>
+
+              {coverImageUrl ? (
+                <div className="mt-4 overflow-hidden rounded-[26px] border border-white/10 bg-slate-950">
+                  <img
+                    src={coverImageUrl}
+                    alt="Capa do episodio"
+                    className="aspect-video w-full object-cover"
+                  />
+
+                  <p className="break-all px-4 py-3 text-xs font-bold leading-5 text-slate-500">
+                    {coverImageUrl}
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-slate-950/70 p-5 text-sm font-bold text-slate-400">
+                  Nenhuma capa propria definida. O catalogo usara a capa da serie como fallback.
+                </div>
+              )}
+
+              <div className="mt-4 grid gap-3">
+                <input
+                  type="file"
+                  accept="image/jpeg,image/jpg,image/png,image/webp"
+                  onChange={(event) => {
+                    setCoverFile(event.target.files?.[0] || null)
+                    setCoverUploadError('')
+                  }}
+                  className="block w-full rounded-2xl border border-white/10 bg-slate-950/90 px-4 py-3 text-sm font-bold text-slate-200 file:mr-4 file:rounded-xl file:border-0 file:bg-amber-600 file:px-4 file:py-2 file:text-sm file:font-black file:text-white"
+                />
+
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={handleUploadCover}
+                    disabled={!coverFile || uploadingCover}
+                    className="rounded-2xl border border-amber-300/30 bg-amber-500/15 px-5 py-4 text-sm font-black text-amber-100 active:scale-[0.98] disabled:opacity-50"
+                  >
+                    {uploadingCover ? 'Enviando capa...' : 'Enviar nova capa'}
+                  </button>
+
+                  {coverImageUrl && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCoverImageUrl('')
+                        setCoverFile(null)
+                        setCoverUploadError('')
+                      }}
+                      className="rounded-2xl border border-red-300/20 bg-red-500/10 px-5 py-4 text-sm font-black text-red-100 active:scale-[0.98]"
+                    >
+                      Remover capa
+                    </button>
+                  )}
+                </div>
+
+                {coverUploadError && (
+                  <p className="rounded-2xl border border-red-300/20 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-100">
+                    {coverUploadError}
+                  </p>
+                )}
+
+                <p className="text-xs font-bold leading-5 text-slate-500">
+                  Depois de enviar ou remover a capa, clique em Salvar alteracoes.
+                </p>
+              </div>
+            </section>
+
             <div>
               <label className="text-xs font-black uppercase tracking-[0.14em] text-slate-200">
                 Título do episódio *
@@ -322,7 +476,7 @@ export default function AdminEditEpisodePage() {
 
             <button
               type="submit"
-              disabled={saving}
+              disabled={saving || uploadingCover}
               className="flex-1 rounded-2xl bg-blue-600 px-5 py-4 text-sm font-black text-white shadow-xl shadow-blue-950/30 transition hover:bg-blue-500 active:scale-[0.98] disabled:opacity-50"
             >
               {saving ? 'Salvando...' : 'Salvar alterações'}
