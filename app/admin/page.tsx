@@ -258,6 +258,13 @@ export default function AdminDashboardPage() {
       tone: "purple",
     },
     {
+      title: "Testadores Beta",
+      description: "Cadastre e acompanhe os e-mails autorizados para o Beta Fechado.",
+      href: "/admin/testadores-beta",
+      icon: "Beta",
+      tone: "green",
+    },
+    {
       title: "Ver app",
       description: "Abrir a experiência pública do aplicativo.",
       href: "/",
