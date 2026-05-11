@@ -14,6 +14,9 @@ export type BetaMissionType =
   | 'interação comunitária'
   | 'moderação'
   | 'recurso futuro'
+  | 'contribuição'
+  | 'premium'
+  | 'beta'
   | 'usabilidade'
   | 'espiritual/pastoral'
 

@@ -55,6 +55,439 @@ export const betaMissions: BetaMission[] = [
     type: 'áudio',
   },
   {
+    app_area: 'Aba Mais',
+    section: 'Visão geral',
+    mission_key: 'mais_explorar_aba_mais',
+    area: 'Aba Mais',
+    title: 'Explorar a Aba Mais',
+    estimated_minutes: 4,
+    objective:
+      'Validar se o usuário entende que a Aba Mais reúne recursos extras do app.',
+    prerequisites: ['Nenhum.'],
+    step_by_step: [
+      'Abra o app.',
+      'Toque na aba Mais no menu inferior.',
+      'Leia o título Explore o ministério.',
+      'Observe os cards principais da tela.',
+      'Veja se aparecem Podcasts devocionais, Central do Testador Beta, Oferta, Vídeos, Missões e projetos e Jornadas Premium.',
+      'Leia o bloco sobre configurações na engrenagem.',
+      'Relate se a tela parece um lugar claro para recursos extras.',
+    ],
+    what_to_observe: [
+      'Se o propósito da Aba Mais ficou claro.',
+      'Se os cards principais são fáceis de entender.',
+      'Se a ordem dos recursos ajuda ou confunde.',
+      'Se a tela parece pastoral, organizada e confiável.',
+    ],
+    success_criteria:
+      'A Aba Mais foi entendida como um hub claro de recursos extras do app.',
+    problem_criteria:
+      'A tela pareceu confusa, longa demais, sem prioridade ou sem propósito claro.',
+    confusing_criteria:
+      'O testador não entendeu o que deveria procurar na Aba Mais.',
+    criticality: 'alta',
+    type: 'usabilidade',
+  },
+  {
+    app_area: 'Aba Mais',
+    section: 'Podcasts devocionais',
+    mission_key: 'mais_abrir_podcasts_devocionais',
+    area: 'Aba Mais',
+    title: 'Abrir Podcasts devocionais',
+    estimated_minutes: 4,
+    objective:
+      'Testar se o card leva ao catálogo de podcasts e se a lista é clara.',
+    prerequisites: ['Ter podcasts cadastrados no ambiente de teste, se possível.'],
+    step_by_step: [
+      'Abra a Aba Mais.',
+      'Toque no card Podcasts devocionais.',
+      'Observe se abriu a tela Catálogo de podcasts.',
+      'Veja se existe um podcast em destaque.',
+      'Role a tela e observe as listas Podcasts para você e Todos os podcasts.',
+      'Relate se ficou claro onde tocar para abrir um podcast.',
+    ],
+    what_to_observe: [
+      'Se o card da Aba Mais abre a área correta.',
+      'Se o catálogo carrega sem tela branca.',
+      'Se as capas e quantidades de episódios ajudam.',
+      'Se o usuário entende que são séries/podcasts devocionais.',
+    ],
+    success_criteria:
+      'O catálogo abriu e a lista de podcasts ficou compreensível.',
+    problem_criteria:
+      'O card não abriu, a tela travou, ficou vazia sem explicação ou os podcasts não carregaram.',
+    confusing_criteria:
+      'O testador não soube qual podcast abrir ou não entendeu a lista.',
+    criticality: 'alta',
+    type: 'navegação',
+  },
+  {
+    app_area: 'Aba Mais',
+    section: 'Podcasts devocionais',
+    mission_key: 'mais_abrir_serie_e_episodio',
+    area: 'Aba Mais',
+    title: 'Abrir série e episódio',
+    estimated_minutes: 6,
+    objective:
+      'Testar navegação catálogo, série, episódio e voltar.',
+    prerequisites: ['Ter pelo menos um podcast com episódio publicado.'],
+    step_by_step: [
+      'Abra a Aba Mais.',
+      'Toque em Podcasts devocionais.',
+      'Escolha uma série ou podcast.',
+      'Observe se abriu a tela da série com capa, descrição e seção Episódios.',
+      'Toque em um episódio liberado.',
+      'Confira se abriu a tela do episódio.',
+      'Toque em Voltar aos episódios.',
+      'Depois toque em Voltar para podcasts.',
+      'Relate se a navegação de ida e volta ficou clara.',
+    ],
+    what_to_observe: [
+      'Se a série abre corretamente.',
+      'Se a lista de episódios é fácil de encontrar.',
+      'Se a tela do episódio tem título, capa, referência e descrição.',
+      'Se os botões de voltar levam para o lugar esperado.',
+    ],
+    success_criteria:
+      'Foi possível abrir uma série, abrir um episódio e voltar sem se perder.',
+    problem_criteria:
+      'Série ou episódio não abriu, voltou para lugar errado ou a tela travou.',
+    confusing_criteria:
+      'O testador não entendeu a diferença entre catálogo, série e episódio.',
+    criticality: 'alta',
+    type: 'navegação',
+  },
+  {
+    app_area: 'Aba Mais',
+    section: 'Podcasts devocionais',
+    mission_key: 'mais_testar_legenda_sincronizada',
+    area: 'Aba Mais',
+    title: 'Testar legenda sincronizada',
+    estimated_minutes: 5,
+    objective:
+      'Verificar legenda, ocultar/mostrar e aviso quando não há legenda.',
+    prerequisites: [
+      'Idealmente usar um episódio com legenda sincronizada.',
+      'Se o episódio não tiver legenda, testar se o aviso fica claro.',
+    ],
+    step_by_step: [
+      'Abra a Aba Mais.',
+      'Entre em Podcasts devocionais.',
+      'Abra um episódio liberado.',
+      'Procure a área Legenda sincronizada no player.',
+      'Toque em Ocultar.',
+      'Depois toque em Mostrar.',
+      'Dê play no áudio e observe se a legenda muda durante a reprodução.',
+      'Se não houver legenda, leia o aviso exibido.',
+    ],
+    what_to_observe: [
+      'Se a legenda aparece no momento certo.',
+      'Se Ocultar e Mostrar funcionam.',
+      'Se o texto da legenda é legível no celular.',
+      'Se a ausência de legenda fica bem explicada.',
+    ],
+    success_criteria:
+      'A legenda apareceu, ocultou, mostrou novamente ou o aviso sem legenda ficou claro.',
+    problem_criteria:
+      'Legenda travou, não acompanhou o áudio, botão não respondeu ou o aviso confundiu.',
+    confusing_criteria:
+      'O testador não entendeu para que serve a legenda sincronizada.',
+    criticality: 'média',
+    type: 'áudio',
+  },
+  {
+    app_area: 'Aba Mais',
+    section: 'Podcasts devocionais',
+    mission_key: 'mais_audio_iphone_safari',
+    area: 'Aba Mais',
+    title: 'Testar áudio no iPhone/Safari',
+    estimated_minutes: 8,
+    objective:
+      'Validar compatibilidade de áudio no iPhone, Safari ou PWA.',
+    prerequisites: [
+      'Missão indicada para quem usa iPhone, Safari ou app instalado na tela inicial.',
+      'Ter episódio com áudio disponível.',
+    ],
+    step_by_step: [
+      'Abra o app no Safari do iPhone ou pelo ícone instalado na tela inicial.',
+      'Entre na Aba Mais.',
+      'Toque em Podcasts devocionais.',
+      'Abra uma série e depois um episódio liberado.',
+      'Toque no botão de play.',
+      'Aguarde alguns segundos e observe se o áudio começa.',
+      'Pause e toque novamente para continuar.',
+      'Use +15s e -15s.',
+      'Relate se o áudio tocou normalmente no seu aparelho.',
+    ],
+    what_to_observe: [
+      'Se o áudio inicia no iPhone/Safari.',
+      'Se o som sai corretamente.',
+      'Se pausar e retomar funciona.',
+      'Se o tempo do player avança.',
+      'Se o app fica estável ao voltar para a lista.',
+    ],
+    success_criteria:
+      'O áudio tocou no iPhone/Safari/PWA e os controles responderam bem.',
+    problem_criteria:
+      'Áudio não iniciou, ficou carregando, parou sozinho ou controles falharam.',
+    confusing_criteria:
+      'O testador não soube confirmar se estava usando Safari, iPhone ou PWA.',
+    criticality: 'alta',
+    type: 'áudio',
+  },
+  {
+    app_area: 'Aba Mais',
+    section: 'Podcasts devocionais',
+    mission_key: 'mais_testar_premium_degustativo',
+    area: 'Aba Mais',
+    title: 'Testar podcast premium e degustativo',
+    estimated_minutes: 5,
+    objective:
+      'Confirmar se o bloqueio premium e o episódio degustativo são claros.',
+    prerequisites: [
+      'Ter uma série premium com episódios no ambiente de teste.',
+      'Estar em uma conta gratuita ou sem assinatura premium.',
+    ],
+    step_by_step: [
+      'Abra a Aba Mais.',
+      'Entre em Podcasts devocionais.',
+      'Procure um podcast marcado como Premium.',
+      'Abra o podcast.',
+      'Leia o aviso sobre episódio degustativo.',
+      'Toque no episódio degustativo, se aparecer.',
+      'Depois toque em um episódio premium bloqueado.',
+      'Leia o aviso que aparecer.',
+      'Relate se ficou claro o que está liberado e o que é premium.',
+    ],
+    what_to_observe: [
+      'Se o selo Premium é visível.',
+      'Se o episódio degustativo é fácil de identificar.',
+      'Se o bloqueio explica que não há cobrança naquele momento.',
+      'Se o usuário entende o que precisa para acessar tudo.',
+    ],
+    success_criteria:
+      'O degustativo ficou claro e o bloqueio premium explicou bem a limitação.',
+    problem_criteria:
+      'Episódio premium abriu indevidamente, degustativo não abriu ou o aviso confundiu.',
+    confusing_criteria:
+      'O testador não entendeu a diferença entre gratuito, degustativo e premium.',
+    criticality: 'alta',
+    type: 'premium',
+  },
+  {
+    app_area: 'Aba Mais',
+    section: 'Oferta',
+    mission_key: 'mais_abrir_oferta_copiar_pix',
+    area: 'Aba Mais',
+    title: 'Abrir Oferta e copiar PIX',
+    estimated_minutes: 5,
+    objective:
+      'Testar clareza, confiança e cópia da chave PIX.',
+    prerequisites: ['Ter chave PIX configurada no ambiente de teste.'],
+    step_by_step: [
+      'Abra a Aba Mais.',
+      'Toque no card Oferta.',
+      'Leia o título Apoie esta missão.',
+      'Observe o texto sobre contribuição voluntária.',
+      'Procure a área Chave PIX.',
+      'Toque em Copiar.',
+      'Veja se o botão muda para Copiado.',
+      'Leia os valores sugeridos e o bloco de Transparência.',
+      'Relate se a tela passa confiança.',
+    ],
+    what_to_observe: [
+      'Se a contribuição parece voluntária.',
+      'Se a chave PIX e o nome do recebedor são claros.',
+      'Se o botão Copiar funciona.',
+      'Se os valores sugeridos não parecem obrigatórios.',
+      'Se o texto transmite transparência.',
+    ],
+    success_criteria:
+      'A tela de oferta ficou clara e a chave PIX foi copiada.',
+    problem_criteria:
+      'PIX não copiou, tela pareceu insegura ou o usuário achou que valor sugerido era obrigatório.',
+    confusing_criteria:
+      'O testador não entendeu como contribuir ou ficou inseguro com a tela.',
+    criticality: 'alta',
+    type: 'contribuição',
+  },
+  {
+    app_area: 'Aba Mais',
+    section: 'Oferta',
+    mission_key: 'mais_oferta_sem_pix_configurado',
+    area: 'Aba Mais',
+    title: 'Oferta sem PIX configurado',
+    estimated_minutes: 3,
+    objective:
+      'Verificar se a tela sem chave PIX não parece quebrada.',
+    prerequisites: ['Só pode ser feita em ambiente onde a chave PIX não esteja configurada.'],
+    step_by_step: [
+      'Abra a Aba Mais.',
+      'Toque em Oferta.',
+      'Procure a área Chave PIX.',
+      'Observe se aparece PIX não configurado.',
+      'Veja se o botão Copiar fica indisponível.',
+      'Leia o restante da tela.',
+      'Relate se parece ausência temporária de configuração ou erro do app.',
+    ],
+    what_to_observe: [
+      'Se a falta de PIX fica clara.',
+      'Se a tela evita parecer quebrada.',
+      'Se o botão Copiar não causa erro.',
+      'Se ainda há texto pastoral suficiente.',
+    ],
+    success_criteria:
+      'A ausência de PIX ficou clara e a tela não pareceu quebrada.',
+    problem_criteria:
+      'A tela pareceu com erro, o botão tentou copiar vazio ou faltou explicação.',
+    confusing_criteria:
+      'O testador não entendeu se era erro ou configuração pendente.',
+    criticality: 'média',
+    type: 'contribuição',
+  },
+  {
+    app_area: 'Aba Mais',
+    section: 'Vídeos',
+    mission_key: 'mais_entender_recursos_futuros',
+    area: 'Aba Mais',
+    title: 'Entender recursos futuros',
+    estimated_minutes: 4,
+    objective:
+      'Validar se Vídeos e Missões/projetos parecem recursos futuros planejados, não erro.',
+    prerequisites: ['Nenhum.'],
+    step_by_step: [
+      'Abra a Aba Mais.',
+      'Procure o card Vídeos.',
+      'Leia o texto e observe o badge Em breve.',
+      'Tente tocar no card e observe se ele está indisponível.',
+      'Procure o card Missões e projetos.',
+      'Leia o texto e observe o badge Futuro.',
+      'Relate se ficou claro que essas áreas ainda serão liberadas.',
+    ],
+    what_to_observe: [
+      'Se os cards futuros parecem intencionais.',
+      'Se Em breve e Futuro são claros.',
+      'Se o estado desabilitado não parece erro.',
+      'Se o usuário entende que não há ação por enquanto.',
+    ],
+    success_criteria:
+      'Vídeos e Missões/projetos foram entendidos como recursos futuros.',
+    problem_criteria:
+      'Os cards pareceram quebrados, frustrantes ou clicáveis sem resposta clara.',
+    confusing_criteria:
+      'O testador achou que deveria abrir uma tela agora.',
+    criticality: 'média',
+    type: 'recurso futuro',
+  },
+  {
+    app_area: 'Aba Mais',
+    section: 'Jornadas Premium',
+    mission_key: 'mais_registrar_interesse_premium',
+    area: 'Aba Mais',
+    title: 'Registrar interesse em Jornadas Premium',
+    estimated_minutes: 5,
+    objective:
+      'Testar modal, campos, login e salvamento de interesse.',
+    prerequisites: [
+      'Para envio completo, estar logado no app.',
+      'Sem login, relatar a mensagem exibida.',
+    ],
+    step_by_step: [
+      'Abra a Aba Mais.',
+      'Toque no card Jornadas Premium.',
+      'Observe se abriu o modal Quero ser avisado.',
+      'Escolha uma área no campo de seleção.',
+      'Escreva uma observação curta, se desejar.',
+      'Toque em Registrar interesse.',
+      'Se aparecer mensagem de login, leia e relate.',
+      'Se estiver logado, observe se aparece agradecimento.',
+      'Feche o modal ou toque em Agora não, se necessário.',
+    ],
+    what_to_observe: [
+      'Se o modal abre sem travar.',
+      'Se as áreas de interesse são claras.',
+      'Se a mensagem sem login ajuda.',
+      'Se o envio com login mostra confirmação.',
+      'Se parece interesse futuro, não cobrança imediata.',
+    ],
+    success_criteria:
+      'O modal funcionou e o interesse foi registrado ou pediu login de forma clara.',
+    problem_criteria:
+      'Modal travou, envio falhou sem explicação ou pareceu cobrança.',
+    confusing_criteria:
+      'O testador não entendeu se estava comprando algo ou apenas registrando interesse.',
+    criticality: 'média',
+    type: 'premium',
+  },
+  {
+    app_area: 'Aba Mais',
+    section: 'Central do Testador',
+    mission_key: 'mais_abrir_central_testador_beta',
+    area: 'Aba Mais',
+    title: 'Abrir Central do Testador Beta',
+    estimated_minutes: 4,
+    objective:
+      'Validar entrada na Central, identidade beta e retorno para Aba Mais.',
+    prerequisites: ['Nenhum.'],
+    step_by_step: [
+      'Abra a Aba Mais.',
+      'Toque no card Central do Testador Beta.',
+      'Observe se a Central abre na mesma área.',
+      'Leia o badge Beta fechado.',
+      'Veja os contadores de missões e áreas em teste.',
+      'Toque em Voltar para Mais.',
+      'Confira se voltou para os cards da Aba Mais.',
+    ],
+    what_to_observe: [
+      'Se o card Beta é fácil de encontrar.',
+      'Se a Central parece uma área de teste real.',
+      'Se o botão Voltar para Mais funciona.',
+      'Se o testador entende que as respostas ficam locais por enquanto.',
+    ],
+    success_criteria:
+      'A Central abriu, ficou clara como beta e voltou para Aba Mais.',
+    problem_criteria:
+      'Central não abriu, não voltou ou pareceu uma tela perdida.',
+    confusing_criteria:
+      'O testador não entendeu o que é a Central do Testador Beta.',
+    criticality: 'alta',
+    type: 'beta',
+  },
+  {
+    app_area: 'Aba Mais',
+    section: 'Configurações',
+    mission_key: 'mais_encontrar_configuracoes_engrenagem',
+    area: 'Aba Mais',
+    title: 'Encontrar Configurações pela engrenagem',
+    estimated_minutes: 3,
+    objective:
+      'Testar se o usuário entende que configurações ficam na engrenagem do topo.',
+    prerequisites: ['Nenhum.'],
+    step_by_step: [
+      'Abra a Aba Mais.',
+      'Role até o bloco Configurações ficam na engrenagem.',
+      'Leia o texto sobre conta, notificações, privacidade, assinatura e status técnico.',
+      'Procure a engrenagem no topo do app.',
+      'Toque na engrenagem.',
+      'Observe se abriu a área de configurações.',
+      'Relate se esperava encontrar configurações dentro da Aba Mais.',
+    ],
+    what_to_observe: [
+      'Se o bloco explica bem onde ficam as configurações.',
+      'Se a engrenagem é fácil de encontrar.',
+      'Se o usuário entende que configurações não são um card da Aba Mais.',
+      'Se o caminho até conta/notificações fica claro.',
+    ],
+    success_criteria:
+      'O testador encontrou a engrenagem e entendeu onde ficam as configurações.',
+    problem_criteria:
+      'O testador não encontrou configurações ou a engrenagem não abriu a tela correta.',
+    confusing_criteria:
+      'O testador esperava um card de configurações dentro da Aba Mais.',
+    criticality: 'média',
+    type: 'navegação',
+  },
+  {
     app_area: 'Aba Hoje',
     section: 'Áudio de Hoje',
     mission_key: 'hoje_ouvir_audio_do_dia',

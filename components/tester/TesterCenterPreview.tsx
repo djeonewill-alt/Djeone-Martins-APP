@@ -55,6 +55,8 @@ const appAreaDescriptions: Record<string, string> = {
 }
 
 const sectionDescriptions: Record<string, string> = {
+  'Visão geral':
+    'Teste se a área apresenta bem os recursos extras e caminhos principais do app.',
   'Áudio de Hoje':
     'Teste o card do áudio, Mini Player, favoritos e comportamento em aparelhos reais.',
   'Compartilhamento':
@@ -83,15 +85,19 @@ const sectionDescriptions: Record<string, string> = {
     'Testes de jornadas guiadas serão preparados quando a área estiver ativa.',
   'Central do Testador':
     'Testes da própria central serão preparados conforme a experiência evoluir.',
+  Configurações:
+    'Teste se fica claro que conta, notificações e preferências ficam na engrenagem.',
 }
 
 const abaMaisSections = [
+  'Visão geral',
   'Podcasts devocionais',
   'Oferta',
   'Vídeos',
   'Missões e projetos',
   'Jornadas Premium',
   'Central do Testador',
+  'Configurações',
 ]
 
 const abaLeituraSections = ['Hoje', 'Planos', 'Bíblia', 'Progresso']
