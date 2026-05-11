@@ -4,7 +4,12 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { betaMissions } from './betaMissions'
 import type { BetaMission, MissionResult, MissionResultStatus } from './types'
 import { loadBetaMissionResults, saveBetaMissionResult } from '@/lib/beta/betaMissionResults'
-import { useBetaTester } from '@/lib/beta/betaTester'
+import { useBetaTester, type BetaTester } from '@/lib/beta/betaTester'
+import {
+  loadBetaFinalFeedback,
+  saveBetaFinalFeedback,
+  type BetaFinalFeedback,
+} from '@/lib/beta/betaFinalFeedback'
 
 type TesterCenterPreviewProps = {
   onBack: () => void
@@ -251,6 +256,9 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
   const [reportText, setReportText] = useState('')
   const [missionResults, setMissionResults] = useState<Record<string, MissionResult>>({})
   const [syncMessage, setSyncMessage] = useState('')
+  const [finalFeedback, setFinalFeedback] = useState<BetaFinalFeedback | null>(null)
+  const [showFinalFeedback, setShowFinalFeedback] = useState(false)
+  const [showFounderMedal, setShowFounderMedal] = useState(false)
   const { isBetaTester, betaTester } = useBetaTester()
 
   useEffect(() => {
@@ -282,6 +290,33 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
     }
   }, [betaTester, isBetaTester])
 
+  useEffect(() => {
+    let mounted = true
+
+    async function loadSavedFeedback() {
+      if (!isBetaTester || !betaTester) {
+        setFinalFeedback(null)
+        return
+      }
+
+      try {
+        const savedFeedback = await loadBetaFinalFeedback(betaTester)
+
+        if (mounted) {
+          setFinalFeedback(savedFeedback)
+        }
+      } catch (error) {
+        console.error('Erro ao carregar feedback final beta:', error)
+      }
+    }
+
+    loadSavedFeedback()
+
+    return () => {
+      mounted = false
+    }
+  }, [betaTester, isBetaTester])
+
   const appAreaSummaries = useMemo(
     () => getAppAreaSummaries(missionResults),
     [missionResults]
@@ -301,8 +336,14 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
   const completedMissions = betaMissions.filter((mission) =>
     isCompleted(missionResults[mission.mission_key])
   ).length
-  const responseCount = Object.keys(missionResults).length
-  const areasInTest = appAreaSummaries.filter((summary) => summary.missions.length > 0).length
+  const showFeedbackFinalStep = Boolean(isBetaTester && betaTester)
+  const finalFeedbackSubmitted = Boolean(finalFeedback)
+  const missionCount = betaMissions.length + (showFeedbackFinalStep ? 1 : 0)
+  const completedCount = completedMissions + (finalFeedbackSubmitted ? 1 : 0)
+  const responseCount = Object.keys(missionResults).length + (finalFeedbackSubmitted ? 1 : 0)
+  const areasInTest =
+    appAreaSummaries.filter((summary) => summary.missions.length > 0).length +
+    (showFeedbackFinalStep ? 1 : 0)
 
   const resetTemporaryMissionState = () => {
     setMissionFlow('intro')
@@ -311,6 +352,8 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
   }
 
   const openAppArea = (appArea: string) => {
+    setShowFinalFeedback(false)
+    setShowFounderMedal(false)
     setSelectedAppArea(appArea)
     setSelectedSection(null)
     setSelectedMissionKey(null)
@@ -324,15 +367,37 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
   }
 
   const openMission = (missionKey: string) => {
+    setShowFinalFeedback(false)
+    setShowFounderMedal(false)
     setSelectedMissionKey(missionKey)
     resetTemporaryMissionState()
   }
 
   const backToHome = () => {
+    setShowFinalFeedback(false)
+    setShowFounderMedal(false)
     setSelectedAppArea(null)
     setSelectedSection(null)
     setSelectedMissionKey(null)
     resetTemporaryMissionState()
+  }
+
+  const openFinalFeedback = () => {
+    setSelectedAppArea(null)
+    setSelectedSection(null)
+    setSelectedMissionKey(null)
+    resetTemporaryMissionState()
+    setShowFounderMedal(false)
+    setShowFinalFeedback(true)
+  }
+
+  const showMedal = () => {
+    setSelectedAppArea(null)
+    setSelectedSection(null)
+    setSelectedMissionKey(null)
+    resetTemporaryMissionState()
+    setShowFinalFeedback(false)
+    setShowFounderMedal(true)
   }
 
   const backToArea = () => {
@@ -425,6 +490,11 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
     setMissionFlow('completed')
   }
 
+  const handleFinalFeedbackSubmitted = (feedback: BetaFinalFeedback) => {
+    setFinalFeedback(feedback)
+    showMedal()
+  }
+
   const currentMissionList =
     selectedSectionSummary?.missions ||
     selectedAreaSummary?.missions ||
@@ -439,6 +509,27 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
     const nextMission = currentMissionList[currentIndex + 1] || currentMissionList[0]
 
     openMission(nextMission.mission_key)
+  }
+
+  if (showFounderMedal && betaTester) {
+    return (
+      <FounderBetaMedal
+        betaTester={betaTester}
+        onBack={backToHome}
+      />
+    )
+  }
+
+  if (showFinalFeedback && betaTester) {
+    return (
+      <FinalFeedbackView
+        betaTester={betaTester}
+        feedback={finalFeedback}
+        onBack={backToHome}
+        onSubmitted={handleFinalFeedbackSubmitted}
+        onShowMedal={showMedal}
+      />
+    )
   }
 
   if (selectedMission && selectedAreaSummary) {
@@ -515,12 +606,15 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
   return (
     <TesterHome
       summaries={appAreaSummaries}
-      missionCount={betaMissions.length}
-      completedCount={completedMissions}
+      missionCount={missionCount}
+      completedCount={completedCount}
       responseCount={responseCount}
       areasInTest={areasInTest}
+      showFinalFeedback={showFeedbackFinalStep}
+      finalFeedbackSubmitted={finalFeedbackSubmitted}
       onBack={onBack}
       onOpenArea={openAppArea}
+      onOpenFinalFeedback={openFinalFeedback}
     />
   )
 }
@@ -539,16 +633,22 @@ function TesterHome({
   completedCount,
   responseCount,
   areasInTest,
+  showFinalFeedback,
+  finalFeedbackSubmitted,
   onBack,
   onOpenArea,
+  onOpenFinalFeedback,
 }: {
   summaries: AppAreaSummary[]
   missionCount: number
   completedCount: number
   responseCount: number
   areasInTest: number
+  showFinalFeedback: boolean
+  finalFeedbackSubmitted: boolean
   onBack: () => void
   onOpenArea: (appArea: string) => void
+  onOpenFinalFeedback: () => void
 }) {
   return (
     <PageShell>
@@ -599,6 +699,22 @@ function TesterHome({
                 </div>
               </div>
             ))}
+          {showFinalFeedback && (
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-3 text-xs font-black text-slate-300">
+                <span>Feedback Final</span>
+                <span>{finalFeedbackSubmitted ? '1/1' : '0/1'}</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-slate-800">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-amber-300 to-yellow-500"
+                  style={{
+                    width: finalFeedbackSubmitted ? '100%' : '0%',
+                  }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
@@ -638,6 +754,34 @@ function TesterHome({
             </div>
           </button>
         ))}
+        {showFinalFeedback && (
+          <button
+            type="button"
+            onClick={onOpenFinalFeedback}
+            className="rounded-[28px] border border-amber-300/25 bg-gradient-to-br from-slate-900 via-slate-950 to-amber-950/30 p-5 text-left shadow-2xl shadow-amber-950/10 active:scale-[0.99]"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-black tracking-[-0.04em] text-white">
+                  Feedback Final
+                </h2>
+                <p className="mt-2 text-sm font-semibold leading-6 text-slate-400">
+                  Encerre sua jornada beta com um relato geral e desbloqueie a medalha Fundador Beta.
+                </p>
+              </div>
+
+              <span className="shrink-0 rounded-full border border-amber-300/25 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-100">
+                {finalFeedbackSubmitted ? 'Enviado' : 'Etapa final'}
+              </span>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <InfoPill>Feedback final</InfoPill>
+              <InfoPill>{finalFeedbackSubmitted ? 'Concluido' : 'Pendente'}</InfoPill>
+              <InfoPill>Medalha Fundador Beta</InfoPill>
+            </div>
+          </button>
+        )}
       </section>
     </PageShell>
   )
@@ -1025,6 +1169,351 @@ function MissionDetail({
         )}
       </section>
     </PageShell>
+  )
+}
+
+function FinalFeedbackView({
+  betaTester,
+  feedback,
+  onBack,
+  onSubmitted,
+  onShowMedal,
+}: {
+  betaTester: BetaTester
+  feedback: BetaFinalFeedback | null
+  onBack: () => void
+  onSubmitted: (feedback: BetaFinalFeedback) => void
+  onShowMedal: () => void
+}) {
+  const [form, setForm] = useState({
+    overall_experience: '',
+    favorite_area: '',
+    most_confusing_area: '',
+    biggest_problem: '',
+    pastoral_feedback: '',
+    final_suggestions: '',
+  })
+  const [wouldRecommend, setWouldRecommend] = useState<'yes' | 'no' | ''>('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
+
+  const canSubmit = form.overall_experience.trim().length > 0 && wouldRecommend !== ''
+
+  const updateField = (field: keyof typeof form, value: string) => {
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }))
+  }
+
+  const handleSubmit = async () => {
+    if (!canSubmit || isSubmitting) return
+
+    setIsSubmitting(true)
+    setErrorMessage('')
+
+    const pastoralFeedback = [
+      form.pastoral_feedback.trim(),
+      form.final_suggestions.trim()
+        ? `Sugestoes finais:\n${form.final_suggestions.trim()}`
+        : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n')
+
+    try {
+      const savedFeedback = await saveBetaFinalFeedback(betaTester, {
+        overall_experience: form.overall_experience,
+        favorite_area: form.favorite_area,
+        most_confusing_area: form.most_confusing_area,
+        biggest_problem: form.biggest_problem,
+        pastoral_feedback: pastoralFeedback,
+        would_recommend: wouldRecommend === 'yes',
+      })
+
+      onSubmitted(savedFeedback)
+    } catch (error) {
+      console.error('Erro ao salvar feedback final beta:', error)
+      setErrorMessage('Nao foi possivel enviar agora. Confira sua conexao e tente novamente.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  if (feedback) {
+    return (
+      <PageShell>
+        <BackButton onClick={onBack}>Voltar para Central</BackButton>
+
+        <section className="rounded-[34px] border border-emerald-300/20 bg-slate-900/80 p-6 shadow-2xl shadow-black/20">
+          <span className="inline-flex rounded-full border border-emerald-300/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-100">
+            Feedback final enviado
+          </span>
+
+          <h1 className="mt-4 text-3xl font-black leading-none tracking-[-0.06em] text-white">
+            Obrigado por completar sua jornada beta
+          </h1>
+
+          <p className="mt-4 text-sm font-semibold leading-6 text-slate-300">
+            Seu feedback final ja foi registrado. Ele ajuda a preparar uma ferramenta mais clara,
+            estavel e edificante para outras pessoas.
+          </p>
+
+          <div className="mt-5 rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
+            <p className="text-sm font-black text-white">Resumo enviado</p>
+            <div className="mt-3 space-y-3 text-sm font-semibold leading-6 text-slate-300">
+              {feedback.overall_experience && <p>{feedback.overall_experience}</p>}
+              {feedback.favorite_area && <p>Area favorita: {feedback.favorite_area}</p>}
+              {feedback.most_confusing_area && (
+                <p>Area mais confusa: {feedback.most_confusing_area}</p>
+              )}
+              {feedback.would_recommend !== null && feedback.would_recommend !== undefined && (
+                <p>Indicaria o app: {feedback.would_recommend ? 'Sim' : 'Nao'}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={onShowMedal}
+              className="rounded-2xl bg-amber-500 px-5 py-4 text-sm font-black text-slate-950 shadow-xl shadow-amber-950/30 active:scale-[0.98]"
+            >
+              Ver medalha Fundador Beta
+            </button>
+            <button
+              type="button"
+              onClick={onBack}
+              className="rounded-2xl border border-white/10 bg-slate-950 px-5 py-4 text-sm font-black text-slate-100 active:scale-[0.98]"
+            >
+              Voltar para Central
+            </button>
+          </div>
+        </section>
+      </PageShell>
+    )
+  }
+
+  return (
+    <PageShell>
+      <BackButton onClick={onBack}>Voltar para Central</BackButton>
+
+      <section className="rounded-[34px] border border-amber-300/20 bg-gradient-to-br from-slate-900 via-slate-950 to-amber-950/20 p-6 shadow-2xl shadow-black/20">
+        <span className="inline-flex rounded-full border border-amber-300/20 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-amber-100">
+          Etapa final
+        </span>
+
+        <h1 className="mt-4 text-3xl font-black leading-none tracking-[-0.06em] text-white">
+          Feedback Final do Beta
+        </h1>
+
+        <p className="mt-4 text-sm font-semibold leading-6 text-slate-300">
+          Conte como foi sua experiencia. Seu relato fecha a jornada beta e ajuda a preparar
+          o app para servir melhor outras pessoas.
+        </p>
+
+        <div className="mt-6 space-y-4">
+          <FeedbackTextarea
+            label="Como foi sua experiencia geral com o app?"
+            value={form.overall_experience}
+            onChange={(value) => updateField('overall_experience', value)}
+            required
+          />
+
+          <FeedbackInput
+            label="Qual area voce mais gostou?"
+            value={form.favorite_area}
+            onChange={(value) => updateField('favorite_area', value)}
+            placeholder="Ex.: Aba Hoje, Oração, Leitura..."
+          />
+
+          <FeedbackInput
+            label="Qual area ficou mais confusa?"
+            value={form.most_confusing_area}
+            onChange={(value) => updateField('most_confusing_area', value)}
+            placeholder="Conte se alguma area ficou dificil de entender."
+          />
+
+          <FeedbackTextarea
+            label="Qual foi o maior problema que encontrou?"
+            value={form.biggest_problem}
+            onChange={(value) => updateField('biggest_problem', value)}
+          />
+
+          <FeedbackTextarea
+            label="O app te ajudou espiritualmente de alguma forma?"
+            value={form.pastoral_feedback}
+            onChange={(value) => updateField('pastoral_feedback', value)}
+          />
+
+          <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
+            <p className="text-sm font-black text-white">
+              Voce indicaria este app para alguem?
+            </p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setWouldRecommend('yes')}
+                className={`rounded-2xl border px-4 py-3 text-left text-sm font-black active:scale-[0.98] ${
+                  wouldRecommend === 'yes'
+                    ? 'border-emerald-300/40 bg-emerald-500/20 text-emerald-50'
+                    : 'border-white/10 bg-slate-950 text-slate-200'
+                }`}
+              >
+                Sim, indicaria
+              </button>
+              <button
+                type="button"
+                onClick={() => setWouldRecommend('no')}
+                className={`rounded-2xl border px-4 py-3 text-left text-sm font-black active:scale-[0.98] ${
+                  wouldRecommend === 'no'
+                    ? 'border-amber-300/40 bg-amber-500/20 text-amber-50'
+                    : 'border-white/10 bg-slate-950 text-slate-200'
+                }`}
+              >
+                Ainda nao
+              </button>
+            </div>
+          </div>
+
+          <FeedbackTextarea
+            label="Sugestoes finais"
+            value={form.final_suggestions}
+            onChange={(value) => updateField('final_suggestions', value)}
+          />
+
+          {errorMessage && (
+            <div className="rounded-[22px] border border-red-300/20 bg-red-500/10 p-4">
+              <p className="text-sm font-black text-red-100">{errorMessage}</p>
+            </div>
+          )}
+
+          <button
+            type="button"
+            disabled={!canSubmit || isSubmitting}
+            onClick={handleSubmit}
+            className="w-full rounded-2xl bg-amber-500 px-5 py-4 text-sm font-black text-slate-950 shadow-xl shadow-amber-950/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isSubmitting ? 'Enviando feedback...' : 'Enviar feedback final'}
+          </button>
+        </div>
+      </section>
+    </PageShell>
+  )
+}
+
+function FounderBetaMedal({
+  betaTester,
+  onBack,
+}: {
+  betaTester: BetaTester
+  onBack: () => void
+}) {
+  const founderNumber = betaTester.founder_number
+    ? String(betaTester.founder_number).padStart(3, '0')
+    : null
+
+  return (
+    <PageShell>
+      <BackButton onClick={onBack}>Voltar para Central</BackButton>
+
+      <section className="overflow-hidden rounded-[34px] border border-amber-300/30 bg-gradient-to-br from-slate-950 via-slate-900 to-amber-950/40 p-6 text-center shadow-2xl shadow-amber-950/20">
+        <div className="mx-auto flex h-40 w-40 items-center justify-center rounded-full border border-amber-200/40 bg-gradient-to-br from-amber-200 via-yellow-500 to-amber-800 p-2 shadow-2xl shadow-amber-500/20 transition duration-500">
+          <div className="flex h-full w-full items-center justify-center rounded-full border border-white/40 bg-gradient-to-br from-yellow-100 via-amber-300 to-yellow-700">
+            <div className="rounded-full border border-amber-900/20 bg-slate-950/90 px-5 py-4 shadow-inner">
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-100">
+                Fundador
+              </p>
+              <p className="mt-1 text-3xl font-black tracking-[-0.06em] text-amber-200">
+                Beta
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <p className="mt-7 text-[11px] font-black uppercase tracking-[0.22em] text-amber-100">
+          Medalha desbloqueada
+        </p>
+        <h1 className="mt-3 text-4xl font-black leading-none tracking-[-0.075em] text-white">
+          Fundador Beta
+        </h1>
+
+        {founderNumber && (
+          <div className="mx-auto mt-4 inline-flex rounded-full border border-amber-300/25 bg-amber-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-amber-100">
+            Testador fundador #{founderNumber}
+          </div>
+        )}
+
+        <p className="mx-auto mt-5 max-w-md text-sm font-semibold leading-6 text-slate-300">
+          Voce participou da fase inicial de testes do app Devocional Diario e ajudou a preparar
+          esta ferramenta para servir melhor outras pessoas.
+        </p>
+
+        <p className="mx-auto mt-4 max-w-md text-sm font-black leading-6 text-amber-100">
+          Obrigado por semear tempo, atencao e cuidado nesta obra.
+        </p>
+
+        <button
+          type="button"
+          onClick={onBack}
+          className="mt-7 rounded-2xl bg-amber-500 px-6 py-4 text-sm font-black text-slate-950 shadow-xl shadow-amber-950/30 active:scale-[0.98]"
+        >
+          Voltar para Central
+        </button>
+      </section>
+    </PageShell>
+  )
+}
+
+function FeedbackInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  placeholder?: string
+}) {
+  return (
+    <label className="block rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
+      <span className="text-sm font-black text-white">{label}</span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="mt-3 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-semibold text-white outline-none placeholder:text-slate-600 focus:border-amber-300/60"
+      />
+    </label>
+  )
+}
+
+function FeedbackTextarea({
+  label,
+  value,
+  onChange,
+  required,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  required?: boolean
+}) {
+  return (
+    <label className="block rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
+      <span className="text-sm font-black text-white">
+        {label}
+        {required && <span className="text-amber-200"> *</span>}
+      </span>
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        rows={4}
+        className="mt-3 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-semibold leading-6 text-white outline-none placeholder:text-slate-600 focus:border-amber-300/60"
+        placeholder="Escreva com liberdade. Pode ser breve."
+      />
+    </label>
   )
 }
 
