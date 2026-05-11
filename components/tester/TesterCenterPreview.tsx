@@ -87,6 +87,18 @@ const sectionDescriptions: Record<string, string> = {
     'Testes da própria central serão preparados conforme a experiência evoluir.',
   Configurações:
     'Teste se fica claro que conta, notificações e preferências ficam na engrenagem.',
+  Conta:
+    'Teste login, dados pessoais, perfil e clareza para usuários com ou sem conta.',
+  Privacidade:
+    'Teste documentos legais, dados locais, exclusão de conta e segurança.',
+  Assinatura:
+    'Teste plano atual, cobranças futuras e clareza sobre recursos em breve.',
+  Ajuda:
+    'Teste contato com suporte, dúvidas e relato de problemas.',
+  'Status técnico':
+    'Teste versão do app, status de login, notificações e informações do dispositivo.',
+  Sair:
+    'Teste o fluxo de logout e se o usuário encontra o botão no lugar esperado.',
 }
 
 const abaMaisSections = [
@@ -101,6 +113,17 @@ const abaMaisSections = [
 ]
 
 const abaLeituraSections = ['Hoje', 'Planos', 'Bíblia', 'Progresso']
+
+const configuracoesSections = [
+  'Configurações',
+  'Conta',
+  'Notificações',
+  'Privacidade',
+  'Assinatura',
+  'Ajuda',
+  'Status técnico',
+  'Sair',
+]
 
 const statusLabels: Record<MissionResultStatus, string> = {
   success: 'Concluída',
@@ -153,6 +176,8 @@ function getSectionSummaries(
       ? abaMaisSections
       : appArea === 'Aba Leitura'
         ? abaLeituraSections
+      : appArea === 'Configurações / Conta'
+        ? configuracoesSections
       : Array.from(new Set(missions.map((mission) => mission.section || mission.area)))
 
   return sectionNames.map((section) => {

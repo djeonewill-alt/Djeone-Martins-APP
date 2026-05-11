@@ -1730,4 +1730,423 @@ export const betaMissions: BetaMission[] = [
     criticality: 'alta',
     type: 'persistência/usabilidade',
   },
+  {
+    app_area: 'Configurações / Conta',
+    section: 'Configurações',
+    mission_key: 'config_encontrar_engrenagem',
+    area: 'Configurações / Conta',
+    title: 'Encontrar Configurações pela Engrenagem',
+    estimated_minutes: 3,
+    objective:
+      'Verificar se o usuário encontra a engrenagem e abre a tela de ajustes.',
+    prerequisites: ['Nenhum.'],
+    step_by_step: [
+      'Abra o app na tela inicial.',
+      'Procure a engrenagem no topo do app, perto do nome Djeone Martins.',
+      'Toque na engrenagem.',
+      'Observe se abriu a tela Configurações.',
+      'Leia o título Ajustes do aplicativo.',
+      'Relate se a engrenagem foi fácil de encontrar.',
+    ],
+    what_to_observe: [
+      'Se a engrenagem é visível no celular.',
+      'Se o usuário entende que ela abre ajustes.',
+      'Se a tela Configurações abre sem travar.',
+      'Se o caminho parece natural.',
+    ],
+    success_criteria:
+      'O testador encontrou a engrenagem e abriu Configurações sem ajuda.',
+    problem_criteria:
+      'A engrenagem não abriu, sumiu, ficou difícil de tocar ou a tela travou.',
+    confusing_criteria:
+      'O testador não percebeu que a engrenagem era o caminho para ajustes.',
+    criticality: 'alta',
+    type: 'navegação',
+  },
+  {
+    app_area: 'Configurações / Conta',
+    section: 'Configurações',
+    mission_key: 'config_entender_tela_configuracoes',
+    area: 'Configurações / Conta',
+    title: 'Entender a Tela de Configurações',
+    estimated_minutes: 4,
+    objective:
+      'Validar se as seções da tela fazem sentido.',
+    prerequisites: ['Nenhum.'],
+    step_by_step: [
+      'Abra Configurações pela engrenagem.',
+      'Leia o texto abaixo de Ajustes do aplicativo.',
+      'Observe as seções Minha conta, Notificações, Privacidade e segurança, Assinatura e cobrança, Ajuda e contato e Status técnico.',
+      'Toque em duas seções diferentes para abrir e fechar.',
+      'Observe os sinais de mais e menos.',
+      'Relate se a organização da tela ficou clara.',
+    ],
+    what_to_observe: [
+      'Se os nomes das seções são fáceis de entender.',
+      'Se abrir e fechar seções é intuitivo.',
+      'Se a tela parece profissional e acolhedora.',
+      'Se alguma seção parece fora do lugar.',
+    ],
+    success_criteria:
+      'As seções foram compreendidas e a navegação por elas ficou clara.',
+    problem_criteria:
+      'Seções não abriram, ficaram confusas ou a tela pareceu desorganizada.',
+    confusing_criteria:
+      'O testador não entendeu o que cada seção faz.',
+    criticality: 'média',
+    type: 'usabilidade',
+  },
+  {
+    app_area: 'Configurações / Conta',
+    section: 'Conta',
+    mission_key: 'config_ver_minha_conta_sem_login',
+    area: 'Configurações / Conta',
+    title: 'Ver Minha Conta sem Login',
+    estimated_minutes: 3,
+    objective:
+      'Testar se o convite para entrar/criar conta é claro.',
+    prerequisites: ['Estar sem login no app.'],
+    step_by_step: [
+      'Abra o app sem estar logado.',
+      'Toque na engrenagem no topo.',
+      'Abra a seção Minha conta, se ela não estiver aberta.',
+      'Leia a mensagem Entre para sincronizar seus dados.',
+      'Observe o botão Entrar ou criar conta.',
+      'Relate se ficou claro por que entrar na conta ajuda.',
+    ],
+    what_to_observe: [
+      'Se a mensagem para entrar é clara.',
+      'Se o botão de entrada é fácil de encontrar.',
+      'Se o usuário entende o benefício de criar conta.',
+      'Se a tela não parece erro por estar sem login.',
+    ],
+    success_criteria:
+      'O convite para entrar/criar conta ficou claro e acolhedor.',
+    problem_criteria:
+      'A tela pareceu quebrada, vazia ou sem explicar o que fazer.',
+    confusing_criteria:
+      'O testador não entendeu por que precisava entrar na conta.',
+    criticality: 'média',
+    type: 'usabilidade',
+  },
+  {
+    app_area: 'Configurações / Conta',
+    section: 'Conta',
+    mission_key: 'config_editar_dados_conta',
+    area: 'Configurações / Conta',
+    title: 'Editar Dados da Conta',
+    estimated_minutes: 6,
+    objective:
+      'Validar campos do perfil e salvamento.',
+    prerequisites: ['Estar logado no app.'],
+    step_by_step: [
+      'Abra Configurações pela engrenagem.',
+      'Entre na seção Minha conta.',
+      'Toque no card Dados pessoais para abrir os campos, se necessário.',
+      'Altere o campo Nome com um valor de teste simples.',
+      'Confira se o e-mail aparece, mas não pode ser editado.',
+      'Preencha ou ajuste cidade, país ou outro campo simples.',
+      'Toque em Salvar alterações.',
+      'Observe se aparece mensagem de sucesso.',
+      'Relate se os campos ficaram claros.',
+    ],
+    what_to_observe: [
+      'Se os campos são fáceis de preencher.',
+      'Se o e-mail desabilitado faz sentido.',
+      'Se o botão Salvar alterações responde.',
+      'Se a mensagem de sucesso ou erro é clara.',
+    ],
+    success_criteria:
+      'Os dados foram salvos e a mensagem de sucesso apareceu.',
+    problem_criteria:
+      'Não salvou, mostrou erro confuso, perdeu dados ou travou.',
+    confusing_criteria:
+      'O testador não entendeu quais dados podia editar.',
+    criticality: 'alta',
+    type: 'usabilidade',
+  },
+  {
+    app_area: 'Configurações / Conta',
+    section: 'Notificações',
+    mission_key: 'config_ativar_desativar_notificacoes',
+    area: 'Configurações / Conta',
+    title: 'Ativar ou Desativar Notificações',
+    estimated_minutes: 6,
+    objective:
+      'Testar permissão, mensagens e estado ativo/inativo.',
+    prerequisites: [
+      'Estar logado no app.',
+      'Usar um navegador compatível com notificações.',
+    ],
+    step_by_step: [
+      'Abra Configurações pela engrenagem.',
+      'Toque na seção Notificações.',
+      'Observe se aparece Ativar notificações ou Desativar notificações.',
+      'Toque no botão principal de notificações.',
+      'Se o navegador pedir permissão, escolha permitir para testar.',
+      'Observe se aparece mensagem de ativação, desativação ou erro.',
+      'Veja se o badge muda para Ativo, Inativo ou Carregando.',
+      'Relate exatamente a mensagem exibida se algo falhar.',
+    ],
+    what_to_observe: [
+      'Se o estado atual das notificações é claro.',
+      'Se a permissão do navegador aparece de forma compreensível.',
+      'Se os alertas ajudam o usuário.',
+      'Se recursos em breve não confundem.',
+    ],
+    success_criteria:
+      'O app ativou ou desativou notificações com mensagem clara.',
+    problem_criteria:
+      'Botão travou, pediu permissão repetidamente, erro apareceu ou estado ficou incoerente.',
+    confusing_criteria:
+      'O testador não soube se notificações ficaram ligadas ou desligadas.',
+    criticality: 'alta',
+    type: 'notificação',
+  },
+  {
+    app_area: 'Configurações / Conta',
+    section: 'Privacidade',
+    mission_key: 'config_entender_privacidade_seguranca',
+    area: 'Configurações / Conta',
+    title: 'Entender Privacidade e Segurança',
+    estimated_minutes: 5,
+    objective:
+      'Verificar se política, termos, dados e exclusão são claros.',
+    prerequisites: ['Nenhum.'],
+    step_by_step: [
+      'Abra Configurações pela engrenagem.',
+      'Toque na seção Privacidade e segurança.',
+      'Leia as opções Política de privacidade, Termos de uso e Termos de assinatura e cobrança.',
+      'Observe as opções Solicitar cópia dos meus dados e Excluir minha conta.',
+      'Toque em uma página legal, se se sentir confortável.',
+      'Volte para o app.',
+      'Relate se as opções parecem confiáveis e fáceis de entender.',
+    ],
+    what_to_observe: [
+      'Se os textos legais são fáceis de localizar.',
+      'Se dados e exclusão de conta parecem tratados com seriedade.',
+      'Se o usuário entende para onde cada opção leva.',
+      'Se a linguagem passa segurança.',
+    ],
+    success_criteria:
+      'Privacidade, termos, dados e exclusão ficaram claros para o testador.',
+    problem_criteria:
+      'Links não abriram, abriram errado ou a área pareceu insegura/confusa.',
+    confusing_criteria:
+      'O testador não entendeu diferença entre privacidade, termos, dados e exclusão.',
+    criticality: 'alta',
+    type: 'privacidade',
+  },
+  {
+    app_area: 'Configurações / Conta',
+    section: 'Privacidade',
+    mission_key: 'config_limpar_dados_locais',
+    area: 'Configurações / Conta',
+    title: 'Testar Limpar Dados Locais',
+    estimated_minutes: 4,
+    objective:
+      'Validar se o usuário entende o impacto antes de limpar dados locais.',
+    prerequisites: [
+      'Usar ambiente de teste.',
+      'Evite fazer esta missão se você não quiser perder preferências salvas neste aparelho.',
+    ],
+    step_by_step: [
+      'Abra Configurações pela engrenagem.',
+      'Toque em Privacidade e segurança.',
+      'Procure Limpar dados locais.',
+      'Leia o texto antes de tocar.',
+      'Toque em Limpar dados locais apenas se estiver em ambiente de teste.',
+      'Leia a confirmação do navegador.',
+      'Cancele se não quiser limpar, ou confirme se estiver seguro.',
+      'Relate se o aviso explicou bem o impacto.',
+    ],
+    what_to_observe: [
+      'Se a ação parece sensível o suficiente.',
+      'Se a confirmação explica que dados deste dispositivo podem ser removidos.',
+      'Se o usuário sabe que progresso local pode ser afetado.',
+      'Se cancelar é fácil.',
+    ],
+    success_criteria:
+      'O testador entendeu o impacto antes de confirmar ou cancelar.',
+    problem_criteria:
+      'Dados foram limpos sem clareza, aviso pareceu fraco ou a ação gerou susto.',
+    confusing_criteria:
+      'O testador não entendeu o que são dados locais.',
+    criticality: 'alta',
+    type: 'privacidade',
+  },
+  {
+    app_area: 'Configurações / Conta',
+    section: 'Assinatura',
+    mission_key: 'config_ver_assinatura_cobranca',
+    area: 'Configurações / Conta',
+    title: 'Ver Assinatura e Cobrança',
+    estimated_minutes: 3,
+    objective:
+      'Confirmar se plano gratuito e recursos em breve são compreensíveis.',
+    prerequisites: ['Nenhum.'],
+    step_by_step: [
+      'Abra Configurações pela engrenagem.',
+      'Toque na seção Assinatura e cobrança.',
+      'Observe o item Plano atual.',
+      'Leia se aparece Gratuito ou Premium.',
+      'Observe Gerenciar assinatura e Histórico de pagamentos.',
+      'Veja se ambos aparecem como Em breve.',
+      'Relate se ficou claro que não há cobrança sendo feita ali agora.',
+    ],
+    what_to_observe: [
+      'Se o plano atual é fácil de entender.',
+      'Se os recursos em breve não parecem erro.',
+      'Se a área transmite confiança.',
+      'Se o usuário entende diferença entre gratuito, premium e cobrança futura.',
+    ],
+    success_criteria:
+      'Plano atual e recursos futuros ficaram claros.',
+    problem_criteria:
+      'A área pareceu cobrança ativa, confusa ou assustadora.',
+    confusing_criteria:
+      'O testador não entendeu se estava pagando algo ou não.',
+    criticality: 'média',
+    type: 'premium',
+  },
+  {
+    app_area: 'Configurações / Conta',
+    section: 'Ajuda',
+    mission_key: 'config_falar_com_suporte',
+    area: 'Configurações / Conta',
+    title: 'Falar com Suporte',
+    estimated_minutes: 3,
+    objective:
+      'Testar abertura do e-mail de contato.',
+    prerequisites: ['Ter um app de e-mail configurado no dispositivo, se possível.'],
+    step_by_step: [
+      'Abra Configurações pela engrenagem.',
+      'Toque na seção Ajuda e contato.',
+      'Toque em Falar com o ministério.',
+      'Observe se o app de e-mail abre com destinatário e assunto.',
+      'Volte para o app sem enviar, se for apenas teste.',
+      'Repita com Relatar problema, se desejar.',
+      'Relate se o caminho de suporte ficou claro.',
+    ],
+    what_to_observe: [
+      'Se o botão abre um e-mail.',
+      'Se o usuário entende que pode enviar dúvidas, suporte ou testemunhos.',
+      'Se o dispositivo sem e-mail configurado se comporta bem.',
+      'Se Relatar problema parece fácil de encontrar.',
+    ],
+    success_criteria:
+      'O contato abriu corretamente ou ficou claro como pedir ajuda.',
+    problem_criteria:
+      'Nada abriu, abriu app errado ou o usuário não soube como voltar.',
+    confusing_criteria:
+      'O testador não entendeu como falar com suporte.',
+    criticality: 'média',
+    type: 'usabilidade',
+  },
+  {
+    app_area: 'Configurações / Conta',
+    section: 'Status técnico',
+    mission_key: 'config_ver_status_tecnico',
+    area: 'Configurações / Conta',
+    title: 'Ver Status Técnico',
+    estimated_minutes: 4,
+    objective:
+      'Testar versão, login e notificações.',
+    prerequisites: ['Nenhum.'],
+    step_by_step: [
+      'Abra Configurações pela engrenagem.',
+      'Toque na seção Status técnico.',
+      'Leia o item Versão do aplicativo.',
+      'Toque nesse item para copiar as informações.',
+      'Observe se aparece uma mensagem de confirmação.',
+      'Leia Status de login e Status das notificações.',
+      'Relate se o status de login parece coerente com sua conta atual.',
+    ],
+    what_to_observe: [
+      'Se a versão do app é fácil de copiar.',
+      'Se status de login parece correto.',
+      'Se status de notificações bate com o que o usuário vê em Notificações.',
+      'Se as informações técnicas são úteis sem assustar.',
+    ],
+    success_criteria:
+      'Versão, login e notificações foram exibidos de forma compreensível.',
+    problem_criteria:
+      'Status parece incoerente, copiar falhou ou informações confundiram.',
+    confusing_criteria:
+      'O testador não entendeu para que serve Status técnico.',
+    criticality: 'média',
+    type: 'usabilidade',
+  },
+  {
+    app_area: 'Configurações / Conta',
+    section: 'Sair',
+    mission_key: 'config_sair_conta_entrar_novamente',
+    area: 'Configurações / Conta',
+    title: 'Sair da Conta e Entrar Novamente',
+    estimated_minutes: 6,
+    objective:
+      'Validar confirmação de logout e retorno para cadastro.',
+    prerequisites: [
+      'Estar logado no app.',
+      'Saber seus dados de acesso para entrar novamente depois.',
+    ],
+    step_by_step: [
+      'Confirme que você sabe seu e-mail e senha antes de começar.',
+      'No topo do app, procure o botão Sair.',
+      'Toque em Sair.',
+      'Leia a confirmação Deseja sair da sua conta neste dispositivo?.',
+      'Cancele se não quiser sair de verdade.',
+      'Se estiver pronto para testar, confirme a saída.',
+      'Observe se o app leva para a tela de cadastro/login.',
+      'Entre novamente na conta.',
+      'Relate se o fluxo de sair e voltar foi claro.',
+    ],
+    what_to_observe: [
+      'Se o botão Sair é fácil de encontrar.',
+      'Se a confirmação evita saída acidental.',
+      'Se o redirecionamento para cadastro/login faz sentido.',
+      'Se entrar novamente funciona.',
+    ],
+    success_criteria:
+      'O logout confirmou, saiu da conta e permitiu entrar novamente sem confusão.',
+    problem_criteria:
+      'Saiu sem confirmação, não saiu, não voltou ao login ou o usuário não conseguiu entrar de novo.',
+    confusing_criteria:
+      'O testador não entendeu se saiu da conta ou apenas mudou de tela.',
+    criticality: 'alta',
+    type: 'navegação/usabilidade',
+  },
+  {
+    app_area: 'Configurações / Conta',
+    section: 'Sair',
+    mission_key: 'config_procurar_sair_dentro_configuracoes',
+    area: 'Configurações / Conta',
+    title: 'Procurar o Botão Sair Dentro de Configurações',
+    estimated_minutes: 3,
+    objective:
+      'Descobrir se o usuário espera encontrar logout dentro da tela de ajustes.',
+    prerequisites: ['Estar logado no app.'],
+    step_by_step: [
+      'Abra Configurações pela engrenagem.',
+      'Sem olhar o topo por alguns segundos, procure dentro da tela algum botão Sair.',
+      'Abra Minha conta, Privacidade e segurança e Status técnico se achar necessário.',
+      'Observe se encontra algum caminho de logout dentro das seções.',
+      'Depois olhe para o topo do app e procure o botão Sair.',
+      'Relate onde você esperava encontrar essa ação.',
+    ],
+    what_to_observe: [
+      'Se o usuário procura Sair dentro de Configurações.',
+      'Se o botão no topo é percebido depois.',
+      'Se a ausência de logout dentro da tela causa confusão.',
+      'Se o posicionamento atual parece natural.',
+    ],
+    success_criteria:
+      'O testador entendeu que Sair fica no topo, fora das seções de configurações.',
+    problem_criteria:
+      'O testador não encontrou Sair ou achou o posicionamento ruim.',
+    confusing_criteria:
+      'O testador esperava logout dentro de Minha conta ou Configurações.',
+    criticality: 'média',
+    type: 'usabilidade',
+  },
 ]
