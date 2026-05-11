@@ -67,6 +67,7 @@ type DetectedTheme = {
   query: string
   queries: string[]
   theme_keywords: string[]
+  avoid_keywords?: string[]
 }
 
 const DAYS_WITHOUT_REPEAT = 120
@@ -267,7 +268,7 @@ function shuffleArray<T>(array: T[]) {
   return [...array].sort(() => Math.random() - 0.5)
 }
 
-function shouldAvoidPhoto(photo: PexelsPhoto, themeKeywords: string[]) {
+function shouldAvoidPhoto(photo: PexelsPhoto, themeKeywords: string[], avoidKeywords: string[] = []) {
   const allowDramatic =
     themeKeywords.includes('tempestade') ||
     themeKeywords.includes('deserto')
@@ -302,7 +303,36 @@ function shouldAvoidPhoto(photo: PexelsPhoto, themeKeywords: string[]) {
     'chuva',
   ]
 
-  return blockedWords.some((word) => alt.includes(word))
+  const episodeThumbnailBlockedWords = themeKeywords.includes('episode_thumbnail')
+    ? [
+        'portrait',
+        'posing',
+        'business',
+        'office',
+        'corporate',
+        'technology',
+        'computer',
+        'phone',
+        'food',
+        'restaurant',
+        'party',
+        'animal',
+        'dog',
+        'cat',
+      ]
+    : []
+
+  return [...blockedWords, ...episodeThumbnailBlockedWords, ...avoidKeywords].some((word) =>
+    alt.includes(normalizeText(word))
+  )
+}
+
+function getStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value
+        .map((item) => cleanText(String(item || '')))
+        .filter(Boolean)
+    : []
 }
 
 function detectThemeFromQuote(quoteText: string): DetectedTheme {
@@ -558,6 +588,7 @@ async function searchCuratedImages(params: {
 async function fetchPexelsPhotos(params: {
   query: string
   theme_keywords: string[]
+  avoid_keywords?: string[]
   apiKey: string
   perPage?: number
 }) {
@@ -591,7 +622,7 @@ async function fetchPexelsPhotos(params: {
   }
 
   const photos = ((data.photos || []) as PexelsPhoto[])
-    .filter((photo) => !shouldAvoidPhoto(photo, params.theme_keywords))
+    .filter((photo) => !shouldAvoidPhoto(photo, params.theme_keywords, params.avoid_keywords))
 
   const images: BackgroundImage[] = photos.map((photo) => ({
     id: `pexels-${photo.id}`,
@@ -645,6 +676,7 @@ function addUniqueImage(
 async function searchPexelsImages(params: {
   queries: string[]
   theme_keywords: string[]
+  avoid_keywords?: string[]
   history: ImageHistoryRow[]
 }) {
   const apiKey = process.env.PEXELS_API_KEY
@@ -666,6 +698,7 @@ async function searchPexelsImages(params: {
       const result = await fetchPexelsPhotos({
         query,
         theme_keywords: params.theme_keywords,
+        avoid_keywords: params.avoid_keywords,
         apiKey,
         perPage: 8,
       })
@@ -724,6 +757,9 @@ export async function POST(request: NextRequest) {
 
     const quoteText = cleanText(String(body.quoteText || ''))
     const manualQuery = cleanText(String(body.query || ''))
+    const purpose = cleanText(String(body.purpose || ''))
+    const preferredThemes = getStringArray(body.preferredThemes)
+    const avoidThemes = getStringArray(body.avoidThemes)
 
     if (!quoteText && !manualQuery) {
       return NextResponse.json(
@@ -732,13 +768,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const detectedTheme = manualQuery
-      ? {
-          query: manualQuery,
-          queries: [manualQuery],
-          theme_keywords: [manualQuery],
-        }
-      : detectThemeFromQuote(quoteText)
+    const detectedTheme =
+      purpose === 'episode_thumbnail'
+        ? detectEpisodeThumbnailTheme(quoteText || manualQuery, preferredThemes, avoidThemes)
+        : manualQuery
+        ? {
+            query: manualQuery,
+            queries: [manualQuery],
+            theme_keywords: [manualQuery],
+          }
+        : detectThemeFromQuote(quoteText)
 
     const history = await getRecentImageHistory()
 
@@ -750,6 +789,7 @@ export async function POST(request: NextRequest) {
     const pexelsImages = await searchPexelsImages({
       queries: detectedTheme.queries,
       theme_keywords: detectedTheme.theme_keywords,
+      avoid_keywords: detectedTheme.avoid_keywords,
       history,
     })
 
@@ -807,5 +847,50 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     )
+  }
+}
+
+function detectEpisodeThumbnailTheme(contextText: string, preferredThemes: string[], avoidThemes: string[]): DetectedTheme {
+  const normalized = normalizeText(contextText)
+  const baseQueries = [
+    'peaceful sunrise landscape path mountains sky hope freedom',
+    'peaceful ocean sunrise light hope landscape',
+    'mountain path sunrise sky freedom peaceful',
+  ]
+
+  let queries = baseQueries
+  let themeKeywords = ['episode_thumbnail', ...preferredThemes]
+
+  if (/(barco|mar|oceano|ondas|aguas|águas|tempestade|vento|naufragio|naufrágio)/.test(normalized)) {
+    queries = [
+      'calm sea sunrise boat hope peaceful',
+      'peaceful ocean sunrise light hope',
+      'boat on calm water sunrise journey',
+    ]
+    themeKeywords = ['episode_thumbnail', 'mar', 'barco', 'esperança', ...preferredThemes]
+  } else if (/(caminho|jornada|passos|direcao|direção|rumo|estrada)/.test(normalized)) {
+    queries = [
+      'peaceful path sunrise mountains journey hope',
+      'open road sunrise freedom landscape',
+      'forest path sunlight peaceful journey',
+    ]
+    themeKeywords = ['episode_thumbnail', 'caminho', 'jornada', 'esperança', ...preferredThemes]
+  } else if (/(montanha|monte|alto|vitoria|vitória|forca|força|coragem)/.test(normalized)) {
+    queries = [
+      'mountain sunrise hope freedom peaceful',
+      'mountain path sunrise sky landscape',
+      'golden sunrise mountains peaceful',
+    ]
+    themeKeywords = ['episode_thumbnail', 'montanhas', 'fé', 'esperança', ...preferredThemes]
+  }
+
+  const uniqueQueries = Array.from(new Set(queries))
+  const uniqueThemes = Array.from(new Set(themeKeywords.filter(Boolean)))
+
+  return {
+    query: uniqueQueries[0],
+    queries: uniqueQueries.slice(0, 3),
+    theme_keywords: uniqueThemes,
+    avoid_keywords: avoidThemes,
   }
 }

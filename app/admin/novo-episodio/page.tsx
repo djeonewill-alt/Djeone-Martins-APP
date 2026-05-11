@@ -66,6 +66,20 @@ function getErrorMessage(error: unknown) {
   }
 }
 
+function hasFallbackImage(data: { provider?: string; images?: BackgroundImage[] }) {
+  return (
+    data.provider === 'fallback' ||
+    (data.images || []).some((image) => image.provider === 'fallback')
+  )
+}
+
+function isFallbackSource(option?: Pick<CardOption, 'source_image_provider' | 'source_image_url'> | null) {
+  return (
+    option?.source_image_provider === 'fallback' ||
+    option?.source_image_url === '/vencendo-tempestades.jpg'
+  )
+}
+
 function normalizeBasicPortuguese(text: string) {
   let value = text
     .replace(/\s+/g, ' ')
@@ -333,6 +347,35 @@ export default function NovoEpisodio() {
         },
         body: JSON.stringify({
           quoteText: sourceText,
+          purpose: 'episode_thumbnail',
+          visualStyle: 'devotional_landscape',
+          preferredThemes: [
+            'paisagem',
+            'liberdade',
+            'esperança',
+            'amanhecer',
+            'céu',
+            'luz',
+            'mar',
+            'águas',
+            'caminho',
+            'jornada',
+            'montanhas',
+            'paz',
+            'fé',
+            'barco',
+          ],
+          avoidThemes: [
+            'pessoas posando',
+            'retrato',
+            'negócios',
+            'cidade corporativa',
+            'objetos aleatórios',
+            'comida',
+            'tecnologia',
+            'festa',
+            'animais aleatórios',
+          ],
         }),
       })
 
@@ -346,6 +389,14 @@ export default function NovoEpisodio() {
 
       if (!images.length) {
         throw new Error('Nenhuma imagem encontrada.')
+      }
+
+      if (hasFallbackImage({ provider: data.provider, images })) {
+        setEpisodeThumbnailOptions([])
+        setSelectedEpisodeThumbnailIndex(null)
+
+        alert('Não encontrei thumbnails do Pexels para este áudio. Tente novamente, ajuste título/descrição ou envie uma imagem manualmente.')
+        return
       }
 
       setEpisodeThumbnailOptions(images)
@@ -708,6 +759,14 @@ export default function NovoEpisodio() {
         throw new Error('Nenhuma imagem encontrada.')
       }
 
+      if (hasFallbackImage({ provider: data.provider, images })) {
+        setCardOptions([])
+        setSelectedCardIndex(null)
+
+        alert('Não encontrei imagens do Pexels para esta Palavra do Dia. Tente gerar novamente, ajuste a frase ou envie uma imagem manualmente. Nenhum card foi gerado com imagem fallback.')
+        return
+      }
+
       const options: CardOption[] = []
 
       for (let index = 0; index < CARD_TEMPLATES.length; index += 1) {
@@ -862,7 +921,16 @@ export default function NovoEpisodio() {
 
         let finalCardImageUrl: string | null = null
 
-        if (selectedCard?.preview_data_url) {
+        const selectedCardHasFallback = isFallbackSource(selectedCard)
+        const safeCardOptions = cardOptions.filter((option) => !isFallbackSource(option))
+        const safeSelectedCardSourceUrl = selectedCardHasFallback
+          ? null
+          : selectedCard?.source_image_url || null
+        const safeSelectedCardSourceProvider = selectedCardHasFallback
+          ? null
+          : selectedCard?.source_image_provider || null
+
+        if (selectedCard?.preview_data_url && !selectedCardHasFallback) {
           finalCardImageUrl = await uploadGeneratedCard(selectedCard.preview_data_url)
         }
 
@@ -874,7 +942,7 @@ export default function NovoEpisodio() {
 
         const quoteDate = formData.scheduled_date || getLocalDateString()
 
-        const generatedCardOptionsForDb = cardOptions.map((option) => ({
+        const generatedCardOptionsForDb = safeCardOptions.map((option) => ({
           id: option.id,
           template: option.template,
           label: option.label,
@@ -893,7 +961,7 @@ export default function NovoEpisodio() {
           episode_id: newEpisode.id,
           quote_text: selectedDailyQuote.trim(),
           background_image_url:
-            selectedCard?.source_image_url || finalImageUrl || selectedSeriesImage || null,
+            safeSelectedCardSourceUrl || finalImageUrl || selectedSeriesImage || null,
           card_image_url: finalCardImageUrl,
           date: quoteDate,
           status: quoteStatus,
@@ -906,14 +974,14 @@ export default function NovoEpisodio() {
           like_count: 0,
 
           theme_keywords: selectedCard?.theme_keywords || null,
-          source_image_provider: selectedCard?.source_image_provider || null,
-          source_image_url: selectedCard?.source_image_url || null,
+          source_image_provider: safeSelectedCardSourceProvider,
+          source_image_url: safeSelectedCardSourceUrl,
           selected_template: selectedCard?.template || null,
           generated_card_options:
             generatedCardOptionsForDb.length > 0 ? generatedCardOptionsForDb : null,
           card_generation_status: finalCardImageUrl
             ? 'completed'
-            : cardOptions.length > 0
+            : generatedCardOptionsForDb.length > 0
             ? 'completed'
             : 'not_started',
           card_generation_error: null,
@@ -931,11 +999,11 @@ export default function NovoEpisodio() {
 
         if (existingDailyQuote?.id) {
           const shouldReplace = window.confirm(
-            'Jï¿½ existe uma Palavra do Dia para esta data. Deseja substituir pela nova?'
+            'Já existe uma Palavra do Dia para esta data. Deseja substituir pela nova?'
           )
 
           if (!shouldReplace) {
-            throw new Error('Publicaï¿½ï¿½o cancelada: jï¿½ existe uma Palavra do Dia para esta data.')
+            throw new Error('Publicação cancelada: já existe uma Palavra do Dia para esta data.')
           }
 
           const { error: updateQuoteError } = await supabase
@@ -952,11 +1020,11 @@ export default function NovoEpisodio() {
           if (quoteError) {
             if (quoteError.code === '23505') {
               const shouldReplaceAfterConflict = window.confirm(
-                'Jï¿½ existe uma Palavra do Dia para esta data. Deseja substituir pela nova?'
+                'Já existe uma Palavra do Dia para esta data. Deseja substituir pela nova?'
               )
 
               if (!shouldReplaceAfterConflict) {
-                throw new Error('Publicaï¿½ï¿½o cancelada: jï¿½ existe uma Palavra do Dia para esta data.')
+                throw new Error('Publicação cancelada: já existe uma Palavra do Dia para esta data.')
               }
 
               const { error: updateQuoteAfterConflictError } = await supabase
@@ -1482,6 +1550,7 @@ export default function NovoEpisodio() {
                   {selectedDailyQuote && cardOptions.length === 0 && (
                     <p className="text-xs text-slate-500 mt-3">
                       Nenhum card gerado ainda. A Palavra do Dia pode ser salva sem card, mas o ideal é gerar e escolher uma opção.
+                      Se o Pexels não retornar imagens, nenhum card será gerado automaticamente com fallback.
                     </p>
                   )}
                 </div>
@@ -1503,7 +1572,7 @@ export default function NovoEpisodio() {
                     </h5>
 
                     <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                      Gere 3 opções com base no título, descrição e transcrição. A imagem escolhida será usada no card do áudio.
+                      Gere 3 opções com base no título, descrição e transcrição. Este fluxo é separado dos cards da Palavra do Dia. A imagem escolhida aqui será usada no card do áudio.
                     </p>
                   </div>
                 </div>
