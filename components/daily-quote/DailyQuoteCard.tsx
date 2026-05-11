@@ -193,19 +193,19 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
   return (
     <section className={`w-full ${className}`}>
       {quote.card_image_url ? (
-        <div className="w-full overflow-hidden rounded-[30px] bg-slate-950 shadow-[0_18px_55px_rgba(0,0,0,0.32)]">
+        <div className="relative w-full overflow-hidden rounded-[30px] bg-slate-950 shadow-[0_18px_55px_rgba(0,0,0,0.32)]">
           <img
             src={quote.card_image_url}
             alt="Palavra do Dia"
             className="block aspect-square w-full object-contain"
           />
 
-          <div className="flex items-center justify-center gap-3 border-t border-white/10 bg-slate-950/96 px-4 py-4">
+          <div className="absolute inset-x-0 bottom-5 flex items-center justify-between px-10 sm:px-14">
             <button
               type="button"
               onClick={handleLike}
               aria-label="Curtir Palavra do Dia"
-              className="flex h-10 min-w-[86px] items-center justify-center gap-2 rounded-full border border-white/15 bg-white/8 px-4 text-sm font-semibold text-white/95 transition-all hover:bg-white/12 active:scale-[0.96]"
+              className="flex h-9 min-w-[72px] items-center justify-center gap-2 rounded-full border border-white/20 bg-black/35 px-3 text-sm font-semibold text-white/95 backdrop-blur-sm transition-all hover:bg-black/45 active:scale-[0.96]"
             >
               <span className="text-base leading-none">{likeIcon}</span>
               <span>{quote.like_count || 0}</span>
@@ -216,7 +216,7 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
               onClick={handleShare}
               disabled={sharing}
               aria-label="Compartilhar Palavra do Dia"
-              className="flex h-10 min-w-[86px] items-center justify-center gap-2 rounded-full border border-white/15 bg-white/8 px-4 text-sm font-semibold text-white/95 transition-all hover:bg-white/12 active:scale-[0.96] disabled:opacity-60"
+              className="flex h-9 min-w-[72px] items-center justify-center gap-2 rounded-full border border-white/20 bg-black/35 px-3 text-sm font-semibold text-white/95 backdrop-blur-sm transition-all hover:bg-black/45 active:scale-[0.96] disabled:opacity-60"
             >
               <span className="text-base leading-none">{shareIcon}</span>
               <span>{quote.share_count || 0}</span>
