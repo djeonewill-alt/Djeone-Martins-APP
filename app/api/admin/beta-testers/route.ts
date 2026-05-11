@@ -61,7 +61,7 @@ const testerSelect =
   'id, email, name, is_active, invited_at, first_access_at, created_at, updated_at, notes, founder_number'
 
 function getAdminSecret() {
-  return process.env.ADMIN_API_SECRET || process.env.NEXT_PUBLIC_ADMIN_PASSWORD || ''
+  return process.env.ADMIN_API_SECRET || ''
 }
 
 function isAuthorized(request: NextRequest) {
@@ -73,6 +73,21 @@ function isAuthorized(request: NextRequest) {
     : ''
 
   return Boolean(adminSecret) && (headerPassword === adminSecret || bearerToken === adminSecret)
+}
+
+function getAdminAuthError(request: NextRequest) {
+  if (!getAdminSecret()) {
+    return NextResponse.json(
+      { error: 'Configuração administrativa ausente.' },
+      { status: 500 }
+    )
+  }
+
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 })
+  }
+
+  return null
 }
 
 function normalizeEmail(value: unknown) {
@@ -172,9 +187,8 @@ async function enrichTesters(
 }
 
 export async function GET(request: NextRequest) {
-  if (!isAuthorized(request)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const authError = getAdminAuthError(request)
+  if (authError) return authError
 
   try {
     const supabase = createSupabaseAdminClient()
@@ -195,9 +209,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isAuthorized(request)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const authError = getAdminAuthError(request)
+  if (authError) return authError
 
   try {
     const payload = (await request.json()) as BetaTesterPayload
@@ -247,9 +260,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  if (!isAuthorized(request)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const authError = getAdminAuthError(request)
+  if (authError) return authError
 
   try {
     const payload = (await request.json()) as BetaTesterPayload
