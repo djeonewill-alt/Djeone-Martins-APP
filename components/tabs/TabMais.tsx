@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import TesterCenterPreview from '@/components/tester/TesterCenterPreview'
 
@@ -8,6 +8,7 @@ type TabMaisProps = {
   onOpenSeries?: () => void
   onOpenOferta?: () => void
   settingsOpenToken?: number
+  openTesterCenterToken?: number
 }
 
 type FeatureAccent = 'blue' | 'gold' | 'purple' | 'green' | 'red'
@@ -96,6 +97,7 @@ export default function TabMais({
   onOpenSeries,
   onOpenOferta,
   settingsOpenToken: _settingsOpenToken,
+  openTesterCenterToken,
 }: TabMaisProps) {
   const [showPremiumInterest, setShowPremiumInterest] = useState(false)
   const [showTesterCenter, setShowTesterCenter] = useState(false)
@@ -103,6 +105,12 @@ export default function TabMais({
   const [note, setNote] = useState('')
   const [savingInterest, setSavingInterest] = useState(false)
   const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    if (openTesterCenterToken) {
+      setShowTesterCenter(true)
+    }
+  }, [openTesterCenterToken])
 
   async function handleSubmitPremiumInterest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
