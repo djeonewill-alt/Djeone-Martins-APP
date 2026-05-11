@@ -10,6 +10,56 @@ type BetaTesterPayload = {
   id?: unknown
 }
 
+type BetaTesterRecord = {
+  id: string
+  email: string
+  name: string | null
+  is_active: boolean
+  invited_at: string | null
+  first_access_at: string | null
+  created_at: string | null
+  updated_at: string | null
+  notes: string | null
+  founder_number: number | null
+}
+
+type BetaTesterProfileRecord = {
+  tester_id: string
+  accepted_beta_terms: boolean | null
+  accepted_beta_terms_at: string | null
+  device_label: string | null
+  operating_system: string | null
+  browser: string | null
+  access_mode: string | null
+  user_agent: string | null
+  language: string | null
+  screen_width: number | null
+  screen_height: number | null
+  viewport_width: number | null
+  viewport_height: number | null
+  notification_permission: string | null
+  push_supported: boolean | null
+  is_pwa_standalone: boolean | null
+  app_version: string | null
+  last_seen_at: string | null
+}
+
+type BetaMissionResultRecord = {
+  tester_id: string
+  mission_key: string
+  app_area: string
+  section: string | null
+  status: string
+  report: string | null
+  technical_snapshot: unknown
+  started_at: string | null
+  completed_at: string | null
+  updated_at: string | null
+}
+
+const testerSelect =
+  'id, email, name, is_active, invited_at, first_access_at, created_at, updated_at, notes, founder_number'
+
 function getAdminSecret() {
   return process.env.ADMIN_API_SECRET || process.env.NEXT_PUBLIC_ADMIN_PASSWORD || ''
 }
@@ -51,6 +101,76 @@ function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
 
+function summarizeResults(results: BetaMissionResultRecord[]) {
+  const completedStatuses = ['success', 'problem', 'confusing']
+  const resultDates = results
+    .map((result) => result.updated_at || result.completed_at || result.started_at)
+    .filter(Boolean)
+    .sort()
+
+  return {
+    total_results: results.length,
+    completed_count: results.filter((result) => completedStatuses.includes(result.status)).length,
+    problem_count: results.filter((result) => result.status === 'problem').length,
+    confusing_count: results.filter((result) => result.status === 'confusing').length,
+    postponed_count: results.filter((result) => result.status === 'postponed').length,
+    started_count: results.filter((result) => result.status === 'started').length,
+    last_result_at: resultDates.length > 0 ? resultDates[resultDates.length - 1] : null,
+  }
+}
+
+async function enrichTesters(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  testers: BetaTesterRecord[]
+) {
+  const testerIds = testers.map((tester) => tester.id)
+
+  if (testerIds.length === 0) return []
+
+  const [{ data: profiles, error: profilesError }, { data: results, error: resultsError }] =
+    await Promise.all([
+      supabase
+        .from('beta_tester_profiles')
+        .select(
+          'tester_id, accepted_beta_terms, accepted_beta_terms_at, device_label, operating_system, browser, access_mode, user_agent, language, screen_width, screen_height, viewport_width, viewport_height, notification_permission, push_supported, is_pwa_standalone, app_version, last_seen_at'
+        )
+        .in('tester_id', testerIds),
+      supabase
+        .from('beta_mission_results')
+        .select(
+          'tester_id, mission_key, app_area, section, status, report, technical_snapshot, started_at, completed_at, updated_at'
+        )
+        .in('tester_id', testerIds)
+        .order('updated_at', { ascending: false }),
+    ])
+
+  if (profilesError) throw profilesError
+  if (resultsError) throw resultsError
+
+  const profilesByTester = new Map<string, BetaTesterProfileRecord>()
+  ;((profiles || []) as BetaTesterProfileRecord[]).forEach((profile) => {
+    profilesByTester.set(profile.tester_id, profile)
+  })
+
+  const resultsByTester = new Map<string, BetaMissionResultRecord[]>()
+  ;((results || []) as BetaMissionResultRecord[]).forEach((result) => {
+    const current = resultsByTester.get(result.tester_id) || []
+    current.push(result)
+    resultsByTester.set(result.tester_id, current)
+  })
+
+  return testers.map((tester) => {
+    const testerResults = resultsByTester.get(tester.id) || []
+
+    return {
+      ...tester,
+      profile: profilesByTester.get(tester.id) || null,
+      results: testerResults,
+      summary: summarizeResults(testerResults),
+    }
+  })
+}
+
 export async function GET(request: NextRequest) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -60,12 +180,14 @@ export async function GET(request: NextRequest) {
     const supabase = createSupabaseAdminClient()
     const { data, error } = await supabase
       .from('beta_testers')
-      .select('id, email, name, is_active, invited_at, first_access_at, created_at, updated_at, notes, founder_number')
+      .select(testerSelect)
       .order('created_at', { ascending: false })
 
     if (error) throw error
 
-    return NextResponse.json({ testers: data || [] })
+    const testers = await enrichTesters(supabase, (data || []) as BetaTesterRecord[])
+
+    return NextResponse.json({ testers })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro ao listar testadores beta.'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -110,12 +232,14 @@ export async function POST(request: NextRequest) {
         founder_number: getFounderNumber(payload.founder_number),
         is_active: true,
       })
-      .select('id, email, name, is_active, invited_at, first_access_at, created_at, updated_at, notes, founder_number')
+      .select(testerSelect)
       .single()
 
     if (error) throw error
 
-    return NextResponse.json({ tester: data }, { status: 201 })
+    const [tester] = await enrichTesters(supabase, [data as BetaTesterRecord])
+
+    return NextResponse.json({ tester }, { status: 201 })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro ao cadastrar testador beta.'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -146,12 +270,14 @@ export async function PATCH(request: NextRequest) {
         is_active: payload.is_active,
       })
       .eq('id', id)
-      .select('id, email, name, is_active, invited_at, first_access_at, created_at, updated_at, notes, founder_number')
+      .select(testerSelect)
       .single()
 
     if (error) throw error
 
-    return NextResponse.json({ tester: data })
+    const [tester] = await enrichTesters(supabase, [data as BetaTesterRecord])
+
+    return NextResponse.json({ tester })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro ao atualizar testador beta.'
     return NextResponse.json({ error: message }, { status: 500 })
