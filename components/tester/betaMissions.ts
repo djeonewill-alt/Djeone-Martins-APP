@@ -956,4 +956,345 @@ export const betaMissions: BetaMission[] = [
     criticality: 'média',
     type: 'navegação',
   },
+  {
+    app_area: 'Aba Você',
+    section: 'Jornada',
+    mission_key: 'voce_entender_jornada_espiritual',
+    area: 'Aba Você',
+    title: 'Entender a Jornada Espiritual',
+    estimated_minutes: 4,
+    objective:
+      'Verificar se a tela inicial da Aba Você é clara, acolhedora e pastoral.',
+    prerequisites: ['Nenhum.'],
+    step_by_step: [
+      'Abra o app.',
+      'Toque na aba Você no menu inferior.',
+      'Confirme se abriu a subaba Jornada.',
+      'Leia o título Sua jornada espiritual.',
+      'Observe o card Minha Jornada.',
+      'Leia o texto que explica sua caminhada.',
+      'Veja os cards de pontos, conquistas e próxima etapa.',
+      'Role a tela até Atividade pessoal.',
+      'Relate se a tela parece encorajadora ou confusa.',
+    ],
+    what_to_observe: [
+      'Se a tela explica bem o propósito da Aba Você.',
+      'Se a linguagem parece pastoral.',
+      'Se os cards parecem úteis.',
+      'Se a pessoa entende que é um acompanhamento espiritual.',
+    ],
+    success_criteria:
+      'A tela foi compreendida como uma área de acompanhamento espiritual pessoal.',
+    problem_criteria:
+      'A tela pareceu confusa, fria, infantil, competitiva ou sem propósito claro.',
+    confusing_criteria:
+      'O testador não entendeu o que significa Jornada Espiritual.',
+    criticality: 'alta',
+    type: 'usabilidade',
+  },
+  {
+    app_area: 'Aba Você',
+    section: 'Jornada',
+    mission_key: 'voce_ver_pontos_jornada',
+    area: 'Aba Você',
+    title: 'Ver pontos de jornada',
+    estimated_minutes: 4,
+    objective:
+      'Testar se o usuário entende o que são pontos de jornada e de onde eles vêm.',
+    prerequisites: [
+      'Idealmente ter alguma atividade feita no app, como leitura marcada, oração ou compartilhamento.',
+    ],
+    step_by_step: [
+      'Abra a Aba Você.',
+      'Fique na subaba Jornada.',
+      'Procure o card Pontos de jornada.',
+      'Veja o número exibido.',
+      'Leia a área Próxima etapa.',
+      'Observe se aparece informação sobre quantos pontos faltam.',
+      'Pense se ficou claro por que você tem aquela quantidade de pontos.',
+    ],
+    what_to_observe: [
+      'Se o termo pontos de jornada ficou claro.',
+      'Se parece encorajamento ou competição.',
+      'Se a próxima etapa é compreensível.',
+      'Se faltou explicar de onde vêm os pontos.',
+    ],
+    success_criteria:
+      'O testador entendeu que os pontos são um acompanhamento de constância espiritual, não ranking.',
+    problem_criteria:
+      'Os pontos pareceram errados, competitivos, infantis ou sem explicação.',
+    confusing_criteria:
+      'O testador não entendeu de onde vieram os pontos.',
+    criticality: 'média',
+    type: 'usabilidade',
+  },
+  {
+    app_area: 'Aba Você',
+    section: 'Jornada',
+    mission_key: 'voce_conferir_atividade_pessoal',
+    area: 'Aba Você',
+    title: 'Conferir atividade pessoal',
+    estimated_minutes: 5,
+    objective:
+      'Validar se as métricas de leitura, oração, evangelismo e encorajamento fazem sentido.',
+    prerequisites: ['Ter usado Leitura ou Oração antes, se possível.'],
+    step_by_step: [
+      'Abra a Aba Você.',
+      'Na subaba Jornada, role até Atividade pessoal.',
+      'Observe o percentual da Bíblia marcada como lida.',
+      'Observe a quantidade de capítulos lidos.',
+      'Veja os cards Leitura, Oração, Evangelismo e Encorajar.',
+      'Compare com ações que você lembra ter feito no app.',
+      'Relate se os números parecem claros e coerentes.',
+    ],
+    what_to_observe: [
+      'Se as métricas são fáceis de entender.',
+      'Se os nomes Leitura, Oração, Evangelismo e Encorajar fazem sentido.',
+      'Se os números parecem coerentes.',
+      'Se o usuário entende que alguns dados dependem do aparelho.',
+    ],
+    success_criteria:
+      'As métricas ficaram compreensíveis e pareceram coerentes com o uso do app.',
+    problem_criteria:
+      'Os números pareceram errados, zerados sem explicação ou confusos.',
+    confusing_criteria:
+      'O testador não entendeu o que cada métrica mede.',
+    criticality: 'média',
+    type: 'usabilidade',
+  },
+  {
+    app_area: 'Aba Você',
+    section: 'Trilhas',
+    mission_key: 'voce_abrir_entender_trilhas',
+    area: 'Aba Você',
+    title: 'Abrir e entender Trilhas',
+    estimated_minutes: 5,
+    objective:
+      'Testar se a subaba Trilhas é compreensível e comunica crescimento espiritual.',
+    prerequisites: ['Nenhum.'],
+    step_by_step: [
+      'Abra a Aba Você.',
+      'Toque na subaba Trilhas.',
+      'Leia o título Conquistas espirituais.',
+      'Role a tela e veja as trilhas disponíveis.',
+      'Observe trilhas como Ouvinte Fiel, Intercessor, Encorajador, Evangelizador e Estudioso.',
+      'Toque ou leia os cards, se forem apenas visuais.',
+      'Relate se entendeu a diferença entre Jornada e Trilhas.',
+    ],
+    what_to_observe: [
+      'Se a subaba Trilhas é fácil de encontrar.',
+      'Se os nomes das trilhas são espirituais e claros.',
+      'Se parece crescimento espiritual, não jogo.',
+      'Se a diferença entre Jornada e Trilhas ficou clara.',
+    ],
+    success_criteria:
+      'O testador entendeu que Trilhas mostram áreas de crescimento espiritual.',
+    problem_criteria:
+      'A tela pareceu confusa, pesada, infantil ou competitiva.',
+    confusing_criteria:
+      'O testador não entendeu para que servem as Trilhas.',
+    criticality: 'alta',
+    type: 'navegação',
+  },
+  {
+    app_area: 'Aba Você',
+    section: 'Conquistas',
+    mission_key: 'voce_entender_niveis_conquistas',
+    area: 'Aba Você',
+    title: 'Entender Bronze, Prata, Ouro e Diamante',
+    estimated_minutes: 4,
+    objective:
+      'Avaliar se os níveis parecem encorajadores e não competitivos.',
+    prerequisites: ['Nenhum.'],
+    step_by_step: [
+      'Abra a Aba Você.',
+      'Toque em Trilhas.',
+      'Escolha uma trilha para observar.',
+      'Veja os níveis Bronze, Prata, Ouro e Diamante.',
+      'Leia os requisitos ou progresso de cada nível.',
+      'Observe se algum nível aparece desbloqueado ou em andamento.',
+      'Relate se essa linguagem te motivou ou pareceu jogo demais.',
+    ],
+    what_to_observe: [
+      'Se Bronze, Prata, Ouro e Diamante são compreensíveis.',
+      'Se os níveis parecem saudáveis e encorajadores.',
+      'Se a linguagem evita competição.',
+      'Se o visual parece premium e pastoral.',
+    ],
+    success_criteria:
+      'Os níveis foram entendidos como marcos de constância e crescimento espiritual.',
+    problem_criteria:
+      'Os níveis pareceram jogo, competição, vaidade ou confusos.',
+    confusing_criteria:
+      'O testador não entendeu o que precisa fazer para avançar.',
+    criticality: 'média',
+    type: 'usabilidade',
+  },
+  {
+    app_area: 'Aba Você',
+    section: 'Conquistas',
+    mission_key: 'voce_ver_conquistas_proximos_marcos',
+    area: 'Aba Você',
+    title: 'Ver conquistas e próximos marcos',
+    estimated_minutes: 5,
+    objective:
+      'Confirmar se progresso, conquistas desbloqueadas e próximos alvos são claros.',
+    prerequisites: ['Ter algum progresso no app ou aceitar testar a tela zerada.'],
+    step_by_step: [
+      'Abra a Aba Você.',
+      'Na subaba Jornada, veja o card Conquistas desbloqueadas.',
+      'Role até Conquistas espirituais.',
+      'Observe a lista de próximos marcos.',
+      'Veja barras de progresso e textos de avanço.',
+      'Depois toque em Trilhas e compare com a tela detalhada.',
+      'Relate se os próximos marcos ficaram claros.',
+    ],
+    what_to_observe: [
+      'Se conquistas desbloqueadas são fáceis de entender.',
+      'Se próximos marcos parecem alcançáveis.',
+      'Se a barra de progresso ajuda.',
+      'Se falta explicar melhor algum marco.',
+    ],
+    success_criteria:
+      'O testador entendeu conquistas atuais e próximos marcos.',
+    problem_criteria:
+      'As conquistas pareceram erradas, sem sentido ou não carregaram.',
+    confusing_criteria:
+      'O testador não entendeu a diferença entre conquista desbloqueada e próximo marco.',
+    criticality: 'média',
+    type: 'usabilidade',
+  },
+  {
+    app_area: 'Aba Você',
+    section: 'Jornada',
+    mission_key: 'voce_estado_sem_atividade',
+    area: 'Aba Você',
+    title: 'Testar Aba Você sem atividade',
+    estimated_minutes: 3,
+    objective:
+      'Verificar se a tela com tudo zerado continua acolhedora e motivadora.',
+    prerequisites: ['Ambiente novo ou localStorage limpo, se possível.'],
+    step_by_step: [
+      'Abra a Aba Você em um aparelho ou navegador com pouco ou nenhum uso.',
+      'Observe se pontos, leitura, oração e conquistas aparecem zerados.',
+      'Leia os textos da tela.',
+      'Veja se existe uma próxima etapa clara.',
+      'Relate se a tela encoraja começar ou se parece vazia demais.',
+    ],
+    what_to_observe: [
+      'Se o estado zerado é acolhedor.',
+      'Se a tela orienta o próximo passo.',
+      'Se parece erro ou falta de dados.',
+    ],
+    success_criteria:
+      'Mesmo sem atividade, a tela ficou acolhedora e orientou bem.',
+    problem_criteria:
+      'A tela pareceu quebrada, vazia, fria ou sem direção.',
+    confusing_criteria:
+      'O testador achou que perdeu dados ou que o app estava com defeito.',
+    criticality: 'média',
+    type: 'conteúdo',
+  },
+  {
+    app_area: 'Aba Você',
+    section: 'Favoritos',
+    mission_key: 'voce_procurar_favoritos',
+    area: 'Aba Você',
+    title: 'Procurar Favoritos na Aba Você',
+    estimated_minutes: 3,
+    objective:
+      'Descobrir se o usuário espera encontrar favoritos dentro da Aba Você e se consegue.',
+    prerequisites: ['Ter ou não favoritos salvos.'],
+    step_by_step: [
+      'Abra a Aba Você.',
+      'Procure algum botão ou área chamada Favoritos.',
+      'Toque em Jornada e Trilhas, se necessário.',
+      'Tente encontrar onde ficam áudios favoritos.',
+      'Não use ajuda externa.',
+      'Relate se encontrou ou se esperava que estivesse ali.',
+    ],
+    what_to_observe: [
+      'Se Favoritos é fácil de encontrar.',
+      'Se o usuário espera encontrar favoritos na Aba Você.',
+      'Se a ausência de botão gera confusão.',
+    ],
+    success_criteria:
+      'O testador encontrou o caminho de favoritos ou entendeu claramente que não está nessa aba.',
+    problem_criteria:
+      'O testador não encontrou favoritos e ficou sem saber onde procurar.',
+    confusing_criteria:
+      'O testador esperava encontrar favoritos ali e não entendeu a ausência.',
+    criticality: 'alta',
+    type: 'navegação',
+  },
+  {
+    app_area: 'Aba Você',
+    section: 'Linguagem pastoral',
+    mission_key: 'voce_avaliar_linguagem_pastoral',
+    area: 'Aba Você',
+    title: 'Avaliar linguagem pastoral da gamificação',
+    estimated_minutes: 5,
+    objective:
+      'Verificar se pontos, conquistas e níveis edificam sem parecer jogo infantil ou competição.',
+    prerequisites: ['Nenhum.'],
+    step_by_step: [
+      'Abra a Aba Você.',
+      'Leia os textos da subaba Jornada.',
+      'Observe palavras como pontos, conquistas, trilhas e níveis.',
+      'Toque em Trilhas.',
+      'Leia nomes como Intercessor, Encorajador, Evangelizador e Estudioso.',
+      'Observe os níveis Bronze, Prata, Ouro e Diamante.',
+      'Responda mentalmente: isso parece discipulado e encorajamento ou parece jogo?',
+      'Relate sua impressão.',
+    ],
+    what_to_observe: [
+      'Se a linguagem é pastoral.',
+      'Se os termos motivam sem competir.',
+      'Se algum termo parece infantil, comercial ou gamificado demais.',
+      'Se a aba aponta para crescimento espiritual.',
+    ],
+    success_criteria:
+      'A linguagem foi percebida como pastoral, madura e encorajadora.',
+    problem_criteria:
+      'A linguagem pareceu infantil, competitiva, vaidosa ou desconectada da fé.',
+    confusing_criteria:
+      'O testador não entendeu o propósito espiritual da gamificação.',
+    criticality: 'alta',
+    type: 'espiritual/pastoral',
+  },
+  {
+    app_area: 'Aba Você',
+    section: 'Jornada',
+    mission_key: 'voce_comparar_progresso_apos_acoes',
+    area: 'Aba Você',
+    title: 'Comparar progresso após usar Leitura ou Oração',
+    estimated_minutes: 7,
+    objective:
+      'Testar se ações feitas em outras abas aparecem de forma compreensível na Aba Você.',
+    prerequisites: [
+      'Conseguir marcar capítulo na Aba Leitura ou orar por um pedido na Aba Oração.',
+    ],
+    step_by_step: [
+      'Abra a Aba Você e observe os números atuais de atividade pessoal.',
+      'Vá para a Aba Leitura e marque um capítulo como lido, ou vá para Oração e toque em Eu orei em um pedido.',
+      'Volte para a Aba Você.',
+      'Observe se algum número mudou.',
+      'Se não mudar imediatamente, saia da aba e volte novamente.',
+      'Relate se a atualização ficou clara.',
+    ],
+    what_to_observe: [
+      'Se ações em outras abas aparecem na Aba Você.',
+      'Se a atualização acontece rápido.',
+      'Se os números fazem sentido.',
+      'Se o usuário entende que alguns dados são locais do aparelho.',
+    ],
+    success_criteria:
+      'O progresso mudou ou ficou compreensível após ações em outras abas.',
+    problem_criteria:
+      'Os números não mudaram, mudaram errado ou geraram sensação de perda de dados.',
+    confusing_criteria:
+      'O testador não entendeu por que a ação feita em outra aba não apareceu na Aba Você.',
+    criticality: 'alta',
+    type: 'persistência/usabilidade',
+  },
 ]
