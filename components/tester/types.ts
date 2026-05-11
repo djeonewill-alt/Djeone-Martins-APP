@@ -38,9 +38,16 @@ export type BetaMission = {
   type: BetaMissionType
 }
 
-export type MissionResultStatus = 'success' | 'problem' | 'confusing' | 'postponed'
+export type MissionResultStatus =
+  | 'started'
+  | 'success'
+  | 'problem'
+  | 'confusing'
+  | 'postponed'
 
 export type MissionResult = {
   status: MissionResultStatus
   report?: string
+  started_at?: string | null
+  completed_at?: string | null
 }

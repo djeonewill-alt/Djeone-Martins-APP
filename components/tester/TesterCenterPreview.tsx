@@ -1,8 +1,10 @@
 'use client'
 
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { betaMissions } from './betaMissions'
 import type { BetaMission, MissionResult, MissionResultStatus } from './types'
+import { loadBetaMissionResults, saveBetaMissionResult } from '@/lib/beta/betaMissionResults'
+import { useBetaTester } from '@/lib/beta/betaTester'
 
 type TesterCenterPreviewProps = {
   onBack: () => void
@@ -126,6 +128,7 @@ const configuracoesSections = [
 ]
 
 const statusLabels: Record<MissionResultStatus, string> = {
+  started: 'Em andamento',
   success: 'Concluída',
   problem: 'Relato enviado',
   confusing: 'Relato enviado',
@@ -247,6 +250,37 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
   const [selectedResult, setSelectedResult] = useState<MissionResultStatus | null>(null)
   const [reportText, setReportText] = useState('')
   const [missionResults, setMissionResults] = useState<Record<string, MissionResult>>({})
+  const [syncMessage, setSyncMessage] = useState('')
+  const { isBetaTester, betaTester } = useBetaTester()
+
+  useEffect(() => {
+    let mounted = true
+
+    async function loadSavedResults() {
+      if (!isBetaTester || !betaTester) return
+
+      try {
+        const savedResults = await loadBetaMissionResults(betaTester)
+
+        if (!mounted) return
+
+        setMissionResults(savedResults)
+        setSyncMessage('')
+      } catch (error) {
+        console.error('Erro ao carregar resultados beta:', error)
+
+        if (mounted) {
+          setSyncMessage('Não foi possível carregar respostas salvas agora. A Central continua funcionando nesta sessão.')
+        }
+      }
+    }
+
+    loadSavedResults()
+
+    return () => {
+      mounted = false
+    }
+  }, [betaTester, isBetaTester])
 
   const appAreaSummaries = useMemo(
     () => getAppAreaSummaries(missionResults),
@@ -312,13 +346,63 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
     resetTemporaryMissionState()
   }
 
-  const postponeMission = () => {
-    if (!selectedMission) return
+  const persistMissionResult = async (
+    mission: BetaMission,
+    status: MissionResultStatus,
+    report?: string | null
+  ) => {
+    const existingResult = missionResults[mission.mission_key]
+    const now = new Date().toISOString()
+    const localResult: MissionResult = {
+      status,
+      report: report?.trim() || undefined,
+      started_at: existingResult?.started_at || now,
+      completed_at:
+        status === 'success' || status === 'problem' || status === 'confusing'
+          ? now
+          : existingResult?.completed_at || null,
+    }
 
     setMissionResults((current) => ({
       ...current,
-      [selectedMission.mission_key]: { status: 'postponed' },
+      [mission.mission_key]: localResult,
     }))
+
+    if (!isBetaTester || !betaTester) return
+
+    try {
+      const savedResult = await saveBetaMissionResult({
+        betaTester,
+        mission,
+        status,
+        report,
+        existingResult,
+      })
+
+      setMissionResults((current) => ({
+        ...current,
+        [mission.mission_key]: savedResult,
+      }))
+      setSyncMessage('')
+    } catch (error) {
+      console.error('Erro ao salvar resultado beta:', error)
+      setSyncMessage('Não foi possível salvar agora. Seu relato ficou nesta sessão, tente novamente depois.')
+    }
+  }
+
+  const startMission = () => {
+    if (!selectedMission) return
+
+    setMissionFlow('started')
+    setSelectedResult(null)
+    setReportText('')
+    void persistMissionResult(selectedMission, 'started')
+  }
+
+  const postponeMission = () => {
+    if (!selectedMission) return
+
+    void persistMissionResult(selectedMission, 'postponed')
     setSelectedResult('postponed')
     setMissionFlow('postponed')
   }
@@ -329,10 +413,7 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
     setSelectedResult(status)
 
     if (status === 'success') {
-      setMissionResults((current) => ({
-        ...current,
-        [selectedMission.mission_key]: { status },
-      }))
+      void persistMissionResult(selectedMission, status)
       setMissionFlow('completed')
     }
   }
@@ -340,13 +421,7 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
   const handleSaveReport = () => {
     if (!selectedMission || !selectedResult || selectedResult === 'postponed') return
 
-    setMissionResults((current) => ({
-      ...current,
-      [selectedMission.mission_key]: {
-        status: selectedResult,
-        report: reportText.trim(),
-      },
-    }))
+    void persistMissionResult(selectedMission, selectedResult, reportText.trim())
     setMissionFlow('completed')
   }
 
@@ -374,17 +449,14 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
         selectedResult={selectedResult}
         reportText={reportText}
         savedResult={missionResults[selectedMission.mission_key]}
+        syncMessage={syncMessage}
         backLabel={
           selectedSectionSummary
             ? 'Voltar para missões da subárea'
             : 'Voltar para testes da área'
         }
         onBack={backToMissionList}
-        onStart={() => {
-          setMissionFlow('started')
-          setSelectedResult(null)
-          setReportText('')
-        }}
+        onStart={startMission}
         onPostpone={postponeMission}
         onResult={handleResult}
         onReportChange={setReportText}
@@ -501,6 +573,32 @@ function TesterHome({
           <StatCard value={completedCount} label="Missões concluídas" />
           <StatCard value={responseCount} label="Respostas nesta sessão" />
           <StatCard value={areasInTest} label="Áreas em teste" />
+        </div>
+      </section>
+
+      <section className="mt-5 rounded-[28px] border border-white/10 bg-slate-900/70 p-5">
+        <p className="text-sm font-black text-white">Progresso por área</p>
+        <div className="mt-4 space-y-3">
+          {summaries
+            .filter((summary) => summary.missions.length > 0)
+            .map((summary) => (
+              <div key={`${summary.appArea}-progress`}>
+                <div className="mb-2 flex items-center justify-between gap-3 text-xs font-black text-slate-300">
+                  <span>{summary.appArea}</span>
+                  <span>
+                    {summary.completedCount}/{summary.missions.length}
+                  </span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-slate-800">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-blue-400 to-purple-400"
+                    style={{
+                      width: `${Math.round((summary.completedCount / summary.missions.length) * 100)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
         </div>
       </section>
 
@@ -696,6 +794,7 @@ function MissionDetail({
   selectedResult,
   reportText,
   savedResult,
+  syncMessage,
   backLabel,
   onBack,
   onStart,
@@ -712,6 +811,7 @@ function MissionDetail({
   selectedResult: MissionResultStatus | null
   reportText: string
   savedResult?: MissionResult
+  syncMessage: string
   backLabel: string
   onBack: () => void
   onStart: () => void
@@ -766,6 +866,14 @@ function MissionDetail({
                 {savedResult.report}
               </p>
             )}
+          </div>
+        )}
+
+        {syncMessage && (
+          <div className="mt-5 rounded-[22px] border border-amber-300/20 bg-amber-500/10 p-4">
+            <p className="text-sm font-black text-amber-100">
+              {syncMessage}
+            </p>
           </div>
         )}
 
