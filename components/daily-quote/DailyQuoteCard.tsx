@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { DailyQuote } from '@/lib/supabase'
+import { formatQuoteTextForDisplay } from '@/lib/daily-quote-card-generator'
 
 type DailyQuoteCardProps = {
   className?: string
@@ -187,41 +188,40 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
 
   const likeIcon = liked ? '\u2665' : '\u2661'
   const shareIcon = sharing ? '...' : '\u2197'
+  const displayQuoteText = formatQuoteTextForDisplay(quote.quote_text)
 
   return (
     <section className={`w-full ${className}`}>
       {quote.card_image_url ? (
-        <div className="relative w-full overflow-hidden rounded-[30px] bg-slate-950 shadow-[0_18px_55px_rgba(0,0,0,0.32)]">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.18),transparent_42%),linear-gradient(135deg,rgba(15,23,42,0.98),rgba(2,6,23,1))]" />
-
+        <div className="w-full overflow-hidden rounded-[30px] bg-slate-950 shadow-[0_18px_55px_rgba(0,0,0,0.32)]">
           <img
             src={quote.card_image_url}
             alt="Palavra do Dia"
-            className="relative aspect-square w-full rounded-[30px] object-contain sm:aspect-square"
+            className="block aspect-square w-full object-contain"
           />
 
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/44 via-black/12 to-transparent" />
+          <div className="flex items-center justify-center gap-3 border-t border-white/10 bg-slate-950/96 px-4 py-4">
+            <button
+              type="button"
+              onClick={handleLike}
+              aria-label="Curtir Palavra do Dia"
+              className="flex h-10 min-w-[86px] items-center justify-center gap-2 rounded-full border border-white/15 bg-white/8 px-4 text-sm font-semibold text-white/95 transition-all hover:bg-white/12 active:scale-[0.96]"
+            >
+              <span className="text-base leading-none">{likeIcon}</span>
+              <span>{quote.like_count || 0}</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={handleLike}
-            aria-label="Curtir Palavra do Dia"
-            className="absolute bottom-4 left-1/4 flex h-9 min-w-[72px] -translate-x-1/2 items-center justify-center gap-2 rounded-full border border-white/15 bg-black/18 px-3 text-sm font-semibold text-white/95 backdrop-blur-md transition-all hover:bg-black/28 active:scale-[0.96]"
-          >
-            <span className="text-base leading-none">{likeIcon}</span>
-            <span>{quote.like_count || 0}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleShare}
-            disabled={sharing}
-            aria-label="Compartilhar Palavra do Dia"
-            className="absolute bottom-4 left-3/4 flex h-9 min-w-[72px] -translate-x-1/2 items-center justify-center gap-2 rounded-full border border-white/15 bg-black/18 px-3 text-sm font-semibold text-white/95 backdrop-blur-md transition-all hover:bg-black/28 active:scale-[0.96] disabled:opacity-60"
-          >
-            <span className="text-base leading-none">{shareIcon}</span>
-            <span>{quote.share_count || 0}</span>
-          </button>
+            <button
+              type="button"
+              onClick={handleShare}
+              disabled={sharing}
+              aria-label="Compartilhar Palavra do Dia"
+              className="flex h-10 min-w-[86px] items-center justify-center gap-2 rounded-full border border-white/15 bg-white/8 px-4 text-sm font-semibold text-white/95 transition-all hover:bg-white/12 active:scale-[0.96] disabled:opacity-60"
+            >
+              <span className="text-base leading-none">{shareIcon}</span>
+              <span>{quote.share_count || 0}</span>
+            </button>
+          </div>
         </div>
       ) : (
         <div className="relative w-full overflow-hidden rounded-[30px] bg-slate-900 shadow-[0_18px_55px_rgba(0,0,0,0.32)]">
@@ -246,7 +246,7 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
               </p>
 
               <blockquote className="max-w-[92%] text-[clamp(1.45rem,8vw,1.85rem)] font-black leading-[1.12] text-white drop-shadow-[0_4px_16px_rgba(0,0,0,0.82)]">
-                {quote.quote_text}
+                {displayQuoteText}
               </blockquote>
 
               {quote.episode?.bible_reference && (

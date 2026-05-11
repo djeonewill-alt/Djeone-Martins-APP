@@ -18,6 +18,20 @@ export const CARD_TEMPLATES: {
   },
 ]
 
+export function formatQuoteTextForDisplay(text: string) {
+  const trimmedText = text.trim()
+
+  if (!trimmedText) return ''
+
+  const quoteMarkPattern = /^["'“”‘’«»].*["'“”‘’«»]$/
+
+  if (quoteMarkPattern.test(trimmedText)) {
+    return trimmedText
+  }
+
+  return `“${trimmedText}”`
+}
+
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image()
@@ -122,6 +136,7 @@ export async function generateCardDataUrl(params: {
   canvas.height = size
 
   const image = await loadImage(params.imageUrl)
+  const displayQuoteText = formatQuoteTextForDisplay(params.quoteText)
 
   drawCoverImage(ctx, image, size, size)
 
@@ -162,11 +177,11 @@ export async function generateCardDataUrl(params: {
     ctx.fillStyle = 'rgba(255,255,255,0.96)'
     ctx.font = '700 60px Georgia, serif'
 
-    let lines = wrapText(ctx, params.quoteText, 820)
+    let lines = wrapText(ctx, displayQuoteText, 820)
 
     if (lines.length > 6) {
       ctx.font = '700 52px Georgia, serif'
-      lines = wrapText(ctx, params.quoteText, 840)
+      lines = wrapText(ctx, displayQuoteText, 840)
     }
 
     const lineHeight = lines.length > 4 ? 66 : 72
@@ -208,11 +223,11 @@ export async function generateCardDataUrl(params: {
     ctx.fillStyle = 'rgba(255,255,255,0.98)'
     ctx.font = '800 56px Arial, sans-serif'
 
-    let lines = wrapText(ctx, params.quoteText, 850)
+    let lines = wrapText(ctx, displayQuoteText, 850)
 
     if (lines.length > 7) {
       ctx.font = '800 48px Arial, sans-serif'
-      lines = wrapText(ctx, params.quoteText, 860)
+      lines = wrapText(ctx, displayQuoteText, 860)
     }
 
     const lineHeight = lines.length > 5 ? 60 : 66
@@ -255,11 +270,11 @@ export async function generateCardDataUrl(params: {
     ctx.fillStyle = 'rgba(255,255,255,0.98)'
     ctx.font = '900 58px Arial, sans-serif'
 
-    let lines = wrapText(ctx, params.quoteText.toUpperCase(), 850)
+    let lines = wrapText(ctx, displayQuoteText.toUpperCase(), 850)
 
     if (lines.length > 6) {
       ctx.font = '900 48px Arial, sans-serif'
-      lines = wrapText(ctx, params.quoteText.toUpperCase(), 860)
+      lines = wrapText(ctx, displayQuoteText.toUpperCase(), 860)
     }
 
     const lineHeight = lines.length > 4 ? 62 : 68

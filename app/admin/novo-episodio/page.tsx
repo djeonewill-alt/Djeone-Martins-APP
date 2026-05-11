@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import AudioRecorder from '@/components/recorder/AudioRecorder'
 import type { DailyQuoteSuggestion } from '@/lib/supabase'
-import { CARD_TEMPLATES, dataUrlToBlob, generateCardDataUrl, type CardTemplate } from '@/lib/daily-quote-card-generator'
+import { CARD_TEMPLATES, dataUrlToBlob, formatQuoteTextForDisplay, generateCardDataUrl, type CardTemplate } from '@/lib/daily-quote-card-generator'
 
 type Series = {
   id: string
@@ -1393,7 +1393,7 @@ export default function NovoEpisodio() {
 
                             <div className="flex-1">
                               <p className="text-white font-medium leading-relaxed">
-                                “{suggestion.quote_text}”
+                                {formatQuoteTextForDisplay(suggestion.quote_text)}
                               </p>
 
                               {suggestion.reason && (
@@ -1457,7 +1457,7 @@ export default function NovoEpisodio() {
                     </p>
 
                     <blockquote className="text-lg text-white font-semibold leading-relaxed">
-                      “{selectedDailyQuote}”
+                      {formatQuoteTextForDisplay(selectedDailyQuote)}
                     </blockquote>
 
                     <div className="mt-4 pt-3 border-t border-slate-800">

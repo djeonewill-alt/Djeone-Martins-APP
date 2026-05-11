@@ -303,7 +303,7 @@ export default function TabHoje({
             {episodeDateLabel}
           </p>
 
-          <h1 className="mt-2 max-w-xl text-3xl font-black leading-[0.98] tracking-[-0.06em] text-white">
+          <h1 className="mt-2 max-w-xl text-3xl font-black leading-[1.12] tracking-[-0.025em] text-white">
             {todayEpisode.title}
           </h1>
 
@@ -359,7 +359,6 @@ export default function TabHoje({
     </div>
   )
 }
-
 
 
 
