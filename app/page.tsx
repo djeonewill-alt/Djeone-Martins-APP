@@ -75,6 +75,27 @@ export default function Home() {
     window.history.replaceState(null, '', '/?tab=mais&view=tester')
   }
 
+  const betaOnboardingRequired =
+    !betaLoading &&
+    isBetaTester &&
+    betaTester &&
+    (!betaProfile || betaProfile.accepted_beta_terms !== true)
+
+  if (betaOnboardingRequired && betaTester) {
+    return (
+      <div className="min-h-screen bg-slate-950">
+        <BetaOnboarding
+          betaTester={betaTester}
+          betaProfile={betaProfile}
+          required
+          onOpenTesterCenter={openTesterCenter}
+          onDismiss={() => undefined}
+          onProfileSaved={refreshBetaTester}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-slate-950">
       <Header

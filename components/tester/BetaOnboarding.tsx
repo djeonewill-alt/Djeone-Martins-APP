@@ -7,6 +7,7 @@ import type { BetaTester, BetaTesterProfile } from '@/lib/beta/betaTester'
 type BetaOnboardingProps = {
   betaTester: BetaTester
   betaProfile?: BetaTesterProfile | null
+  required?: boolean
   onOpenTesterCenter: () => void
   onDismiss: () => void
   onProfileSaved: () => void
@@ -65,6 +66,7 @@ function getTechnicalSnapshot() {
 export default function BetaOnboarding({
   betaTester,
   betaProfile,
+  required = false,
   onOpenTesterCenter,
   onDismiss,
   onProfileSaved,
@@ -216,6 +218,18 @@ export default function BetaOnboarding({
           Seu painel de testes fica em Mais → Central do Testador Beta.
         </p>
 
+        {required && !profileCompleted && !showProfileForm && (
+          <div className="mt-5 rounded-[24px] border border-amber-300/20 bg-amber-500/10 p-4">
+            <p className="text-sm font-black text-amber-100">
+              Aceite inicial obrigatório
+            </p>
+            <p className="mt-2 text-sm font-semibold leading-6 text-amber-50/85">
+              Para participar do Beta Fechado, complete seu perfil de testador e
+              confirme o aviso de privacidade antes de acessar o app.
+            </p>
+          </div>
+        )}
+
         {profileCompleted && !showProfileForm && (
           <div className="mt-5 rounded-[24px] border border-emerald-300/20 bg-emerald-500/10 p-4">
             <p className="text-sm font-black text-emerald-100">
@@ -229,16 +243,18 @@ export default function BetaOnboarding({
         )}
 
         {!showProfileForm && (
-          <div className="mt-6 grid gap-3 sm:grid-cols-3">
-            <button
-              type="button"
-              onClick={onOpenTesterCenter}
-              className="rounded-2xl bg-purple-600 px-5 py-4 text-sm font-black text-white shadow-xl shadow-purple-950/30 active:scale-[0.98] sm:col-span-2"
-            >
-              Abrir Central do Testador
-            </button>
+          <div className={`mt-6 grid gap-3 ${required && !profileCompleted ? '' : 'sm:grid-cols-3'}`}>
+            {(!required || profileCompleted) && (
+              <button
+                type="button"
+                onClick={onOpenTesterCenter}
+                className="rounded-2xl bg-purple-600 px-5 py-4 text-sm font-black text-white shadow-xl shadow-purple-950/30 active:scale-[0.98] sm:col-span-2"
+              >
+                {profileCompleted ? 'Ir para Central do Testador' : 'Abrir Central do Testador'}
+              </button>
+            )}
 
-            {!profileCompleted && (
+            {!profileCompleted && message !== 'Perfil de testador salvo.' && (
               <button
                 type="button"
                 onClick={() => setShowProfileForm(true)}
@@ -260,7 +276,7 @@ export default function BetaOnboarding({
           </div>
         )}
 
-        {!profileCompleted && !showProfileForm && (
+        {!required && !profileCompleted && !showProfileForm && (
           <button
             type="button"
             onClick={onDismiss}
