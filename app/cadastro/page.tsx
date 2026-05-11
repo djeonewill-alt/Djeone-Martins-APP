@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
+import { findActiveBetaTesterByEmail } from '@/lib/beta/betaTester'
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser'
 
 type AuthMode = 'signup' | 'login'
@@ -72,7 +73,7 @@ export default function Cadastro() {
 
       if (data.user) {
         await syncLocalProfile(data.user.id)
-        router.replace('/')
+        router.replace(await getPostAuthRedirect(data.user.email))
       }
     }
 
@@ -96,6 +97,16 @@ export default function Cadastro() {
     }
 
     return null
+  }
+
+  async function getPostAuthRedirect(email?: string | null) {
+    try {
+      const betaTester = await findActiveBetaTesterByEmail(supabase, email)
+      return betaTester ? '/?open=beta-welcome' : '/'
+    } catch (error) {
+      console.error('Erro ao verificar acesso beta:', error)
+      return '/'
+    }
   }
 
   function updateField(field: keyof ProfileForm, value: string) {
@@ -194,7 +205,7 @@ export default function Cadastro() {
         }
 
         setMessage('Entrada realizada com sucesso.')
-        router.replace('/')
+        router.replace(await getPostAuthRedirect(data.user?.email || email))
         return
       }
 
@@ -240,7 +251,7 @@ export default function Cadastro() {
       }
 
       setMessage('Cadastro realizado com sucesso.')
-      router.replace('/')
+      router.replace(await getPostAuthRedirect(data.user?.email || email))
     } catch (error) {
       const message =
         error instanceof Error

@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase'
 import type { Episode } from '@/lib/supabase'
 import { useAudio } from '@/components/audio/AudioProvider'
 import { usePushNotifications } from '@/lib/notifications/usePushNotifications'
+import { useBetaTester } from '@/lib/beta/betaTester'
+import { confirmBetaShareRestriction } from '@/lib/beta/betaShareGuard'
 import DailyQuoteCard from '@/components/daily-quote/DailyQuoteCard'
 import TodayAudioCard from '@/components/tabs/TodayAudioCard'
 import TodayActionCard from '@/components/tabs/today/TodayActionCard'
@@ -50,6 +52,7 @@ export default function TabHoje({
   const { play, currentEpisode, isPlaying } = useAudio()
   const { isSubscribed, loading: notifLoading, subscribe, unsubscribe } =
     usePushNotifications()
+  const { isBetaTester } = useBetaTester()
 
   const [todayEpisode, setTodayEpisode] = useState<Episode | null>(null)
   const [loading, setLoading] = useState(true)
@@ -174,6 +177,8 @@ export default function TabHoje({
 
   const handleShareEpisode = async () => {
     if (!todayEpisode || sharingEpisode) return
+
+    if (!confirmBetaShareRestriction(isBetaTester)) return
 
     setSharingEpisode(true)
 
@@ -359,6 +364,5 @@ export default function TabHoje({
     </div>
   )
 }
-
 
 
