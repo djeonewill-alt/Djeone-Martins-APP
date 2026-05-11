@@ -17,18 +17,10 @@ type FormState = {
   displayName: string
   deviceLabel: string
   operatingSystem: string
-  accessMode: string
   accepted: boolean
 }
 
 const operatingSystems = ['iPhone / iOS', 'Android', 'Windows', 'Mac', 'Outro']
-const accessModes = [
-  'App instalado na tela inicial',
-  'Safari',
-  'Chrome',
-  'Edge',
-  'Outro',
-]
 
 function isStandalonePwa() {
   if (typeof window === 'undefined') return false
@@ -63,6 +55,17 @@ function getTechnicalSnapshot() {
   }
 }
 
+function detectBrowser(userAgent?: string | null) {
+  const value = userAgent || ''
+
+  if (/Edg\//.test(value)) return 'edge'
+  if (/CriOS|Chrome\//.test(value)) return 'chrome'
+  if (/Safari\//.test(value) && !/Chrome\//.test(value)) return 'safari'
+  if (/Firefox\//.test(value)) return 'firefox'
+
+  return null
+}
+
 export default function BetaOnboarding({
   betaTester,
   betaProfile,
@@ -77,7 +80,6 @@ export default function BetaOnboarding({
     displayName: betaTester.name || '',
     deviceLabel: betaProfile?.device_label || '',
     operatingSystem: betaProfile?.operating_system || '',
-    accessMode: betaProfile?.access_mode || '',
     accepted: false,
   })
   const [saving, setSaving] = useState(false)
@@ -111,11 +113,6 @@ export default function BetaOnboarding({
       return
     }
 
-    if (!form.accessMode) {
-      setErrorMessage('Escolha a forma de acesso ao app.')
-      return
-    }
-
     if (!form.accepted) {
       setErrorMessage('Para continuar, confirme que leu e concorda em participar do Beta Fechado.')
       return
@@ -135,6 +132,8 @@ export default function BetaOnboarding({
       const technical = getTechnicalSnapshot()
       const profileId = window.localStorage.getItem('user_id') || null
       const now = new Date().toISOString()
+      const accessMode = technical.isPwaStandalone ? 'pwa' : 'browser'
+      const browser = detectBrowser(technical.userAgent)
 
       const { error } = await supabase
         .from('beta_tester_profiles')
@@ -148,8 +147,8 @@ export default function BetaOnboarding({
             device_label: form.deviceLabel.trim(),
             device_type: form.operatingSystem,
             operating_system: form.operatingSystem,
-            browser: form.accessMode,
-            access_mode: form.accessMode,
+            browser,
+            access_mode: accessMode,
             user_agent: technical.userAgent,
             language: technical.language,
             screen_width: technical.screenWidth,
@@ -300,7 +299,7 @@ export default function BetaOnboarding({
               </label>
 
               <label className="block text-sm font-bold text-slate-300">
-                Modelo do aparelho
+                Modelo do celular
                 <input
                   value={form.deviceLabel}
                   onChange={(event) => updateField('deviceLabel', event.target.value)}
@@ -325,45 +324,43 @@ export default function BetaOnboarding({
                 </select>
               </label>
 
-              <label className="block text-sm font-bold text-slate-300">
-                Forma de acesso
-                <select
-                  value={form.accessMode}
-                  onChange={(event) => updateField('accessMode', event.target.value)}
-                  className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none focus:border-purple-300"
-                >
-                  <option value="">Selecione</option>
-                  {accessModes.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </label>
             </div>
 
             <div className="rounded-[24px] border border-blue-300/20 bg-blue-500/10 p-4">
               <p className="text-sm font-black text-blue-100">
-                Instalação na tela inicial
+                Instale o app na tela inicial
+              </p>
+              <p className="mt-2 text-sm font-semibold leading-6 text-blue-50/85">
+                Para participar melhor do Beta, recomendamos usar o app instalado
+                na tela inicial do celular. Assim você testa a experiência mais
+                próxima do aplicativo final.
               </p>
               <div className="mt-3 grid gap-4 text-sm font-semibold leading-6 text-blue-50/80 sm:grid-cols-2">
                 <div>
                   <p className="font-black text-white">iPhone / Safari</p>
                   <ol className="mt-2 list-decimal space-y-1 pl-5">
-                    <li>Abra no Safari.</li>
-                    <li>Toque em Compartilhar.</li>
-                    <li>Toque em Adicionar à Tela de Início.</li>
+                    <li>Abra o app no Safari.</li>
+                    <li>Toque no botão de compartilhar.</li>
+                    <li>Toque em “Adicionar à Tela de Início”.</li>
+                    <li>Confirme em “Adicionar”.</li>
+                    <li>Depois abra o app pelo ícone na tela inicial.</li>
                   </ol>
                 </div>
                 <div>
                   <p className="font-black text-white">Android / Chrome</p>
                   <ol className="mt-2 list-decimal space-y-1 pl-5">
-                    <li>Abra no Chrome.</li>
+                    <li>Abra o app no Chrome.</li>
                     <li>Toque nos três pontinhos.</li>
-                    <li>Toque em Adicionar à tela inicial ou Instalar app.</li>
+                    <li>Toque em “Adicionar à tela inicial” ou “Instalar app”.</li>
+                    <li>Confirme.</li>
+                    <li>Depois abra o app pelo ícone na tela inicial.</li>
                   </ol>
                 </div>
               </div>
+              <p className="mt-3 text-sm font-semibold leading-6 text-blue-50/85">
+                Se você não conseguir instalar agora, continue mesmo assim e peça
+                ajuda no grupo dos testadores.
+              </p>
             </div>
 
             <div className="rounded-[24px] border border-white/10 bg-slate-950/70 p-4">
