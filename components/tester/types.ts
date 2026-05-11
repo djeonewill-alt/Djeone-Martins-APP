@@ -2,10 +2,18 @@ export type BetaMissionCriticality = 'baixa' | 'média' | 'alta'
 
 export type BetaMissionType =
   | 'navegação'
+  | 'navegação/usabilidade'
   | 'áudio'
   | 'conteúdo'
+  | 'conteúdo/usabilidade'
   | 'compartilhamento'
   | 'notificação'
+  | 'persistência/usabilidade'
+  | 'privacidade'
+  | 'segurança pastoral'
+  | 'interação comunitária'
+  | 'moderação'
+  | 'recurso futuro'
   | 'usabilidade'
   | 'espiritual/pastoral'
 

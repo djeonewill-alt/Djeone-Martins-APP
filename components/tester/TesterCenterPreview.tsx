@@ -63,6 +63,14 @@ const sectionDescriptions: Record<string, string> = {
     'Teste os caminhos da Aba Hoje para leitura, oração, oferta e séries.',
   Notificações:
     'Teste lembretes e mensagens de permissão quando disponíveis.',
+  Hoje:
+    'Teste a leitura do dia, marcação de capítulos e orientação para começar.',
+  Planos:
+    'Teste a escolha de planos, início de jornada e troca de plano ativo.',
+  Bíblia:
+    'Teste a navegação livre por testamento, livro e capítulos.',
+  Progresso:
+    'Teste dashboard, percentuais, persistência e clareza do progresso bíblico.',
   'Podcasts devocionais':
     'Teste séries, episódios, player e controles de áudio dentro da Aba Mais.',
   Oferta:
@@ -85,6 +93,8 @@ const abaMaisSections = [
   'Jornadas Premium',
   'Central do Testador',
 ]
+
+const abaLeituraSections = ['Hoje', 'Planos', 'Bíblia', 'Progresso']
 
 const statusLabels: Record<MissionResultStatus, string> = {
   success: 'Concluída',
@@ -135,6 +145,8 @@ function getSectionSummaries(
   const sectionNames =
     appArea === 'Aba Mais'
       ? abaMaisSections
+      : appArea === 'Aba Leitura'
+        ? abaLeituraSections
       : Array.from(new Set(missions.map((mission) => mission.section || mission.area)))
 
   return sectionNames.map((section) => {
@@ -728,7 +740,11 @@ function MissionDetail({
 
         {missionFlow === 'intro' && (
           <div className="mt-5 space-y-4">
-            <InfoBlock title="Pré-requisitos" items={mission.prerequisites} />
+            <InfoBlock
+              title="Pré-requisitos"
+              items={mission.prerequisites}
+              keyPrefix={`${mission.mission_key}-prerequisite`}
+            />
             <div className="grid gap-3 sm:grid-cols-2">
               <button
                 type="button"
@@ -750,16 +766,24 @@ function MissionDetail({
 
         {missionFlow === 'started' && (
           <div className="mt-5 space-y-4">
-            <InfoBlock title="Pré-requisitos" items={mission.prerequisites} />
+            <InfoBlock
+              title="Pré-requisitos"
+              items={mission.prerequisites}
+              keyPrefix={`${mission.mission_key}-prerequisite`}
+            />
             <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
               <p className="text-sm font-black text-white">Passo a passo</p>
               <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm font-semibold leading-6 text-slate-300">
-                {mission.step_by_step.map((step) => (
-                  <li key={step}>{step}</li>
+                {mission.step_by_step.map((step, index) => (
+                  <li key={`${mission.mission_key}-step-${index}`}>{step}</li>
                 ))}
               </ol>
             </div>
-            <InfoBlock title="O que observar" items={mission.what_to_observe} />
+            <InfoBlock
+              title="O que observar"
+              items={mission.what_to_observe}
+              keyPrefix={`${mission.mission_key}-observe`}
+            />
 
             <div className="rounded-[24px] border border-white/10 bg-slate-950/70 p-4">
               <p className="text-sm font-black text-white">Como foi o teste?</p>
@@ -938,13 +962,21 @@ function InfoPill({ children }: { children: ReactNode }) {
   )
 }
 
-function InfoBlock({ title, items }: { title: string; items: string[] }) {
+function InfoBlock({
+  title,
+  items,
+  keyPrefix,
+}: {
+  title: string
+  items: string[]
+  keyPrefix: string
+}) {
   return (
     <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
       <p className="text-sm font-black text-white">{title}</p>
       <ul className="mt-3 space-y-2 text-sm font-semibold leading-6 text-slate-300">
-        {items.map((item) => (
-          <li key={item}>• {item}</li>
+        {items.map((item, index) => (
+          <li key={`${keyPrefix}-${index}`}>• {item}</li>
         ))}
       </ul>
     </div>
