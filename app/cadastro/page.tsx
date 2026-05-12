@@ -49,6 +49,36 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function getAuthErrorMessage(errorMessage: string) {
+  const normalized = errorMessage.toLowerCase()
+
+  if (normalized.includes('email rate limit exceeded')) {
+    return 'Muitas tentativas de envio de e-mail foram feitas agora. Aguarde alguns minutos e tente novamente.'
+  }
+
+  if (normalized.includes('email not confirmed')) {
+    return 'Sua conta foi criada, mas o e-mail ainda não foi confirmado. Verifique sua caixa de entrada e a pasta de spam. Depois de confirmar o e-mail, volte ao app e toque em Entrar.'
+  }
+
+  if (normalized.includes('user already registered') || normalized.includes('already registered')) {
+    return 'Este e-mail já possui uma conta. Toque em Entrar e use sua senha.'
+  }
+
+  if (normalized.includes('invalid login credentials')) {
+    return 'E-mail ou senha incorretos. Confira os dados e tente novamente.'
+  }
+
+  if (normalized.includes('signup disabled')) {
+    return 'O cadastro não está disponível no momento. Tente novamente mais tarde.'
+  }
+
+  if (normalized.includes('password')) {
+    return 'Não foi possível concluir com essa senha. Confira se ela tem pelo menos 6 caracteres e tente novamente.'
+  }
+
+  return 'Não foi possível concluir agora. Verifique seus dados e tente novamente em alguns instantes.'
+}
+
 export default function Cadastro() {
   const router = useRouter()
   const supabase = useMemo(() => createSupabaseBrowserClient(), [])
@@ -243,7 +273,7 @@ export default function Cadastro() {
 
       if (!data.session) {
         setMessage(
-          'Conta criada. Verifique seu e-mail para confirmar o acesso antes de entrar.'
+          'Conta criada. Verifique seu e-mail para confirmar o acesso antes de entrar. Depois de confirmar o e-mail, volte ao app e toque em Entrar.'
         )
         setMode('login')
         setLegalAcceptance(initialLegalAcceptance)
@@ -255,7 +285,7 @@ export default function Cadastro() {
     } catch (error) {
       const message =
         error instanceof Error
-          ? error.message
+          ? getAuthErrorMessage(error.message)
           : 'N\u00e3o foi poss\u00edvel concluir agora. Tente novamente.'
 
       setErrorMessage(message)
@@ -290,7 +320,7 @@ export default function Cadastro() {
     } catch (error) {
       const message =
         error instanceof Error
-          ? error.message
+          ? getAuthErrorMessage(error.message)
           : 'N\u00e3o foi poss\u00edvel enviar o e-mail de recupera\u00e7\u00e3o.'
 
       setErrorMessage(message)
