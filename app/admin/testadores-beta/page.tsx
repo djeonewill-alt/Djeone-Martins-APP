@@ -1,9 +1,21 @@
 'use client'
 
 import Link from 'next/link'
-import { FormEvent, useMemo, useState } from 'react'
+import { FormEvent, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 
 type FilterValue = 'all' | 'problem' | 'confusing' | 'active' | 'profile' | 'responded'
+
+type IssueFilterValue =
+  | 'all'
+  | 'new'
+  | 'reviewing'
+  | 'fixing'
+  | 'retest_requested'
+  | 'resolved'
+  | 'ignored'
+  | 'still_problem'
+  | 'problem'
+  | 'confusing'
 
 type BetaTesterProfile = {
   accepted_beta_terms: boolean | null
@@ -83,6 +95,60 @@ type BetaTester = {
   feedback: BetaFinalFeedback | null
 }
 
+type BetaIssueEvent = {
+  id: string
+  event_type: string
+  message: string | null
+  status_from: string | null
+  status_to: string | null
+  created_at: string | null
+}
+
+type BetaIssueReport = {
+  id: string
+  tester_id: string
+  auth_user_id: string
+  mission_result_id: string | null
+  mission_key: string
+  app_area: string
+  section: string | null
+  issue_type: 'problem' | 'confusing'
+  status: string
+  priority: string
+  report: string
+  technical_snapshot: {
+    userAgent?: string | null
+    language?: string | null
+    screenWidth?: number | null
+    screenHeight?: number | null
+    viewportWidth?: number | null
+    viewportHeight?: number | null
+    notificationPermission?: string | null
+    isPwaStandalone?: boolean | null
+    currentUrl?: string | null
+    timestamp?: string | null
+  } | null
+  admin_notes: string | null
+  retest_requested_at: string | null
+  resolved_at: string | null
+  created_at: string | null
+  updated_at: string | null
+  tester: {
+    id: string
+    email: string
+    name: string | null
+    founder_number: number | null
+  } | null
+  profile: {
+    device_label: string | null
+    operating_system: string | null
+    browser: string | null
+    access_mode: string | null
+    is_pwa_standalone: boolean | null
+  } | null
+  events: BetaIssueEvent[]
+}
+
 type TesterForm = {
   email: string
   name: string
@@ -146,6 +212,44 @@ const filterLabels: Record<FilterValue, string> = {
   confusing: 'Não entendi',
 }
 
+const issueFilterLabels: Record<IssueFilterValue, string> = {
+  all: 'Todos',
+  new: 'Novos',
+  reviewing: 'Em análise',
+  fixing: 'Em correção',
+  retest_requested: 'Reteste liberado',
+  resolved: 'Resolvidos',
+  ignored: 'Ignorados',
+  still_problem: 'Ainda com problema',
+  problem: 'Problemas',
+  confusing: 'Dúvidas',
+}
+
+const issueStatusLabels: Record<string, string> = {
+  new: 'Novo',
+  reviewing: 'Em análise',
+  fixing: 'Em correção',
+  retest_requested: 'Reteste liberado',
+  resolved: 'Resolvido',
+  ignored: 'Ignorado',
+  still_problem: 'Ainda com problema',
+}
+
+const issueTypeLabels: Record<BetaIssueReport['issue_type'], string> = {
+  problem: 'Problema',
+  confusing: 'Dúvida',
+}
+
+function getIssueStatusClasses(status: string) {
+  if (status === 'resolved') return 'border-emerald-300/20 bg-emerald-500/10 text-emerald-100'
+  if (status === 'retest_requested') return 'border-amber-300/25 bg-amber-500/15 text-amber-100'
+  if (status === 'fixing') return 'border-blue-300/20 bg-blue-500/10 text-blue-100'
+  if (status === 'reviewing') return 'border-purple-300/20 bg-purple-500/10 text-purple-100'
+  if (status === 'ignored') return 'border-slate-300/20 bg-slate-500/10 text-slate-100'
+  if (status === 'still_problem') return 'border-red-300/25 bg-red-500/10 text-red-100'
+  return 'border-orange-300/25 bg-orange-500/10 text-orange-100'
+}
+
 export default function AdminBetaTestersPage() {
   const [adminPassword, setAdminPassword] = useState('')
   const [isAuthorized, setIsAuthorized] = useState(false)
@@ -157,6 +261,10 @@ export default function AdminBetaTestersPage() {
   const [errorMessage, setErrorMessage] = useState('')
   const [filter, setFilter] = useState<FilterValue>('all')
   const [expandedTesterId, setExpandedTesterId] = useState<string | null>(null)
+  const [issueReports, setIssueReports] = useState<BetaIssueReport[]>([])
+  const [issueFilter, setIssueFilter] = useState<IssueFilterValue>('all')
+  const [issueUpdatingId, setIssueUpdatingId] = useState<string | null>(null)
+  const [issueNotesDrafts, setIssueNotesDrafts] = useState<Record<string, string>>({})
 
   const dashboardSummary = useMemo(() => {
     return testers.reduce(
@@ -204,8 +312,53 @@ export default function AdminBetaTestersPage() {
     return testers
   }, [filter, testers])
 
+  const issueSummary = useMemo(() => {
+    return issueReports.reduce(
+      (summary, issue) => {
+        if (issue.status === 'new') summary.new += 1
+        if (issue.status === 'reviewing') summary.reviewing += 1
+        if (issue.status === 'fixing') summary.fixing += 1
+        if (issue.status === 'retest_requested') summary.retestRequested += 1
+        if (issue.status === 'resolved') summary.resolved += 1
+        if (issue.status === 'ignored') summary.ignored += 1
+        if (issue.status === 'still_problem') summary.stillProblem += 1
+        return summary
+      },
+      {
+        new: 0,
+        reviewing: 0,
+        fixing: 0,
+        retestRequested: 0,
+        resolved: 0,
+        ignored: 0,
+        stillProblem: 0,
+      }
+    )
+  }, [issueReports])
+
+  const filteredIssueReports = useMemo(() => {
+    if (issueFilter === 'problem' || issueFilter === 'confusing') {
+      return issueReports.filter((issue) => issue.issue_type === issueFilter)
+    }
+
+    if (issueFilter === 'all') return issueReports
+
+    return issueReports.filter((issue) => issue.status === issueFilter)
+  }, [issueFilter, issueReports])
+
   async function apiFetch(init?: RequestInit) {
     return fetch('/api/admin/beta-testers', {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-password': adminPassword,
+        ...(init?.headers || {}),
+      },
+    })
+  }
+
+  async function issueApiFetch(init?: RequestInit) {
+    return fetch('/api/admin/beta-issue-reports', {
       ...init,
       headers: {
         'Content-Type': 'application/json',
@@ -228,6 +381,15 @@ export default function AdminBetaTestersPage() {
       }
 
       setTesters(data.testers || [])
+
+      const issueResponse = await issueApiFetch()
+      const issueData = await issueResponse.json()
+
+      if (!issueResponse.ok) {
+        throw new Error(issueData.error || 'Nao foi possivel carregar relatos beta.')
+      }
+
+      setIssueReports(issueData.issueReports || [])
       setIsAuthorized(true)
     } catch (error) {
       const message =
@@ -327,6 +489,69 @@ export default function AdminBetaTestersPage() {
         error instanceof Error ? error.message : 'Nao foi possivel atualizar testador.'
 
       setErrorMessage(message)
+    }
+  }
+
+  async function handleIssueStatus(issue: BetaIssueReport, status: string) {
+    setMessage('')
+    setErrorMessage('')
+    setIssueUpdatingId(issue.id)
+
+    try {
+      const response = await issueApiFetch({
+        method: 'PATCH',
+        body: JSON.stringify({
+          id: issue.id,
+          status,
+          admin_notes: issueNotesDrafts[issue.id],
+        }),
+      })
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Nao foi possivel atualizar relato beta.')
+      }
+
+      setIssueReports(data.issueReports || [])
+      setMessage('Relato beta atualizado com sucesso.')
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Nao foi possivel atualizar relato beta.'
+
+      setErrorMessage(message)
+    } finally {
+      setIssueUpdatingId(null)
+    }
+  }
+
+  async function handleSaveIssueNote(issue: BetaIssueReport) {
+    setMessage('')
+    setErrorMessage('')
+    setIssueUpdatingId(issue.id)
+
+    try {
+      const response = await issueApiFetch({
+        method: 'PATCH',
+        body: JSON.stringify({
+          id: issue.id,
+          admin_notes: issueNotesDrafts[issue.id] ?? issue.admin_notes ?? '',
+        }),
+      })
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Nao foi possivel salvar nota administrativa.')
+      }
+
+      setIssueReports(data.issueReports || [])
+      setMessage('Nota administrativa salva.')
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Nao foi possivel salvar nota administrativa.'
+
+      setErrorMessage(message)
+    } finally {
+      setIssueUpdatingId(null)
     }
   }
 
@@ -450,6 +675,18 @@ export default function AdminBetaTestersPage() {
             onClick={() => setFilter('confusing')}
           />
         </section>
+
+        <IssueQueueSection
+          issueReports={filteredIssueReports}
+          issueFilter={issueFilter}
+          setIssueFilter={setIssueFilter}
+          issueSummary={issueSummary}
+          issueUpdatingId={issueUpdatingId}
+          notesDrafts={issueNotesDrafts}
+          setNotesDrafts={setIssueNotesDrafts}
+          onStatusChange={handleIssueStatus}
+          onSaveNote={handleSaveIssueNote}
+        />
 
         <section className="mt-5 grid gap-5 lg:grid-cols-[360px_1fr]">
           <form
@@ -723,6 +960,384 @@ function SummaryCard({
       <p className="mt-1 text-[11px] font-black uppercase tracking-[0.12em] opacity-80">
         {label}
       </p>
+    </button>
+  )
+}
+
+function IssueQueueSection({
+  issueReports,
+  issueFilter,
+  setIssueFilter,
+  issueSummary,
+  issueUpdatingId,
+  notesDrafts,
+  setNotesDrafts,
+  onStatusChange,
+  onSaveNote,
+}: {
+  issueReports: BetaIssueReport[]
+  issueFilter: IssueFilterValue
+  setIssueFilter: (filter: IssueFilterValue) => void
+  issueSummary: {
+    new: number
+    reviewing: number
+    fixing: number
+    retestRequested: number
+    resolved: number
+    ignored: number
+    stillProblem: number
+  }
+  issueUpdatingId: string | null
+  notesDrafts: Record<string, string>
+  setNotesDrafts: Dispatch<SetStateAction<Record<string, string>>>
+  onStatusChange: (issue: BetaIssueReport, status: string) => void
+  onSaveNote: (issue: BetaIssueReport) => void
+}) {
+  const filterItems: Array<[IssueFilterValue, string]> = [
+    ['all', 'Todos'],
+    ['new', 'Novos'],
+    ['reviewing', 'Em análise'],
+    ['fixing', 'Em correção'],
+    ['retest_requested', 'Reteste liberado'],
+    ['resolved', 'Resolvidos'],
+    ['ignored', 'Ignorados'],
+    ['still_problem', 'Ainda com problema'],
+    ['problem', 'Problemas'],
+    ['confusing', 'Dúvidas'],
+  ]
+
+  return (
+    <section className="mt-5 rounded-[30px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-200">
+            Fila administrativa
+          </p>
+          <h2 className="mt-2 text-2xl font-black tracking-[-0.05em] text-white">
+            Fila de relatos do Beta
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+            Acompanhe problemas e dúvidas enviados pelos testadores, marque o andamento
+            da correção e libere missões para reteste.
+          </p>
+        </div>
+
+        <p className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-xs font-bold text-slate-300">
+          Filtro ativo: {issueFilterLabels[issueFilter]}
+        </p>
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-7">
+        <IssueSummaryButton
+          label="Novos"
+          value={issueSummary.new}
+          active={issueFilter === 'new'}
+          onClick={() => setIssueFilter('new')}
+        />
+        <IssueSummaryButton
+          label="Em análise"
+          value={issueSummary.reviewing}
+          active={issueFilter === 'reviewing'}
+          onClick={() => setIssueFilter('reviewing')}
+        />
+        <IssueSummaryButton
+          label="Em correção"
+          value={issueSummary.fixing}
+          active={issueFilter === 'fixing'}
+          onClick={() => setIssueFilter('fixing')}
+        />
+        <IssueSummaryButton
+          label="Reteste liberado"
+          value={issueSummary.retestRequested}
+          active={issueFilter === 'retest_requested'}
+          onClick={() => setIssueFilter('retest_requested')}
+          tone="amber"
+        />
+        <IssueSummaryButton
+          label="Resolvidos"
+          value={issueSummary.resolved}
+          active={issueFilter === 'resolved'}
+          onClick={() => setIssueFilter('resolved')}
+          tone="green"
+        />
+        <IssueSummaryButton
+          label="Ignorados"
+          value={issueSummary.ignored}
+          active={issueFilter === 'ignored'}
+          onClick={() => setIssueFilter('ignored')}
+          tone="slate"
+        />
+        <IssueSummaryButton
+          label="Ainda com problema"
+          value={issueSummary.stillProblem}
+          active={issueFilter === 'still_problem'}
+          onClick={() => setIssueFilter('still_problem')}
+          tone="red"
+        />
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {filterItems.map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setIssueFilter(value)}
+            className={`rounded-full border px-3 py-2 text-xs font-black ${
+              issueFilter === value
+                ? 'border-amber-300/30 bg-amber-500/20 text-amber-100'
+                : 'border-white/10 bg-white/[0.04] text-slate-300'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-5 space-y-4">
+        {issueReports.length === 0 && (
+          <p className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-5 text-sm font-semibold text-slate-400">
+            Nenhum relato encontrado para este filtro.
+          </p>
+        )}
+
+        {issueReports.map((issue) => {
+          const noteValue = notesDrafts[issue.id] ?? issue.admin_notes ?? ''
+          const isUpdating = issueUpdatingId === issue.id
+
+          return (
+            <article
+              key={issue.id}
+              className={`rounded-[24px] border p-4 ${
+                issue.issue_type === 'problem'
+                  ? 'border-red-300/20 bg-red-500/10'
+                  : 'border-purple-300/20 bg-purple-500/10'
+              }`}
+            >
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${getIssueStatusClasses(issue.status)}`}>
+                      {issueStatusLabels[issue.status] || issue.status}
+                    </span>
+                    <span
+                      className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${
+                        issue.issue_type === 'problem'
+                          ? 'border-red-300/20 bg-red-500/10 text-red-100'
+                          : 'border-purple-300/20 bg-purple-500/10 text-purple-100'
+                      }`}
+                    >
+                      {issueTypeLabels[issue.issue_type]}
+                    </span>
+                    <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-200">
+                      Prioridade {issue.priority}
+                    </span>
+                  </div>
+
+                  <h3 className="mt-3 text-lg font-black leading-6 text-white">
+                    {issue.app_area} · {issue.section || 'Sem seção'}
+                  </h3>
+                  <p className="mt-1 break-words text-sm font-semibold text-blue-100">
+                    {issue.mission_key}
+                  </p>
+                  <p className="mt-2 text-xs font-semibold text-slate-400">
+                    {issue.tester?.name || issue.tester?.email || 'Testador não encontrado'} · {issue.tester?.email || 'sem e-mail'} · criado em {formatDate(issue.created_at)}
+                  </p>
+
+                  <div className="mt-3 grid gap-2 text-xs font-semibold text-slate-300 sm:grid-cols-2 lg:grid-cols-4">
+                    <InfoBox label="Aparelho" value={issue.profile?.device_label || 'Não informado'} />
+                    <InfoBox label="Sistema" value={issue.profile?.operating_system || 'Não informado'} />
+                    <InfoBox
+                      label="Acesso"
+                      value={issue.profile?.access_mode || issue.profile?.browser || 'Não informado'}
+                    />
+                    <InfoBox
+                      label="PWA"
+                      value={formatBoolean(issue.profile?.is_pwa_standalone)}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 lg:max-w-xs lg:justify-end">
+                  <IssueActionButton
+                    label="Marcar em análise"
+                    disabled={isUpdating}
+                    onClick={() => onStatusChange(issue, 'reviewing')}
+                  />
+                  <IssueActionButton
+                    label="Marcar em correção"
+                    disabled={isUpdating}
+                    onClick={() => onStatusChange(issue, 'fixing')}
+                  />
+                  <IssueActionButton
+                    label="Liberar reteste"
+                    disabled={isUpdating}
+                    onClick={() => onStatusChange(issue, 'retest_requested')}
+                  />
+                  <IssueActionButton
+                    label="Marcar resolvido"
+                    disabled={isUpdating}
+                    onClick={() => onStatusChange(issue, 'resolved')}
+                    tone="green"
+                  />
+                  <IssueActionButton
+                    label="Ignorar"
+                    disabled={isUpdating}
+                    onClick={() => onStatusChange(issue, 'ignored')}
+                    tone="slate"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                  Relato do testador
+                </p>
+                <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-slate-100">
+                  {issue.report}
+                </p>
+              </div>
+
+              <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                    Snapshot técnico
+                  </p>
+                  <div className="mt-2 grid gap-2 text-xs font-semibold text-slate-400">
+                    <span>URL: {issue.technical_snapshot?.currentUrl || 'Não informado'}</span>
+                    <span>
+                      Tela: {issue.technical_snapshot?.screenWidth || '?'}x{issue.technical_snapshot?.screenHeight || '?'}
+                    </span>
+                    <span>
+                      Viewport: {issue.technical_snapshot?.viewportWidth || '?'}x{issue.technical_snapshot?.viewportHeight || '?'}
+                    </span>
+                    <span>Notificações: {issue.technical_snapshot?.notificationPermission || 'Não informado'}</span>
+                    <span>PWA: {issue.technical_snapshot?.isPwaStandalone ? 'Sim' : 'Não'}</span>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                    Nota administrativa
+                  </p>
+                  <textarea
+                    value={noteValue}
+                    onChange={(event) =>
+                      setNotesDrafts((current) => ({
+                        ...current,
+                        [issue.id]: event.target.value,
+                      }))
+                    }
+                    rows={4}
+                    className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-semibold text-white outline-none focus:border-blue-400"
+                    placeholder="Anote a análise, possível causa ou o que foi corrigido."
+                  />
+                  <button
+                    type="button"
+                    disabled={isUpdating}
+                    onClick={() => onSaveNote(issue)}
+                    className="mt-3 rounded-2xl bg-blue-600 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
+                  >
+                    {isUpdating ? 'Salvando...' : 'Salvar nota'}
+                  </button>
+                </div>
+              </div>
+
+              {issue.events.length > 0 && (
+                <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                    Histórico
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    {issue.events.slice(0, 5).map((event) => (
+                      <div key={event.id} className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2">
+                        <p className="text-xs font-black text-slate-100">
+                          {event.event_type} · {formatDate(event.created_at)}
+                        </p>
+                        {(event.status_from || event.status_to) && (
+                          <p className="mt-1 text-xs font-semibold text-slate-400">
+                            {event.status_from || 'sem status'} → {event.status_to || 'sem status'}
+                          </p>
+                        )}
+                        {event.message && (
+                          <p className="mt-1 text-xs font-semibold leading-5 text-slate-300">
+                            {event.message}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </article>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function IssueSummaryButton({
+  label,
+  value,
+  active,
+  onClick,
+  tone = 'blue',
+}: {
+  label: string
+  value: number
+  active: boolean
+  onClick: () => void
+  tone?: 'blue' | 'amber' | 'green' | 'red' | 'slate'
+}) {
+  const toneClasses = {
+    blue: 'border-blue-300/20 bg-blue-500/10 text-blue-100',
+    amber: 'border-amber-300/20 bg-amber-500/10 text-amber-100',
+    green: 'border-emerald-300/20 bg-emerald-500/10 text-emerald-100',
+    red: 'border-red-300/20 bg-red-500/10 text-red-100',
+    slate: 'border-slate-300/20 bg-slate-500/10 text-slate-100',
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-[20px] border p-3 text-left transition hover:-translate-y-0.5 ${
+        toneClasses[tone]
+      } ${active ? 'ring-2 ring-white/25' : ''}`}
+    >
+      <p className="text-xl font-black">{value}</p>
+      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.1em] opacity-80">
+        {label}
+      </p>
+    </button>
+  )
+}
+
+function IssueActionButton({
+  label,
+  disabled,
+  onClick,
+  tone = 'blue',
+}: {
+  label: string
+  disabled: boolean
+  onClick: () => void
+  tone?: 'blue' | 'green' | 'slate'
+}) {
+  const toneClasses = {
+    blue: 'border-blue-300/20 bg-blue-500/10 text-blue-100 hover:bg-blue-500/20',
+    green: 'border-emerald-300/20 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20',
+    slate: 'border-slate-300/20 bg-slate-500/10 text-slate-100 hover:bg-slate-500/20',
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`rounded-2xl border px-3 py-2 text-xs font-black disabled:opacity-50 ${toneClasses[tone]}`}
+    >
+      {label}
     </button>
   )
 }
