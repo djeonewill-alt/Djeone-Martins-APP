@@ -3,9 +3,12 @@ import type { BetaMission, MissionResult, MissionResultStatus } from '@/componen
 import type { BetaTester } from '@/lib/beta/betaTester'
 
 type MissionResultRow = {
+  id: string
+  auth_user_id: string
   mission_key: string
   status: MissionResultStatus
   report: string | null
+  technical_snapshot: unknown
   started_at: string | null
   completed_at: string | null
   updated_at: string | null
@@ -57,7 +60,7 @@ export async function loadBetaMissionResults(betaTester: BetaTester) {
 
   const { data, error } = await supabase
     .from('beta_mission_results')
-    .select('mission_key, status, report, started_at, completed_at, updated_at')
+    .select('id, auth_user_id, mission_key, status, report, technical_snapshot, started_at, completed_at, updated_at')
     .eq('tester_id', betaTester.id)
     .eq('auth_user_id', user.id)
 
@@ -66,8 +69,11 @@ export async function loadBetaMissionResults(betaTester: BetaTester) {
   return ((data || []) as MissionResultRow[]).reduce<Record<string, MissionResult>>(
     (results, row) => {
       results[row.mission_key] = {
+        id: row.id,
+        auth_user_id: row.auth_user_id,
         status: row.status,
         report: row.report || undefined,
+        technical_snapshot: row.technical_snapshot || undefined,
         started_at: row.started_at,
         completed_at: row.completed_at,
         updated_at: row.updated_at,
@@ -105,8 +111,9 @@ export async function saveBetaMissionResult(params: {
     params.status === 'confusing'
       ? now
       : params.existingResult?.completed_at || null
+  const technicalSnapshot = getBetaTechnicalSnapshot()
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('beta_mission_results')
     .upsert(
       {
@@ -117,7 +124,7 @@ export async function saveBetaMissionResult(params: {
         section: params.mission.section,
         status: params.status,
         report: params.report?.trim() || null,
-        technical_snapshot: getBetaTechnicalSnapshot(),
+        technical_snapshot: technicalSnapshot,
         started_at: startedAt,
         completed_at: completedAt,
       },
@@ -125,14 +132,19 @@ export async function saveBetaMissionResult(params: {
         onConflict: 'tester_id,mission_key',
       }
     )
+    .select('id, auth_user_id, technical_snapshot, started_at, completed_at, updated_at')
+    .single()
 
   if (error) throw error
 
   return {
+    id: data?.id,
+    auth_user_id: data?.auth_user_id || user.id,
     status: params.status,
     report: params.report?.trim() || undefined,
-    started_at: startedAt,
-    completed_at: completedAt,
-    updated_at: now,
+    technical_snapshot: data?.technical_snapshot || technicalSnapshot || undefined,
+    started_at: data?.started_at || startedAt,
+    completed_at: data?.completed_at || completedAt,
+    updated_at: data?.updated_at || now,
   } satisfies MissionResult
 }

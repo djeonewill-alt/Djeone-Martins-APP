@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { betaMissions } from './betaMissions'
 import type { BetaMission, MissionResult, MissionResultStatus } from './types'
 import { loadBetaMissionResults, saveBetaMissionResult } from '@/lib/beta/betaMissionResults'
+import { createBetaIssueReportFromMissionResult } from '@/lib/beta/betaIssueReports'
 import { useBetaTester, type BetaTester } from '@/lib/beta/betaTester'
 import {
   loadBetaFinalFeedback,
@@ -506,6 +507,29 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
         ...current,
         [mission.mission_key]: savedResult,
       }))
+
+      if (
+        (status === 'problem' || status === 'confusing') &&
+        savedResult.auth_user_id &&
+        report?.trim()
+      ) {
+        try {
+          await createBetaIssueReportFromMissionResult({
+            betaTester,
+            authUserId: savedResult.auth_user_id,
+            mission,
+            missionResultId: savedResult.id,
+            issueType: status,
+            report,
+            technicalSnapshot: savedResult.technical_snapshot,
+          })
+        } catch (issueError) {
+          console.error('Erro ao enviar relato beta para fila administrativa:', issueError)
+          setSyncMessage('Seu relato foi salvo, mas nÃ£o conseguimos enviar para a fila administrativa agora. Tente novamente depois.')
+          return
+        }
+      }
+
       setSyncMessage('')
     } catch (error) {
       console.error('Erro ao salvar resultado beta:', error)

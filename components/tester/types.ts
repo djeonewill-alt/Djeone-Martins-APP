@@ -46,8 +46,11 @@ export type MissionResultStatus =
   | 'postponed'
 
 export type MissionResult = {
+  id?: string
+  auth_user_id?: string
   status: MissionResultStatus
   report?: string
+  technical_snapshot?: unknown
   started_at?: string | null
   completed_at?: string | null
   updated_at?: string | null
