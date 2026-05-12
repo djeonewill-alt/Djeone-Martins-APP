@@ -161,6 +161,31 @@ function getMissionStatus(result?: MissionResult) {
   return statusLabels[result.status]
 }
 
+function getStartedMission(
+  missionResults: Record<string, MissionResult>
+) {
+  const startedEntries = Object.entries(missionResults)
+    .filter(([, result]) => result.status === 'started')
+    .sort(([, firstResult], [, secondResult]) => {
+      const firstDate = firstResult.updated_at || firstResult.started_at || ''
+      const secondDate = secondResult.updated_at || secondResult.started_at || ''
+
+      return secondDate.localeCompare(firstDate)
+    })
+
+  const [missionKey, result] = startedEntries[0] || []
+  const mission = missionKey
+    ? betaMissions.find((item) => item.mission_key === missionKey) || null
+    : null
+
+  if (!mission || !result) return null
+
+  return {
+    mission,
+    result,
+  }
+}
+
 function groupMissionsByAppArea(missions: BetaMission[]) {
   return missions.reduce<Record<string, BetaMission[]>>((groups, mission) => {
     const appArea = mission.app_area || mission.area
@@ -344,6 +369,10 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
   const areasInTest =
     appAreaSummaries.filter((summary) => summary.missions.length > 0).length +
     (showFeedbackFinalStep ? 1 : 0)
+  const startedMission = useMemo(
+    () => getStartedMission(missionResults),
+    [missionResults]
+  )
 
   const resetTemporaryMissionState = () => {
     setMissionFlow('intro')
@@ -371,6 +400,17 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
     setShowFounderMedal(false)
     setSelectedMissionKey(missionKey)
     resetTemporaryMissionState()
+  }
+
+  const continueMission = (mission: BetaMission) => {
+    setShowFinalFeedback(false)
+    setShowFounderMedal(false)
+    setSelectedAppArea(mission.app_area)
+    setSelectedSection(mission.section)
+    setSelectedMissionKey(mission.mission_key)
+    setMissionFlow('started')
+    setSelectedResult(null)
+    setReportText('')
   }
 
   const backToHome = () => {
@@ -612,9 +652,11 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
       areasInTest={areasInTest}
       showFinalFeedback={showFeedbackFinalStep}
       finalFeedbackSubmitted={finalFeedbackSubmitted}
+      startedMission={startedMission?.mission || null}
       onBack={onBack}
       onOpenArea={openAppArea}
       onOpenFinalFeedback={openFinalFeedback}
+      onContinueMission={continueMission}
     />
   )
 }
@@ -635,9 +677,11 @@ function TesterHome({
   areasInTest,
   showFinalFeedback,
   finalFeedbackSubmitted,
+  startedMission,
   onBack,
   onOpenArea,
   onOpenFinalFeedback,
+  onContinueMission,
 }: {
   summaries: AppAreaSummary[]
   missionCount: number
@@ -646,9 +690,11 @@ function TesterHome({
   areasInTest: number
   showFinalFeedback: boolean
   finalFeedbackSubmitted: boolean
+  startedMission: BetaMission | null
   onBack: () => void
   onOpenArea: (appArea: string) => void
   onOpenFinalFeedback: () => void
+  onContinueMission: (mission: BetaMission) => void
 }) {
   return (
     <PageShell>
@@ -675,6 +721,32 @@ function TesterHome({
           <StatCard value={areasInTest} label="Áreas em teste" />
         </div>
       </section>
+
+      {startedMission && (
+        <section className="mt-5 rounded-[28px] border border-amber-300/25 bg-amber-500/10 p-5 shadow-2xl shadow-amber-950/10">
+          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-amber-100">
+            Teste em andamento
+          </p>
+          <h2 className="mt-2 text-xl font-black tracking-[-0.04em] text-white">
+            {startedMission.title}
+          </h2>
+          <p className="mt-2 text-sm font-semibold leading-6 text-amber-50/80">
+            Você começou uma missão e ainda não finalizou o relato.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <InfoPill>{startedMission.app_area}</InfoPill>
+            <InfoPill>{startedMission.section}</InfoPill>
+            <InfoPill>{startedMission.estimated_minutes} min</InfoPill>
+          </div>
+          <button
+            type="button"
+            onClick={() => onContinueMission(startedMission)}
+            className="mt-4 rounded-2xl bg-amber-500 px-5 py-3 text-sm font-black text-slate-950 shadow-xl shadow-amber-950/20 active:scale-[0.98]"
+          >
+            Continuar teste
+          </button>
+        </section>
+      )}
 
       <section className="mt-5 rounded-[28px] border border-white/10 bg-slate-900/70 p-5">
         <p className="text-sm font-black text-white">Progresso por área</p>
@@ -967,6 +1039,9 @@ function MissionDetail({
   onBackToList: () => void
   onStop: () => void
 }) {
+  const isContinuingStartedMission =
+    missionFlow === 'intro' && savedResult?.status === 'started'
+
   return (
     <PageShell>
       <BackButton onClick={onBack}>{backLabel}</BackButton>
@@ -1023,6 +1098,16 @@ function MissionDetail({
 
         {missionFlow === 'intro' && (
           <div className="mt-5 space-y-4">
+            {isContinuingStartedMission && (
+              <div className="rounded-[22px] border border-amber-300/20 bg-amber-500/10 p-4">
+                <p className="text-sm font-black text-amber-100">
+                  Esta missão está em andamento.
+                </p>
+                <p className="mt-2 text-sm font-semibold leading-6 text-amber-50/80">
+                  Continue de onde parou e finalize dizendo como foi o teste.
+                </p>
+              </div>
+            )}
             <InfoBlock
               title="Pré-requisitos"
               items={mission.prerequisites}
@@ -1034,7 +1119,7 @@ function MissionDetail({
                 onClick={onStart}
                 className="rounded-2xl bg-purple-600 px-5 py-4 text-sm font-black text-white shadow-xl shadow-purple-950/30 active:scale-[0.98]"
               >
-                Tenho esse tempo. Começar agora
+                {isContinuingStartedMission ? 'Continuar teste' : 'Tenho esse tempo. Começar agora'}
               </button>
               <button
                 type="button"

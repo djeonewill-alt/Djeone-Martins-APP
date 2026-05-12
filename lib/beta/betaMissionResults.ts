@@ -8,6 +8,7 @@ type MissionResultRow = {
   report: string | null
   started_at: string | null
   completed_at: string | null
+  updated_at: string | null
 }
 
 function getNotificationPermission() {
@@ -56,7 +57,7 @@ export async function loadBetaMissionResults(betaTester: BetaTester) {
 
   const { data, error } = await supabase
     .from('beta_mission_results')
-    .select('mission_key, status, report, started_at, completed_at')
+    .select('mission_key, status, report, started_at, completed_at, updated_at')
     .eq('tester_id', betaTester.id)
     .eq('auth_user_id', user.id)
 
@@ -69,6 +70,7 @@ export async function loadBetaMissionResults(betaTester: BetaTester) {
         report: row.report || undefined,
         started_at: row.started_at,
         completed_at: row.completed_at,
+        updated_at: row.updated_at,
       }
 
       return results
@@ -131,5 +133,6 @@ export async function saveBetaMissionResult(params: {
     report: params.report?.trim() || undefined,
     started_at: startedAt,
     completed_at: completedAt,
+    updated_at: now,
   } satisfies MissionResult
 }

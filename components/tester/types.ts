@@ -50,4 +50,5 @@ export type MissionResult = {
   report?: string
   started_at?: string | null
   completed_at?: string | null
+  updated_at?: string | null
 }
