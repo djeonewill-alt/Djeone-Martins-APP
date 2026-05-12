@@ -70,7 +70,27 @@ type DetectedTheme = {
   avoid_keywords?: string[]
 }
 
+type SearchDebug = {
+  pexels_key_configured: boolean
+  queries_used: string[]
+  pexels_total_received: number
+  curated_total_received: number
+  removed_by_history: number
+  removed_by_content_filter: number
+  final_valid_images: number
+  fallback_used: boolean
+  warning_reason: string
+}
+
 const DAYS_WITHOUT_REPEAT = 120
+
+const SAFE_DAILY_QUOTE_QUERIES = [
+  'peaceful sunrise landscape hope faith',
+  'open bible morning light peaceful',
+  'mountain sunrise path hope peace',
+  'calm ocean sunrise hope light',
+  'golden sky peaceful landscape',
+]
 
 const THEME_MAP = [
   {
@@ -268,6 +288,10 @@ function shuffleArray<T>(array: T[]) {
   return [...array].sort(() => Math.random() - 0.5)
 }
 
+function uniqueList(values: string[]) {
+  return Array.from(new Set(values.map((value) => cleanText(value)).filter(Boolean)))
+}
+
 function shouldAvoidPhoto(photo: PexelsPhoto, themeKeywords: string[], avoidKeywords: string[] = []) {
   const allowDramatic =
     themeKeywords.includes('tempestade') ||
@@ -361,12 +385,8 @@ function detectThemeFromQuote(quoteText: string): DetectedTheme {
 
   if (matchedThemes.length === 0) {
     return {
-      query: 'peaceful sunrise hope nature',
-      queries: [
-        'open bible sunlight morning',
-        'golden sunrise mountains',
-        'peaceful sky sunrise',
-      ],
+      query: SAFE_DAILY_QUOTE_QUERIES[0],
+      queries: SAFE_DAILY_QUOTE_QUERIES,
       theme_keywords: ['esperança'],
     }
   }
@@ -463,6 +483,19 @@ function detectThemeFromQuote(quoteText: string): DetectedTheme {
     query: firstTheme.query,
     queries: Array.from(new Set(queries)).slice(0, 3),
     theme_keywords: themeNames,
+  }
+}
+
+function improveDailyQuoteQueries(detectedTheme: DetectedTheme): DetectedTheme {
+  const queries = uniqueList([
+    ...detectedTheme.queries,
+    ...SAFE_DAILY_QUOTE_QUERIES,
+  ]).slice(0, 7)
+
+  return {
+    ...detectedTheme,
+    query: queries[0] || detectedTheme.query,
+    queries,
   }
 }
 
@@ -591,6 +624,7 @@ async function fetchPexelsPhotos(params: {
   avoid_keywords?: string[]
   apiKey: string
   perPage?: number
+  page?: number
 }) {
   const url = new URL('https://api.pexels.com/v1/search')
   url.searchParams.set('query', params.query)
@@ -598,7 +632,7 @@ async function fetchPexelsPhotos(params: {
   url.searchParams.set('orientation', 'landscape')
   url.searchParams.set('size', 'large')
   url.searchParams.set('locale', 'pt-BR')
-  url.searchParams.set('page', String(getRandomPage()))
+  url.searchParams.set('page', String(params.page || getRandomPage()))
 
   const response = await fetch(url.toString(), {
     headers: {
@@ -618,11 +652,15 @@ async function fetchPexelsPhotos(params: {
         data?.error ||
         'Erro ao buscar imagens no Pexels.',
       photos: [] as BackgroundImage[],
+      totalReceived: 0,
+      removedByContentFilter: 0,
     }
   }
 
-  const photos = ((data.photos || []) as PexelsPhoto[])
-    .filter((photo) => !shouldAvoidPhoto(photo, params.theme_keywords, params.avoid_keywords))
+  const rawPhotos = (data.photos || []) as PexelsPhoto[]
+  const photos = rawPhotos.filter(
+    (photo) => !shouldAvoidPhoto(photo, params.theme_keywords, params.avoid_keywords)
+  )
 
   const images: BackgroundImage[] = photos.map((photo) => ({
     id: `pexels-${photo.id}`,
@@ -650,6 +688,8 @@ async function fetchPexelsPhotos(params: {
   return {
     error: null,
     photos: images,
+    totalReceived: rawPhotos.length,
+    removedByContentFilter: rawPhotos.length - photos.length,
   }
 }
 
@@ -680,66 +720,126 @@ async function searchPexelsImages(params: {
   history: ImageHistoryRow[]
 }) {
   const apiKey = process.env.PEXELS_API_KEY
+  const queries = uniqueList(params.queries).slice(0, 5)
 
   if (!apiKey) {
-    console.warn('PEXELS_API_KEY não configurada. Usando fallback interno.')
+    console.warn('PEXELS_API_KEY ausente. Usando fallback interno.')
 
     return {
       images: [] as BackgroundImage[],
-      warning: 'PEXELS_API_KEY não configurada.',
+      warning: 'PEXELS_API_KEY ausente.',
+      debug: {
+        pexels_key_configured: false,
+        queries_used: queries,
+        pexels_total_received: 0,
+        removed_by_history: 0,
+        removed_by_content_filter: 0,
+        warning_reason: 'PEXELS_API_KEY ausente',
+      },
     }
   }
 
   try {
     const resultsByQuery: BackgroundImage[][] = []
     let lastError: string | null = null
+    let hadPexelsError = false
+    let pexelsTotalReceived = 0
+    let removedByContentFilter = 0
+    let removedByHistory = 0
 
-    for (const query of params.queries.slice(0, 3)) {
-      const result = await fetchPexelsPhotos({
-        query,
-        theme_keywords: params.theme_keywords,
-        avoid_keywords: params.avoid_keywords,
-        apiKey,
-        perPage: 8,
-      })
+    const searchRound = async (pagesByQuery: number[]) => {
+      for (const query of queries) {
+        for (const page of pagesByQuery) {
+          const result = await fetchPexelsPhotos({
+            query,
+            theme_keywords: params.theme_keywords,
+            avoid_keywords: params.avoid_keywords,
+            apiKey,
+            perPage: 10,
+            page,
+          })
 
-      if (result.error) {
-        lastError = result.error
-      }
+          if (result.error) {
+            hadPexelsError = true
+            lastError = result.error
+          }
 
-      const filteredPhotos = result.photos.filter(
-        (image) => !isImageRecentlyUsed(image, params.history)
-      )
+          pexelsTotalReceived += result.totalReceived
+          removedByContentFilter += result.removedByContentFilter
 
-      resultsByQuery.push(shuffleArray(filteredPhotos))
-    }
+          const filteredPhotos = result.photos.filter((image) => {
+            const recentlyUsed = isImageRecentlyUsed(image, params.history)
 
-    const finalImages: BackgroundImage[] = []
+            if (recentlyUsed) {
+              removedByHistory += 1
+            }
 
-    for (let queryIndex = 0; queryIndex < resultsByQuery.length; queryIndex += 1) {
-      const firstImage = resultsByQuery[queryIndex][0]
+            return !recentlyUsed
+          })
 
-      if (firstImage) {
-        addUniqueImage(finalImages, firstImage)
-      }
-    }
-
-    for (let imageIndex = 1; imageIndex < 8; imageIndex += 1) {
-      for (let queryIndex = 0; queryIndex < resultsByQuery.length; queryIndex += 1) {
-        const image = resultsByQuery[queryIndex][imageIndex]
-
-        if (image) {
-          addUniqueImage(finalImages, image)
+          resultsByQuery.push(shuffleArray(filteredPhotos))
         }
       }
     }
 
+    const collectFinalImages = () => {
+      const collected: BackgroundImage[] = []
+
+      for (let queryIndex = 0; queryIndex < resultsByQuery.length; queryIndex += 1) {
+        const firstImage = resultsByQuery[queryIndex][0]
+
+        if (firstImage) {
+          addUniqueImage(collected, firstImage)
+        }
+      }
+
+      for (let imageIndex = 1; imageIndex < 10; imageIndex += 1) {
+        for (let queryIndex = 0; queryIndex < resultsByQuery.length; queryIndex += 1) {
+          const image = resultsByQuery[queryIndex][imageIndex]
+
+          if (image) {
+            addUniqueImage(collected, image)
+          }
+        }
+      }
+
+      return collected
+    }
+
+    await searchRound([getRandomPage()])
+
+    let finalImages = collectFinalImages()
+
+    if (finalImages.length === 0 && removedByHistory > 0) {
+      await searchRound([1, 2, 3])
+      finalImages = collectFinalImages()
+    }
+
+    let warningReason = ''
+
+    if (hadPexelsError) {
+      warningReason = 'Erro HTTP ou rate limit do Pexels'
+    } else if (pexelsTotalReceived === 0) {
+      warningReason = 'Pexels retornou zero imagens'
+    } else if (removedByContentFilter >= pexelsTotalReceived) {
+      warningReason = 'Pexels retornou imagens, mas todas foram removidas por filtro'
+    } else if (finalImages.length === 0 && removedByHistory > 0) {
+      warningReason = 'Pexels retornou imagens, mas todas foram removidas por histórico'
+    } else if (finalImages.length === 0) {
+      warningReason = 'Nenhuma imagem curada ou Pexels válida'
+    }
+
     return {
       images: finalImages.slice(0, 9),
-      warning:
-        finalImages.length > 0
-          ? null
-          : lastError || 'Nenhuma imagem nova encontrada no Pexels.',
+      warning: finalImages.length > 0 ? null : lastError || warningReason,
+      debug: {
+        pexels_key_configured: true,
+        queries_used: queries,
+        pexels_total_received: pexelsTotalReceived,
+        removed_by_history: removedByHistory,
+        removed_by_content_filter: removedByContentFilter,
+        warning_reason: warningReason,
+      },
     }
   } catch (error) {
     console.error('Falha inesperada ao buscar no Pexels:', error)
@@ -747,6 +847,14 @@ async function searchPexelsImages(params: {
     return {
       images: [] as BackgroundImage[],
       warning: 'Falha inesperada no Pexels.',
+      debug: {
+        pexels_key_configured: true,
+        queries_used: queries,
+        pexels_total_received: 0,
+        removed_by_history: 0,
+        removed_by_content_filter: 0,
+        warning_reason: 'Erro HTTP ou rate limit do Pexels',
+      },
     }
   }
 }
@@ -768,7 +876,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const detectedTheme =
+    const detectedThemeBase =
       purpose === 'episode_thumbnail'
         ? detectEpisodeThumbnailTheme(quoteText || manualQuery, preferredThemes, avoidThemes)
         : manualQuery
@@ -778,6 +886,11 @@ export async function POST(request: NextRequest) {
             theme_keywords: [manualQuery],
           }
         : detectThemeFromQuote(quoteText)
+
+    const detectedTheme =
+      !purpose && !manualQuery
+        ? improveDailyQuoteQueries(detectedThemeBase)
+        : detectedThemeBase
 
     const history = await getRecentImageHistory()
 
@@ -815,6 +928,23 @@ export async function POST(request: NextRequest) {
         ? 'pexels'
         : 'fallback'
 
+    const fallbackUsed = images[0]?.provider === 'fallback'
+    const warningReason =
+      fallbackUsed && !pexelsImages.debug.warning_reason
+        ? 'Nenhuma imagem curada ou Pexels válida'
+        : pexelsImages.debug.warning_reason
+    const debug: SearchDebug = {
+      pexels_key_configured: pexelsImages.debug.pexels_key_configured,
+      queries_used: pexelsImages.debug.queries_used,
+      pexels_total_received: pexelsImages.debug.pexels_total_received,
+      curated_total_received: curatedImages.length,
+      removed_by_history: pexelsImages.debug.removed_by_history,
+      removed_by_content_filter: pexelsImages.debug.removed_by_content_filter,
+      final_valid_images: finalImages.length,
+      fallback_used: fallbackUsed,
+      warning_reason: warningReason,
+    }
+
     return NextResponse.json({
       success: true,
       query: detectedTheme.query,
@@ -828,9 +958,10 @@ export async function POST(request: NextRequest) {
         returned: images.length,
         history: history.length,
       },
+      debug,
       warning:
-        images[0]?.provider === 'fallback'
-          ? pexelsImages.warning || 'Usando fallback interno.'
+        fallbackUsed
+          ? warningReason || pexelsImages.warning || 'Usando fallback interno.'
           : pexelsImages.warning,
     })
   } catch (error) {
@@ -839,11 +970,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Erro ao buscar imagens.',
+        error: 'Erro ao buscar imagens.',
         images: FALLBACK_IMAGES,
+        provider: 'fallback',
+        debug: {
+          pexels_key_configured: Boolean(process.env.PEXELS_API_KEY),
+          queries_used: [],
+          pexels_total_received: 0,
+          curated_total_received: 0,
+          removed_by_history: 0,
+          removed_by_content_filter: 0,
+          final_valid_images: 0,
+          fallback_used: true,
+          warning_reason: 'Nenhuma imagem curada ou Pexels válida',
+        } satisfies SearchDebug,
       },
       { status: 500 }
     )

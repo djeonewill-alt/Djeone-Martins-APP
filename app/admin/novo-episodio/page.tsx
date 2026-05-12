@@ -763,7 +763,9 @@ export default function NovoEpisodio() {
         setCardOptions([])
         setSelectedCardIndex(null)
 
-        alert('Não encontrei imagens do Pexels para esta Palavra do Dia. Tente gerar novamente, ajuste a frase ou envie uma imagem manualmente. Nenhum card foi gerado com imagem fallback.')
+        const warningReason = data?.debug?.warning_reason || data?.warning || 'Nenhuma imagem válida encontrada.'
+
+        alert(`Não encontrei imagens válidas no Pexels. Motivo: ${warningReason}. Tente gerar novamente, ajuste a frase ou envie uma imagem manualmente. Nenhum card foi gerado com imagem fallback.`)
         return
       }
 
