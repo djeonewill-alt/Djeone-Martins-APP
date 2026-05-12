@@ -3,8 +3,18 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { betaMissions } from './betaMissions'
 import type { BetaMission, MissionResult, MissionResultStatus } from './types'
-import { loadBetaMissionResults, saveBetaMissionResult } from '@/lib/beta/betaMissionResults'
-import { createBetaIssueReportFromMissionResult } from '@/lib/beta/betaIssueReports'
+import {
+  getBetaTechnicalSnapshot,
+  loadBetaMissionResults,
+  saveBetaMissionResult,
+} from '@/lib/beta/betaMissionResults'
+import {
+  createBetaIssueReportFromMissionResult,
+  loadOwnBetaIssueReports,
+  submitBetaIssueRetest,
+  type BetaIssueReport,
+  type RetestAnswer,
+} from '@/lib/beta/betaIssueReports'
 import { useBetaTester, type BetaTester } from '@/lib/beta/betaTester'
 import {
   loadBetaFinalFeedback,
@@ -151,6 +161,17 @@ function getCriticalityClasses(criticality: BetaMission['criticality']) {
   }
 
   return 'border-emerald-300/20 bg-emerald-500/10 text-emerald-100'
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return 'Data não informada'
+
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
 }
 
 function isCompleted(result?: MissionResult) {
@@ -303,6 +324,11 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
   const [finalFeedback, setFinalFeedback] = useState<BetaFinalFeedback | null>(null)
   const [showFinalFeedback, setShowFinalFeedback] = useState(false)
   const [showFounderMedal, setShowFounderMedal] = useState(false)
+  const [issueReports, setIssueReports] = useState<BetaIssueReport[]>([])
+  const [selectedRetestIssueId, setSelectedRetestIssueId] = useState<string | null>(null)
+  const [retestAnswer, setRetestAnswer] = useState<RetestAnswer | null>(null)
+  const [retestMessage, setRetestMessage] = useState('')
+  const [retestSubmitting, setRetestSubmitting] = useState(false)
   const { isBetaTester, betaTester } = useBetaTester()
 
   useEffect(() => {
@@ -328,6 +354,33 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
     }
 
     loadSavedResults()
+
+    return () => {
+      mounted = false
+    }
+  }, [betaTester, isBetaTester])
+
+  useEffect(() => {
+    let mounted = true
+
+    async function loadIssueReports() {
+      if (!isBetaTester || !betaTester) {
+        setIssueReports([])
+        return
+      }
+
+      try {
+        const savedReports = await loadOwnBetaIssueReports(betaTester)
+
+        if (mounted) {
+          setIssueReports(savedReports)
+        }
+      } catch (error) {
+        console.error('Erro ao carregar retestes beta:', error)
+      }
+    }
+
+    loadIssueReports()
 
     return () => {
       mounted = false
@@ -392,11 +445,21 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
     () => getStartedMission(missionResults),
     [missionResults]
   )
+  const retestIssues = useMemo(
+    () => issueReports.filter((issue) => issue.status === 'retest_requested'),
+    [issueReports]
+  )
+  const selectedRetestIssue = selectedRetestIssueId
+    ? issueReports.find((issue) => issue.id === selectedRetestIssueId) || null
+    : null
 
   const resetTemporaryMissionState = () => {
     setMissionFlow('intro')
     setSelectedResult(null)
     setReportText('')
+    setSelectedRetestIssueId(null)
+    setRetestAnswer(null)
+    setRetestMessage('')
   }
 
   const openAppArea = (appArea: string) => {
@@ -430,6 +493,23 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
     setMissionFlow('started')
     setSelectedResult(null)
     setReportText('')
+  }
+
+  const openRetestIssue = (issue: BetaIssueReport) => {
+    const mission = betaMissions.find((item) => item.mission_key === issue.mission_key)
+    if (!mission) return
+
+    setShowFinalFeedback(false)
+    setShowFounderMedal(false)
+    setSelectedAppArea(mission.app_area)
+    setSelectedSection(mission.section)
+    setSelectedMissionKey(mission.mission_key)
+    setSelectedRetestIssueId(issue.id)
+    setMissionFlow('started')
+    setSelectedResult(null)
+    setReportText('')
+    setRetestAnswer(null)
+    setRetestMessage('')
   }
 
   const backToHome = () => {
@@ -523,6 +603,8 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
             report,
             technicalSnapshot: savedResult.technical_snapshot,
           })
+          const refreshedReports = await loadOwnBetaIssueReports(betaTester)
+          setIssueReports(refreshedReports)
         } catch (issueError) {
           console.error('Erro ao enviar relato beta para fila administrativa:', issueError)
           setSyncMessage('Seu relato foi salvo, mas nÃ£o conseguimos enviar para a fila administrativa agora. Tente novamente depois.')
@@ -570,6 +652,43 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
 
     void persistMissionResult(selectedMission, selectedResult, reportText.trim())
     setMissionFlow('completed')
+  }
+
+  const handleRetestAnswer = (answer: RetestAnswer) => {
+    setRetestAnswer(answer)
+
+    if (answer === 'success') {
+      void handleSubmitRetest(answer)
+    }
+  }
+
+  const handleSubmitRetest = async (answerOverride?: RetestAnswer) => {
+    const answer = answerOverride || retestAnswer
+
+    if (!selectedRetestIssue || !answer || !betaTester) return
+
+    setRetestSubmitting(true)
+    setSyncMessage('')
+
+    try {
+      await submitBetaIssueRetest({
+        issueReportId: selectedRetestIssue.id,
+        answer,
+        message: answer === 'success' ? null : retestMessage,
+        technicalSnapshot: getBetaTechnicalSnapshot(),
+      })
+
+      const refreshedReports = await loadOwnBetaIssueReports(betaTester)
+      setIssueReports(refreshedReports)
+      setRetestAnswer(answer)
+      setMissionFlow('completed')
+      setSyncMessage('')
+    } catch (error) {
+      console.error('Erro ao enviar reteste beta:', error)
+      setSyncMessage('Não foi possível enviar o reteste agora. Tente novamente depois.')
+    } finally {
+      setRetestSubmitting(false)
+    }
   }
 
   const handleFinalFeedbackSubmitted = (feedback: BetaFinalFeedback) => {
@@ -622,6 +741,10 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
         selectedResult={selectedResult}
         reportText={reportText}
         savedResult={missionResults[selectedMission.mission_key]}
+        retestIssue={selectedRetestIssue}
+        retestAnswer={retestAnswer}
+        retestMessage={retestMessage}
+        retestSubmitting={retestSubmitting}
         syncMessage={syncMessage}
         backLabel={
           selectedSectionSummary
@@ -634,6 +757,9 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
         onResult={handleResult}
         onReportChange={setReportText}
         onSaveReport={handleSaveReport}
+        onRetestAnswer={handleRetestAnswer}
+        onRetestMessageChange={setRetestMessage}
+        onSubmitRetest={() => void handleSubmitRetest()}
         onNextMission={handleNextMission}
         onBackToList={backToMissionList}
         onStop={backToHome}
@@ -695,10 +821,12 @@ export default function TesterCenterPreview({ onBack }: TesterCenterPreviewProps
       showFinalFeedback={showFeedbackFinalStep}
       finalFeedbackSubmitted={finalFeedbackSubmitted}
       startedMission={startedMission?.mission || null}
+      retestIssues={retestIssues}
       onBack={onBack}
       onOpenArea={openAppArea}
       onOpenFinalFeedback={openFinalFeedback}
       onContinueMission={continueMission}
+      onOpenRetestIssue={openRetestIssue}
     />
   )
 }
@@ -720,10 +848,12 @@ function TesterHome({
   showFinalFeedback,
   finalFeedbackSubmitted,
   startedMission,
+  retestIssues,
   onBack,
   onOpenArea,
   onOpenFinalFeedback,
   onContinueMission,
+  onOpenRetestIssue,
 }: {
   summaries: AppAreaSummary[]
   missionCount: number
@@ -733,10 +863,12 @@ function TesterHome({
   showFinalFeedback: boolean
   finalFeedbackSubmitted: boolean
   startedMission: BetaMission | null
+  retestIssues: BetaIssueReport[]
   onBack: () => void
   onOpenArea: (appArea: string) => void
   onOpenFinalFeedback: () => void
   onContinueMission: (mission: BetaMission) => void
+  onOpenRetestIssue: (issue: BetaIssueReport) => void
 }) {
   return (
     <PageShell>
@@ -787,6 +919,49 @@ function TesterHome({
           >
             Continuar teste
           </button>
+        </section>
+      )}
+
+      {retestIssues.length > 0 && (
+        <section className="mt-5 rounded-[28px] border border-amber-300/25 bg-amber-500/10 p-5 shadow-2xl shadow-amber-950/10">
+          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-amber-100">
+            Reteste liberado
+          </p>
+          <h2 className="mt-2 text-xl font-black tracking-[-0.04em] text-white">
+            Atualizamos uma parte do app que você relatou
+          </h2>
+          <p className="mt-2 text-sm font-semibold leading-6 text-amber-50/80">
+            Teste novamente e diga se agora funcionou.
+          </p>
+          <div className="mt-4 space-y-3">
+            {retestIssues.map((issue) => {
+              const mission = betaMissions.find((item) => item.mission_key === issue.mission_key)
+
+              return (
+                <div
+                  key={issue.id}
+                  className="rounded-2xl border border-white/10 bg-slate-950/60 p-4"
+                >
+                  <p className="text-sm font-black text-white">
+                    {mission?.title || issue.mission_key}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <InfoPill>{issue.app_area}</InfoPill>
+                    <InfoPill>{issue.section || 'Sem seção'}</InfoPill>
+                    <InfoPill>{issue.issue_type === 'problem' ? 'Problema' : 'Dúvida'}</InfoPill>
+                    <InfoPill>{formatDate(issue.retest_requested_at)}</InfoPill>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onOpenRetestIssue(issue)}
+                    className="mt-4 rounded-2xl bg-amber-500 px-5 py-3 text-sm font-black text-slate-950 shadow-xl shadow-amber-950/20 active:scale-[0.98]"
+                  >
+                    Testar novamente
+                  </button>
+                </div>
+              )
+            })}
+          </div>
         </section>
       )}
 
@@ -1059,6 +1234,10 @@ function MissionDetail({
   selectedResult,
   reportText,
   savedResult,
+  retestIssue,
+  retestAnswer,
+  retestMessage,
+  retestSubmitting,
   syncMessage,
   backLabel,
   onBack,
@@ -1067,6 +1246,9 @@ function MissionDetail({
   onResult,
   onReportChange,
   onSaveReport,
+  onRetestAnswer,
+  onRetestMessageChange,
+  onSubmitRetest,
   onNextMission,
   onBackToList,
   onStop,
@@ -1076,6 +1258,10 @@ function MissionDetail({
   selectedResult: MissionResultStatus | null
   reportText: string
   savedResult?: MissionResult
+  retestIssue?: BetaIssueReport | null
+  retestAnswer: RetestAnswer | null
+  retestMessage: string
+  retestSubmitting: boolean
   syncMessage: string
   backLabel: string
   onBack: () => void
@@ -1084,12 +1270,16 @@ function MissionDetail({
   onResult: (status: MissionResultStatus) => void
   onReportChange: (value: string) => void
   onSaveReport: () => void
+  onRetestAnswer: (answer: RetestAnswer) => void
+  onRetestMessageChange: (value: string) => void
+  onSubmitRetest: () => void
   onNextMission: () => void
   onBackToList: () => void
   onStop: () => void
 }) {
+  const isRetestMode = Boolean(retestIssue)
   const isContinuingStartedMission =
-    missionFlow === 'intro' && savedResult?.status === 'started'
+    !isRetestMode && missionFlow === 'intro' && savedResult?.status === 'started'
   const savedResultCardClasses =
     savedResult?.status === 'problem'
       ? 'border-amber-300/25 bg-amber-500/10 text-amber-100'
@@ -1145,12 +1335,33 @@ function MissionDetail({
           <InfoPill>{mission.app_area}</InfoPill>
           <InfoPill>{mission.section}</InfoPill>
           <InfoPill>{mission.type}</InfoPill>
+          {isRetestMode && (
+            <span className="rounded-full border border-amber-300/25 bg-amber-500/10 px-3 py-2 text-xs font-black text-amber-100">
+              Reteste liberado
+            </span>
+          )}
           <span className={`rounded-full border px-3 py-2 text-xs font-black ${getCriticalityClasses(mission.criticality)}`}>
             Criticidade {mission.criticality}
           </span>
         </div>
 
-        {savedResult && missionFlow === 'intro' && (
+        {isRetestMode && (
+          <div className="mt-5 rounded-[22px] border border-amber-300/25 bg-amber-500/10 p-4">
+            <p className="text-sm font-black text-amber-100">
+              Reteste liberado
+            </p>
+            <p className="mt-2 text-sm font-semibold leading-6 text-amber-50/80">
+              Atualizamos essa parte. Faça o teste novamente e nos diga se agora funcionou.
+            </p>
+            {retestIssue?.admin_notes && (
+              <p className="mt-2 text-sm font-semibold leading-6 text-amber-50/80">
+                Nota do administrador: {retestIssue.admin_notes}
+              </p>
+            )}
+          </div>
+        )}
+
+        {savedResult && missionFlow === 'intro' && !isRetestMode && (
           <div className={`mt-5 rounded-[22px] border p-4 ${savedResultCardClasses}`}>
             <p className="text-sm font-black">
               {getMissionStatus(savedResult)}
@@ -1238,6 +1449,60 @@ function MissionDetail({
               keyPrefix={`${mission.mission_key}-observe`}
             />
 
+            {isRetestMode && (
+              <div className="rounded-[24px] border border-amber-300/20 bg-amber-500/10 p-4">
+                <p className="text-sm font-black text-white">Como foi o reteste?</p>
+                <div className="mt-4 grid gap-3">
+                  <ResultButton
+                    label="Agora funcionou"
+                    description="A parte corrigida funcionou bem no novo teste."
+                    color="emerald"
+                    onClick={() => onRetestAnswer('success')}
+                  />
+                  <ResultButton
+                    label="Ainda deu problema"
+                    description="O problema continuou ou apareceu novamente."
+                    color="red"
+                    onClick={() => onRetestAnswer('problem')}
+                  />
+                  <ResultButton
+                    label="Ainda não entendi"
+                    description="A experiência ainda ficou confusa."
+                    color="amber"
+                    onClick={() => onRetestAnswer('confusing')}
+                  />
+                </div>
+
+                {(retestAnswer === 'problem' || retestAnswer === 'confusing') && (
+                  <div className="mt-4 rounded-[22px] border border-white/10 bg-slate-950/70 p-4">
+                    <label className="block text-xs font-black uppercase tracking-[0.14em] text-slate-300">
+                      Conte brevemente o que ainda aconteceu.
+                    </label>
+                    <textarea
+                      value={retestMessage}
+                      onChange={(event) => onRetestMessageChange(event.target.value)}
+                      rows={4}
+                      className="mt-3 w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-semibold leading-6 text-white outline-none placeholder:text-slate-600 focus:border-amber-300/60"
+                      placeholder={
+                        retestAnswer === 'problem'
+                          ? 'Ex.: Testei de novo, mas o botão ainda não respondeu.'
+                          : 'Ex.: Mesmo depois da atualização, ainda não entendi onde tocar.'
+                      }
+                    />
+                    <button
+                      type="button"
+                      disabled={retestSubmitting}
+                      onClick={onSubmitRetest}
+                      className="mt-3 rounded-2xl bg-amber-500 px-5 py-3 text-xs font-black text-slate-950 disabled:opacity-60 active:scale-[0.98]"
+                    >
+                      {retestSubmitting ? 'Enviando...' : 'Enviar reteste'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!isRetestMode && (
             <div className="rounded-[24px] border border-white/10 bg-slate-950/70 p-4">
               <p className="text-sm font-black text-white">Como foi o teste?</p>
               <div className="mt-4 grid gap-3">
@@ -1297,6 +1562,7 @@ function MissionDetail({
                 </div>
               )}
             </div>
+            )}
           </div>
         )}
 
@@ -1318,7 +1584,43 @@ function MissionDetail({
           </div>
         )}
 
-        {missionFlow === 'completed' && selectedResult && (
+        {isRetestMode && missionFlow === 'completed' && retestAnswer && (
+          <div className={`mt-5 rounded-[24px] border p-4 ${
+            retestAnswer === 'success'
+              ? 'border-emerald-300/20 bg-emerald-500/10 text-emerald-100'
+              : 'border-amber-300/25 bg-amber-500/10 text-amber-100'
+          }`}>
+            <p className="text-sm font-black">
+              Obrigado. Seu reteste foi enviado.
+            </p>
+            <p className="mt-2 text-sm font-semibold leading-6 opacity-85">
+              {retestAnswer === 'success' &&
+                'Reteste enviado: agora funcionou. O relato foi marcado como resolvido.'}
+              {retestAnswer === 'problem' &&
+                'Ainda com problema — aguardando nova análise.'}
+              {retestAnswer === 'confusing' &&
+                'Ainda com dúvida — aguardando nova orientação.'}
+            </p>
+            <div className="mt-4 grid gap-3">
+              <button
+                type="button"
+                onClick={onBackToList}
+                className="rounded-2xl border border-white/10 bg-slate-950 px-5 py-3 text-xs font-black text-slate-100 active:scale-[0.98]"
+              >
+                Voltar para a lista
+              </button>
+              <button
+                type="button"
+                onClick={onStop}
+                className="rounded-2xl border border-white/10 bg-slate-950 px-5 py-3 text-xs font-black text-slate-100 active:scale-[0.98]"
+              >
+                Voltar para Central
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!isRetestMode && missionFlow === 'completed' && selectedResult && (
           <div className={`mt-5 rounded-[24px] border p-4 ${getMissionStatusClasses({ status: selectedResult })}`}>
             <p className="text-sm font-black">
               Obrigado. Sua resposta ajuda a melhorar o app.
