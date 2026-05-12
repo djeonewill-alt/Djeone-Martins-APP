@@ -134,10 +134,10 @@ const configuracoesSections = [
 
 const statusLabels: Record<MissionResultStatus, string> = {
   started: 'Em andamento',
-  success: 'Concluída',
+  success: 'Concluído',
   problem: 'Relato enviado',
-  confusing: 'Relato enviado',
-  postponed: 'Deixada para depois',
+  confusing: 'Dúvida enviada',
+  postponed: 'Para depois',
 }
 
 function getCriticalityClasses(criticality: BetaMission['criticality']) {
@@ -153,12 +153,30 @@ function getCriticalityClasses(criticality: BetaMission['criticality']) {
 }
 
 function isCompleted(result?: MissionResult) {
-  return result?.status === 'success' || result?.status === 'problem' || result?.status === 'confusing'
+  return result?.status === 'success'
 }
 
 function getMissionStatus(result?: MissionResult) {
-  if (!result) return 'Pendente'
+  if (!result) return 'Não iniciado'
   return statusLabels[result.status]
+}
+
+function getMissionStatusClasses(result?: MissionResult) {
+  if (!result) return 'border-white/10 bg-white/[0.04] text-slate-200'
+  if (result.status === 'success') return 'border-emerald-300/20 bg-emerald-500/10 text-emerald-100'
+  if (result.status === 'problem') return 'border-amber-300/25 bg-amber-500/10 text-amber-100'
+  if (result.status === 'confusing') return 'border-purple-300/25 bg-purple-500/10 text-purple-100'
+  if (result.status === 'started') return 'border-blue-300/25 bg-blue-500/10 text-blue-100'
+  return 'border-slate-300/20 bg-slate-500/10 text-slate-100'
+}
+
+function getMissionStatusDescription(result?: MissionResult) {
+  if (!result) return ''
+  if (result.status === 'problem') return 'Seu relato foi enviado para análise.'
+  if (result.status === 'confusing') return 'Sua dúvida foi enviada para orientação.'
+  if (result.status === 'started') return 'Continue o teste quando voltar.'
+  if (result.status === 'postponed') return 'Você deixou esta missão para depois.'
+  return ''
 }
 
 function getStartedMission(
@@ -994,7 +1012,14 @@ function MissionList({
                 <span className={`rounded-full border px-3 py-2 text-xs font-black ${getCriticalityClasses(mission.criticality)}`}>
                   {mission.criticality}
                 </span>
-                <InfoPill>{getMissionStatus(result)}</InfoPill>
+                <span className={`rounded-full border px-3 py-2 text-xs font-black ${getMissionStatusClasses(result)}`}>
+                  {getMissionStatus(result)}
+                </span>
+                {getMissionStatusDescription(result) && (
+                  <span className="w-full text-xs font-bold leading-5 text-slate-400">
+                    {getMissionStatusDescription(result)}
+                  </span>
+                )}
               </div>
             </button>
           )
@@ -1041,6 +1066,32 @@ function MissionDetail({
 }) {
   const isContinuingStartedMission =
     missionFlow === 'intro' && savedResult?.status === 'started'
+  const savedResultCardClasses =
+    savedResult?.status === 'problem'
+      ? 'border-amber-300/25 bg-amber-500/10 text-amber-100'
+      : savedResult?.status === 'confusing'
+        ? 'border-purple-300/25 bg-purple-500/10 text-purple-100'
+        : savedResult?.status === 'success'
+          ? 'border-emerald-300/20 bg-emerald-500/10 text-emerald-100'
+          : 'border-blue-300/20 bg-blue-500/10 text-blue-100'
+  const reportInstructions =
+    selectedResult === 'problem'
+      ? [
+          'O que você estava tentando fazer?',
+          'Onde você tocou?',
+          'O que esperava acontecer?',
+          'O que aconteceu de errado?',
+          'O problema aconteceu uma vez ou repetiu?',
+        ]
+      : [
+          'Em qual passo você ficou confuso?',
+          'Qual botão ou tela você não encontrou?',
+          'O que você esperava que estivesse mais claro?',
+        ]
+  const reportPlaceholder =
+    selectedResult === 'problem'
+      ? 'Ex.: Toquei no play, o áudio começou, mas o controle sumiu e não consegui pausar.'
+      : 'Ex.: Não entendi onde encontrar a série Salmo 23 depois de entrar em Podcasts.'
 
   return (
     <PageShell>
@@ -1076,12 +1127,22 @@ function MissionDetail({
         </div>
 
         {savedResult && missionFlow === 'intro' && (
-          <div className="mt-5 rounded-[22px] border border-emerald-300/20 bg-emerald-500/10 p-4">
-            <p className="text-sm font-black text-emerald-100">
-              Status local: {getMissionStatus(savedResult)}
+          <div className={`mt-5 rounded-[22px] border p-4 ${savedResultCardClasses}`}>
+            <p className="text-sm font-black">
+              {getMissionStatus(savedResult)}
             </p>
+            {savedResult.status === 'problem' && (
+              <p className="mt-2 text-sm font-semibold leading-6 text-amber-50/80">
+                Recebemos seu problema. Ele será analisado e, se houver atualização, esta missão poderá ser liberada para reteste.
+              </p>
+            )}
+            {savedResult.status === 'confusing' && (
+              <p className="mt-2 text-sm font-semibold leading-6 text-purple-50/80">
+                Recebemos sua dúvida. Ela será analisada para melhorar as instruções ou corrigir a experiência.
+              </p>
+            )}
             {savedResult.report && (
-              <p className="mt-2 text-sm font-semibold leading-6 text-emerald-50/80">
+              <p className="mt-2 text-sm font-semibold leading-6 opacity-85">
                 {savedResult.report}
               </p>
             )}
@@ -1178,7 +1239,21 @@ function MissionDetail({
 
               {(selectedResult === 'problem' || selectedResult === 'confusing') && (
                 <div className="mt-4 rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
-                  <label className="text-xs font-black uppercase tracking-[0.14em] text-slate-300">
+                  <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                    <p className="text-sm font-black text-white">
+                      {selectedResult === 'problem'
+                        ? 'Para nos ajudar a corrigir, explique:'
+                        : 'Para nos ajudar a melhorar, explique:'}
+                    </p>
+                    <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm font-semibold leading-6 text-slate-300">
+                      {reportInstructions.map((instruction, index) => (
+                        <li key={`${mission.mission_key}-${selectedResult}-instruction-${index}`}>
+                          {instruction}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                  <label className="mt-4 block text-xs font-black uppercase tracking-[0.14em] text-slate-300">
                     Conte o que aconteceu enquanto está fresco na memória.
                   </label>
                   <textarea
@@ -1186,7 +1261,7 @@ function MissionDetail({
                     onChange={(event) => onReportChange(event.target.value)}
                     rows={4}
                     className="mt-3 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-semibold leading-6 text-white outline-none placeholder:text-slate-600 focus:border-purple-300/60"
-                    placeholder="Conte em poucas palavras o que aconteceu."
+                    placeholder={reportPlaceholder}
                   />
                   <button
                     type="button"
@@ -1220,12 +1295,17 @@ function MissionDetail({
         )}
 
         {missionFlow === 'completed' && selectedResult && (
-          <div className="mt-5 rounded-[24px] border border-emerald-300/20 bg-emerald-500/10 p-4">
-            <p className="text-sm font-black text-emerald-100">
+          <div className={`mt-5 rounded-[24px] border p-4 ${getMissionStatusClasses({ status: selectedResult })}`}>
+            <p className="text-sm font-black">
               Obrigado. Sua resposta ajuda a melhorar o app.
             </p>
-            <p className="mt-2 text-sm font-semibold leading-6 text-emerald-50/80">
-              Resultado salvo localmente nesta sessão: {getMissionStatus({ status: selectedResult })}.
+            <p className="mt-2 text-sm font-semibold leading-6 opacity-85">
+              {selectedResult === 'problem' &&
+                'Seu relato foi enviado para análise. Obrigado por explicar o problema.'}
+              {selectedResult === 'confusing' &&
+                'Sua dúvida foi enviada para orientação. Obrigado por ajudar a deixar a experiência mais clara.'}
+              {selectedResult === 'success' &&
+                `Resultado salvo localmente nesta sessão: ${getMissionStatus({ status: selectedResult })}.`}
             </p>
             <div className="mt-4 grid gap-3">
               <button
