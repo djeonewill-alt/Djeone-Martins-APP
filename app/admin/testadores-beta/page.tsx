@@ -250,6 +250,59 @@ function getIssueStatusClasses(status: string) {
   return 'border-orange-300/25 bg-orange-500/10 text-orange-100'
 }
 
+function isRetestEvent(eventType: string) {
+  return ['retest_success', 'retest_problem', 'retest_confusing'].includes(eventType)
+}
+
+function getRetestEventLabel(eventType: string) {
+  const labels: Record<string, string> = {
+    retest_success: 'Reteste recebido: agora funcionou',
+    retest_problem: 'Reteste recebido: ainda deu problema',
+    retest_confusing: 'Reteste recebido: ainda não entendi',
+  }
+
+  return labels[eventType] || eventType
+}
+
+function getRetestEventDescription(eventType: string) {
+  const descriptions: Record<string, string> = {
+    retest_success: 'Resolvido pelo testador no reteste.',
+    retest_problem: 'Reteste indicou que ainda precisa de ajuste.',
+    retest_confusing: 'Reteste indicou que a experiência ainda precisa ficar mais clara.',
+  }
+
+  return descriptions[eventType] || ''
+}
+
+function getRetestEventClasses(eventType: string) {
+  if (eventType === 'retest_success') {
+    return 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100'
+  }
+
+  if (eventType === 'retest_confusing') {
+    return 'border-purple-300/25 bg-purple-500/10 text-purple-100'
+  }
+
+  return 'border-red-300/25 bg-red-500/10 text-red-100'
+}
+
+function getEventDisplayLabel(eventType: string) {
+  const labels: Record<string, string> = {
+    created: 'Relato criado',
+    admin_reviewing: 'Admin marcou em análise',
+    admin_fixing: 'Admin marcou em correção',
+    retest_requested: 'Admin liberou reteste',
+    retest_success: 'O testador respondeu ao reteste: agora funcionou',
+    retest_problem: 'O testador respondeu ao reteste: ainda deu problema',
+    retest_confusing: 'O testador respondeu ao reteste: ainda não entendi',
+    resolved: 'Admin marcou resolvido',
+    ignored: 'Admin ignorou o relato',
+    admin_note: 'Nota administrativa',
+  }
+
+  return labels[eventType] || eventType
+}
+
 export default function AdminBetaTestersPage() {
   const [adminPassword, setAdminPassword] = useState('')
   const [isAuthorized, setIsAuthorized] = useState(false)
@@ -1103,6 +1156,9 @@ function IssueQueueSection({
         {issueReports.map((issue) => {
           const noteValue = notesDrafts[issue.id] ?? issue.admin_notes ?? ''
           const isUpdating = issueUpdatingId === issue.id
+          const latestEvent = issue.events[0]
+          const latestRetestEvent =
+            latestEvent && isRetestEvent(latestEvent.event_type) ? latestEvent : null
 
           return (
             <article
@@ -1142,6 +1198,25 @@ function IssueQueueSection({
                   <p className="mt-2 text-xs font-semibold text-slate-400">
                     {issue.tester?.name || issue.tester?.email || 'Testador não encontrado'} · {issue.tester?.email || 'sem e-mail'} · criado em {formatDate(issue.created_at)}
                   </p>
+
+                  {latestRetestEvent && (
+                    <div className={`mt-3 rounded-2xl border p-4 ${getRetestEventClasses(latestRetestEvent.event_type)}`}>
+                      <p className="text-sm font-black">
+                        {getRetestEventLabel(latestRetestEvent.event_type)}
+                      </p>
+                      <p className="mt-1 text-sm font-semibold leading-6 opacity-85">
+                        {getRetestEventDescription(latestRetestEvent.event_type)}
+                      </p>
+                      {latestRetestEvent.message && (
+                        <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 opacity-90">
+                          {latestRetestEvent.message}
+                        </p>
+                      )}
+                      <p className="mt-2 text-xs font-bold opacity-70">
+                        Recebido em {formatDate(latestRetestEvent.created_at)}
+                      </p>
+                    </div>
+                  )}
 
                   <div className="mt-3 grid gap-2 text-xs font-semibold text-slate-300 sm:grid-cols-2 lg:grid-cols-4">
                     <InfoBox label="Aparelho" value={issue.profile?.device_label || 'Não informado'} />
@@ -1249,9 +1324,16 @@ function IssueQueueSection({
                   </p>
                   <div className="mt-3 space-y-2">
                     {issue.events.slice(0, 5).map((event) => (
-                      <div key={event.id} className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2">
+                      <div
+                        key={event.id}
+                        className={`rounded-xl border px-3 py-2 ${
+                          isRetestEvent(event.event_type)
+                            ? getRetestEventClasses(event.event_type)
+                            : 'border-white/10 bg-white/[0.035]'
+                        }`}
+                      >
                         <p className="text-xs font-black text-slate-100">
-                          {event.event_type} · {formatDate(event.created_at)}
+                          {getEventDisplayLabel(event.event_type)} · {formatDate(event.created_at)}
                         </p>
                         {(event.status_from || event.status_to) && (
                           <p className="mt-1 text-xs font-semibold text-slate-400">
