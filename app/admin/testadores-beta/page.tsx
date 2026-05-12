@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { FormEvent, useMemo, useState } from 'react'
 
-type FilterValue = 'all' | 'problem' | 'confusing' | 'active' | 'profile'
+type FilterValue = 'all' | 'problem' | 'confusing' | 'active' | 'profile' | 'responded'
 
 type BetaTesterProfile = {
   accepted_beta_terms: boolean | null
@@ -58,6 +58,16 @@ type BetaTesterSummary = {
   last_result_at: string | null
 }
 
+type BetaFinalFeedback = {
+  overall_experience: string | null
+  favorite_area: string | null
+  most_confusing_area: string | null
+  biggest_problem: string | null
+  pastoral_feedback: string | null
+  would_recommend: boolean | null
+  submitted_at: string | null
+}
+
 type BetaTester = {
   id: string
   email: string
@@ -70,6 +80,7 @@ type BetaTester = {
   profile: BetaTesterProfile | null
   results: BetaMissionResult[]
   summary: BetaTesterSummary
+  feedback: BetaFinalFeedback | null
 }
 
 type TesterForm = {
@@ -126,6 +137,15 @@ function getStatusClasses(status: string) {
   return 'border-blue-300/20 bg-blue-500/10 text-blue-100'
 }
 
+const filterLabels: Record<FilterValue, string> = {
+  all: 'Cadastrados',
+  active: 'Ativos',
+  profile: 'Perfil concluído',
+  responded: 'Respostas',
+  problem: 'Problemas',
+  confusing: 'Não entendi',
+}
+
 export default function AdminBetaTestersPage() {
   const [adminPassword, setAdminPassword] = useState('')
   const [isAuthorized, setIsAuthorized] = useState(false)
@@ -175,6 +195,10 @@ export default function AdminBetaTestersPage() {
 
     if (filter === 'profile') {
       return testers.filter((tester) => Boolean(tester.profile?.accepted_beta_terms))
+    }
+
+    if (filter === 'responded') {
+      return testers.filter((tester) => (tester.summary?.total_results || 0) > 0)
     }
 
     return testers
@@ -387,12 +411,44 @@ export default function AdminBetaTestersPage() {
         </header>
 
         <section className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-          <SummaryCard label="Cadastrados" value={dashboardSummary.total} />
-          <SummaryCard label="Ativos" value={dashboardSummary.active} />
-          <SummaryCard label="Perfil concluído" value={dashboardSummary.profileCompleted} />
-          <SummaryCard label="Respostas" value={dashboardSummary.totalResults} />
-          <SummaryCard label="Problemas" value={dashboardSummary.problems} tone="red" />
-          <SummaryCard label="Não entendi" value={dashboardSummary.confusing} tone="amber" />
+          <SummaryCard
+            label="Cadastrados"
+            value={dashboardSummary.total}
+            active={filter === 'all'}
+            onClick={() => setFilter('all')}
+          />
+          <SummaryCard
+            label="Ativos"
+            value={dashboardSummary.active}
+            active={filter === 'active'}
+            onClick={() => setFilter('active')}
+          />
+          <SummaryCard
+            label="Perfil concluído"
+            value={dashboardSummary.profileCompleted}
+            active={filter === 'profile'}
+            onClick={() => setFilter('profile')}
+          />
+          <SummaryCard
+            label="Respostas"
+            value={dashboardSummary.totalResults}
+            active={filter === 'responded'}
+            onClick={() => setFilter('responded')}
+          />
+          <SummaryCard
+            label="Problemas"
+            value={dashboardSummary.problems}
+            tone="red"
+            active={filter === 'problem'}
+            onClick={() => setFilter('problem')}
+          />
+          <SummaryCard
+            label="Não entendi"
+            value={dashboardSummary.confusing}
+            tone="amber"
+            active={filter === 'confusing'}
+            onClick={() => setFilter('confusing')}
+          />
         </section>
 
         <section className="mt-5 grid gap-5 lg:grid-cols-[360px_1fr]">
@@ -469,6 +525,9 @@ export default function AdminBetaTestersPage() {
                 <p className="mt-1 text-sm text-slate-400">
                   {filteredTesters.length} de {testers.length} e-mails cadastrados.
                 </p>
+                <p className="mt-2 text-xs font-black uppercase tracking-[0.14em] text-blue-200">
+                  Filtro ativo: {filterLabels[filter]}
+                </p>
               </div>
             </div>
 
@@ -477,6 +536,7 @@ export default function AdminBetaTestersPage() {
                 ['all', 'Todos'],
                 ['problem', 'Com problema'],
                 ['confusing', 'Não entendi'],
+                ['responded', 'Respostas'],
                 ['active', 'Ativos'],
                 ['profile', 'Perfil concluído'],
               ].map(([value, label]) => (
@@ -636,10 +696,14 @@ function SummaryCard({
   label,
   value,
   tone = 'blue',
+  active,
+  onClick,
 }: {
   label: string
   value: number
   tone?: 'blue' | 'red' | 'amber'
+  active: boolean
+  onClick: () => void
 }) {
   const toneClasses = {
     blue: 'border-blue-300/20 bg-blue-500/10 text-blue-100',
@@ -648,12 +712,18 @@ function SummaryCard({
   }
 
   return (
-    <div className={`rounded-[22px] border p-4 ${toneClasses[tone]}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-[22px] border p-4 text-left transition hover:-translate-y-0.5 hover:border-white/30 ${
+        toneClasses[tone]
+      } ${active ? 'ring-2 ring-white/30 shadow-xl shadow-black/20' : ''}`}
+    >
       <p className="text-2xl font-black">{value}</p>
       <p className="mt-1 text-[11px] font-black uppercase tracking-[0.12em] opacity-80">
         {label}
       </p>
-    </div>
+    </button>
   )
 }
 
@@ -668,6 +738,16 @@ function InfoBox({ label, value }: { label: string; value: string }) {
   )
 }
 
+function formatBoolean(value?: boolean | null) {
+  if (value === true) return 'Sim'
+  if (value === false) return 'Não'
+  return 'Não informado'
+}
+
+function SectionTitle({ children }: { children: string }) {
+  return <h4 className="text-sm font-black text-white">{children}</h4>
+}
+
 function TesterResultsDetails({ tester }: { tester: BetaTester }) {
   const resultsByArea = tester.results.reduce<Record<string, BetaMissionResult[]>>(
     (groups, result) => {
@@ -680,7 +760,141 @@ function TesterResultsDetails({ tester }: { tester: BetaTester }) {
 
   return (
     <div className="mt-4 rounded-[22px] border border-white/10 bg-slate-900/80 p-4">
-      <div className="grid gap-3 text-xs font-semibold text-slate-400 md:grid-cols-2">
+      <div>
+        <SectionTitle>Dados preenchidos</SectionTitle>
+        <div className="mt-3 grid gap-3 text-xs font-semibold text-slate-400 md:grid-cols-2 lg:grid-cols-3">
+          <InfoBox label="Nome" value={tester.name || 'Não informado'} />
+          <InfoBox label="E-mail" value={tester.email} />
+          <InfoBox
+            label="Número fundador"
+            value={tester.founder_number ? `#${tester.founder_number}` : 'Não informado'}
+          />
+          <InfoBox label="Status" value={tester.is_active ? 'Ativo' : 'Inativo'} />
+          <InfoBox label="Convidado em" value={formatDate(tester.invited_at)} />
+          <InfoBox label="Primeiro acesso" value={formatDate(tester.first_access_at)} />
+          <InfoBox label="Observações" value={tester.notes || 'Sem observações'} />
+        </div>
+      </div>
+
+      <div className="mt-5">
+        <SectionTitle>Perfil beta</SectionTitle>
+        <div className="mt-3 grid gap-3 text-xs font-semibold text-slate-400 md:grid-cols-2 lg:grid-cols-3">
+          <InfoBox
+            label="Aceite LGPD beta"
+            value={tester.profile?.accepted_beta_terms ? 'Sim' : 'Pendente'}
+          />
+          <InfoBox
+            label="Data do aceite"
+            value={formatDate(tester.profile?.accepted_beta_terms_at)}
+          />
+          <InfoBox
+            label="Modelo do aparelho"
+            value={tester.profile?.device_label || 'Não informado'}
+          />
+          <InfoBox
+            label="Sistema operacional"
+            value={tester.profile?.operating_system || 'Não informado'}
+          />
+          <InfoBox
+            label="Navegador"
+            value={tester.profile?.browser || 'Não informado'}
+          />
+          <InfoBox
+            label="Modo de acesso"
+            value={tester.profile?.access_mode || 'Não informado'}
+          />
+        </div>
+      </div>
+
+      <div className="mt-5">
+        <SectionTitle>Dados técnicos</SectionTitle>
+        <div className="mt-3 grid gap-3 text-xs font-semibold text-slate-400 md:grid-cols-2 lg:grid-cols-3">
+          <InfoBox label="Idioma" value={tester.profile?.language || 'Não informado'} />
+          <InfoBox
+            label="Tela"
+            value={
+              tester.profile?.screen_width && tester.profile?.screen_height
+                ? `${tester.profile.screen_width}x${tester.profile.screen_height}`
+                : 'Não informado'
+            }
+          />
+          <InfoBox
+            label="Viewport"
+            value={
+              tester.profile?.viewport_width && tester.profile?.viewport_height
+                ? `${tester.profile.viewport_width}x${tester.profile.viewport_height}`
+                : 'Não informado'
+            }
+          />
+          <InfoBox
+            label="Notificações"
+            value={tester.profile?.notification_permission || 'Não informado'}
+          />
+          <InfoBox
+            label="Push suportado"
+            value={formatBoolean(tester.profile?.push_supported)}
+          />
+          <InfoBox
+            label="PWA instalado"
+            value={formatBoolean(tester.profile?.is_pwa_standalone)}
+          />
+          <InfoBox label="Versão do app" value={tester.profile?.app_version || 'Não informado'} />
+          <InfoBox label="Última presença" value={formatDate(tester.profile?.last_seen_at)} />
+        </div>
+        {tester.profile?.user_agent && (
+          <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/70 p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+              User agent
+            </p>
+            <p className="mt-2 break-words text-xs font-semibold leading-5 text-slate-300">
+              {tester.profile.user_agent}
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-5">
+        <SectionTitle>Feedback final</SectionTitle>
+        {tester.feedback ? (
+          <div className="mt-3 grid gap-3 text-xs font-semibold text-slate-400 md:grid-cols-2">
+            <InfoBox
+              label="Experiência geral"
+              value={tester.feedback.overall_experience || 'Não informado'}
+            />
+            <InfoBox
+              label="Área favorita"
+              value={tester.feedback.favorite_area || 'Não informado'}
+            />
+            <InfoBox
+              label="Área mais confusa"
+              value={tester.feedback.most_confusing_area || 'Não informado'}
+            />
+            <InfoBox
+              label="Maior problema"
+              value={tester.feedback.biggest_problem || 'Não informado'}
+            />
+            <InfoBox
+              label="Recomendaria"
+              value={formatBoolean(tester.feedback.would_recommend)}
+            />
+            <InfoBox label="Enviado em" value={formatDate(tester.feedback.submitted_at)} />
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 md:col-span-2">
+              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                Feedback pastoral
+              </p>
+              <p className="mt-1 text-xs font-bold leading-5 text-slate-200">
+                {tester.feedback.pastoral_feedback || 'Não informado'}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <p className="mt-3 rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-sm font-semibold text-slate-400">
+            Feedback final ainda não enviado.
+          </p>
+        )}
+      </div>
+
+      <div className="mt-5 grid gap-3 text-xs font-semibold text-slate-400 md:grid-cols-2">
         <InfoBox
           label="Aceite beta"
           value={
@@ -708,7 +922,7 @@ function TesterResultsDetails({ tester }: { tester: BetaTester }) {
       </div>
 
       <div className="mt-5">
-        <h4 className="text-sm font-black text-white">Resultados por área</h4>
+        <SectionTitle>Missões por área</SectionTitle>
         {Object.keys(resultsByArea).length === 0 && (
           <p className="mt-3 rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-sm font-semibold text-slate-400">
             Nenhum resultado de missão registrado ainda.

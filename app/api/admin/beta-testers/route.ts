@@ -57,6 +57,17 @@ type BetaMissionResultRecord = {
   updated_at: string | null
 }
 
+type BetaFinalFeedbackRecord = {
+  tester_id: string
+  overall_experience: string | null
+  favorite_area: string | null
+  most_confusing_area: string | null
+  biggest_problem: string | null
+  pastoral_feedback: string | null
+  would_recommend: boolean | null
+  submitted_at: string | null
+}
+
 const testerSelect =
   'id, email, name, is_active, invited_at, first_access_at, created_at, updated_at, notes, founder_number'
 
@@ -142,7 +153,11 @@ async function enrichTesters(
 
   if (testerIds.length === 0) return []
 
-  const [{ data: profiles, error: profilesError }, { data: results, error: resultsError }] =
+  const [
+    { data: profiles, error: profilesError },
+    { data: results, error: resultsError },
+    { data: feedbacks, error: feedbacksError },
+  ] =
     await Promise.all([
       supabase
         .from('beta_tester_profiles')
@@ -157,10 +172,18 @@ async function enrichTesters(
         )
         .in('tester_id', testerIds)
         .order('updated_at', { ascending: false }),
+      supabase
+        .from('beta_final_feedback')
+        .select(
+          'tester_id, overall_experience, favorite_area, most_confusing_area, biggest_problem, pastoral_feedback, would_recommend, submitted_at'
+        )
+        .in('tester_id', testerIds)
+        .order('submitted_at', { ascending: false }),
     ])
 
   if (profilesError) throw profilesError
   if (resultsError) throw resultsError
+  if (feedbacksError) throw feedbacksError
 
   const profilesByTester = new Map<string, BetaTesterProfileRecord>()
   ;((profiles || []) as BetaTesterProfileRecord[]).forEach((profile) => {
@@ -174,6 +197,13 @@ async function enrichTesters(
     resultsByTester.set(result.tester_id, current)
   })
 
+  const feedbackByTester = new Map<string, BetaFinalFeedbackRecord>()
+  ;((feedbacks || []) as BetaFinalFeedbackRecord[]).forEach((feedback) => {
+    if (!feedbackByTester.has(feedback.tester_id)) {
+      feedbackByTester.set(feedback.tester_id, feedback)
+    }
+  })
+
   return testers.map((tester) => {
     const testerResults = resultsByTester.get(tester.id) || []
 
@@ -182,6 +212,7 @@ async function enrichTesters(
       profile: profilesByTester.get(tester.id) || null,
       results: testerResults,
       summary: summarizeResults(testerResults),
+      feedback: feedbackByTester.get(tester.id) || null,
     }
   })
 }
