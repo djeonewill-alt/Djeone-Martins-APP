@@ -190,7 +190,7 @@ export async function GET(request: NextRequest) {
     const { data: scheduledEpisodes, error: episodesFetchError } = await supabase
       .from('episodes')
       .select('id, title, bible_reference, scheduled_publish_at')
-      .eq('status', 'draft')
+      .in('status', ['scheduled', 'draft'])
       .not('scheduled_publish_at', 'is', null)
       .lte('scheduled_publish_at', now)
 
@@ -205,6 +205,8 @@ export async function GET(request: NextRequest) {
         .update({
           status: 'published',
           scheduled_publish_at: null,
+          published_at: now,
+          show_on_today: true,
         })
         .in('id', episodeIds)
 

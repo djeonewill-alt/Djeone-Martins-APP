@@ -870,11 +870,11 @@ export default function NovoEpisodio() {
     try {
       const finalImageUrl = useSeriesImage ? null : episodeImageUrl || null
 
-      let scheduledPublishAt = null
+      let scheduledPublishAt: string | null = null
 
       if (formData.scheduled_date) {
         const time = useDefaultTime ? '06:00' : formData.scheduled_time
-        scheduledPublishAt = `${formData.scheduled_date}T${time}:00`
+        scheduledPublishAt = new Date(`${formData.scheduled_date}T${time}:00`).toISOString()
       }
 
       const hasTranscription = transcriptionText.trim().length > 0
@@ -893,7 +893,7 @@ export default function NovoEpisodio() {
             audio_url: audioUrl || null,
             duration_seconds: audioDuration,
             cover_image_url: finalImageUrl,
-            status: scheduledPublishAt ? 'draft' : formData.status,
+            status: scheduledPublishAt ? 'scheduled' : formData.status,
             scheduled_publish_at: scheduledPublishAt,
 
             transcription_text: hasTranscription ? transcriptionText.trim() : null,
