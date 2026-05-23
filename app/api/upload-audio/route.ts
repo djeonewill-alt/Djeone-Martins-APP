@@ -26,6 +26,24 @@ const validImageTypes = [
   'image/webp',
 ]
 
+const compatibleAudioTypes = [
+  'audio/mpeg',
+  'audio/mp3',
+  'audio/mp4',
+  'audio/m4a',
+  'audio/x-m4a',
+  'audio/aac',
+]
+
+const compatibleAudioExtensions = ['mp3', 'm4a', 'mp4', 'aac']
+
+function isCompatibleAudio(contentType: string, extension: string) {
+  return (
+    compatibleAudioTypes.includes(contentType.toLowerCase()) ||
+    compatibleAudioExtensions.includes(extension.toLowerCase())
+  )
+}
+
 function getRequiredEnv(name: string) {
   const value = process.env[name]
 
@@ -210,6 +228,9 @@ export async function POST(request: NextRequest) {
     await s3Client.send(command)
 
     const publicUrl = `${publicBaseUrl}/${fileName}`
+    const contentType = file.type || 'application/octet-stream'
+    const isAudioCompatible =
+      type === 'audio' && isCompatibleAudio(contentType, safeExtension)
 
     console.log('[upload-audio] upload concluído', {
       fileName,
@@ -223,6 +244,11 @@ export async function POST(request: NextRequest) {
       fileName,
       size: file.size,
       type: file.type,
+      contentType,
+      extension: safeExtension,
+      isAudioCompatible,
+      compatibleAudioUrl: isAudioCompatible ? publicUrl : null,
+      compatibleAudioType: isAudioCompatible ? contentType : null,
     })
   } catch (error) {
     const message = getErrorMessage(error)

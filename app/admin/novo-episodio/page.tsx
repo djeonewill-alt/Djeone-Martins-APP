@@ -45,6 +45,16 @@ type CardOption = {
   query_used?: string | null
 }
 
+type AudioUploadResponse = {
+  url?: string
+  type?: string
+  contentType?: string
+  compatibleAudioUrl?: string | null
+  compatibleAudioType?: string | null
+  isAudioCompatible?: boolean
+  error?: string
+}
+
 function getLocalDateString() {
   const now = new Date()
   const year = now.getFullYear()
@@ -139,6 +149,11 @@ export default function NovoEpisodio() {
 
   const [audioUrl, setAudioUrl] = useState('')
   const [audioDuration, setAudioDuration] = useState(0)
+  const [uploadedAudioContentType, setUploadedAudioContentType] = useState('')
+  const [audioUrlCompatible, setAudioUrlCompatible] = useState('')
+  const [audioCompatibleType, setAudioCompatibleType] = useState('')
+  const [isAudioCompatible, setIsAudioCompatible] = useState(false)
+  const [audioCompatibilityWarning, setAudioCompatibilityWarning] = useState('')
 
   const [episodeImageUrl, setEpisodeImageUrl] = useState('')
   const [useSeriesImage, setUseSeriesImage] = useState(true)
@@ -199,6 +214,27 @@ export default function NovoEpisodio() {
     resetCardData()
   }
 
+  const applyAudioUploadMetadata = (data: AudioUploadResponse) => {
+    const contentType = data.contentType || data.type || ''
+
+    setUploadedAudioContentType(contentType)
+
+    if (data.isAudioCompatible) {
+      setAudioUrlCompatible(data.compatibleAudioUrl || data.url || '')
+      setAudioCompatibleType(data.compatibleAudioType || contentType)
+      setIsAudioCompatible(true)
+      setAudioCompatibilityWarning('')
+      return
+    }
+
+    setAudioUrlCompatible('')
+    setAudioCompatibleType('')
+    setIsAudioCompatible(false)
+    setAudioCompatibilityWarning(
+      'Este áudio está em um formato que pode não tocar no iPhone. Para publicar, envie MP3 ou M4A.'
+    )
+  }
+
   const loadSeries = async () => {
     try {
       const { data, error } = await supabase
@@ -227,11 +263,12 @@ export default function NovoEpisodio() {
         body: uploadFormData,
       })
 
-      const data = await response.json()
+      const data = (await response.json()) as AudioUploadResponse
 
       if (data.url) {
         setAudioUrl(data.url)
         setAudioDuration(Math.round(duration))
+        applyAudioUploadMetadata(data)
         resetAutomationData()
         alert('✅ Gravação enviada com sucesso!')
       } else {
@@ -262,10 +299,11 @@ export default function NovoEpisodio() {
         body: uploadFormData,
       })
 
-      const data = await response.json()
+      const data = (await response.json()) as AudioUploadResponse
 
       if (data.url) {
         setAudioUrl(data.url)
+        applyAudioUploadMetadata(data)
         resetAutomationData()
 
         const audio = new Audio(data.url)
@@ -860,6 +898,18 @@ export default function NovoEpisodio() {
       return
     }
 
+    let scheduledPublishAt: string | null = null
+
+    if (formData.scheduled_date) {
+      const time = useDefaultTime ? '06:00' : formData.scheduled_time
+      scheduledPublishAt = new Date(`${formData.scheduled_date}T${time}:00`).toISOString()
+    }
+
+    if (audioUrl && !audioUrlCompatible && (formData.status !== 'draft' || scheduledPublishAt)) {
+      alert('Para publicar ou agendar, envie um áudio MP3 ou M4A. O formato atual pode não tocar no iPhone.')
+      return
+    }
+
     if (enableDailyQuote && selectedDailyQuote.trim().length > 0 && selectedDailyQuote.trim().length < 20) {
       alert('❌ A Palavra do Dia está muito curta.')
       return
@@ -869,13 +919,6 @@ export default function NovoEpisodio() {
 
     try {
       const finalImageUrl = useSeriesImage ? null : episodeImageUrl || null
-
-      let scheduledPublishAt: string | null = null
-
-      if (formData.scheduled_date) {
-        const time = useDefaultTime ? '06:00' : formData.scheduled_time
-        scheduledPublishAt = new Date(`${formData.scheduled_date}T${time}:00`).toISOString()
-      }
 
       const hasTranscription = transcriptionText.trim().length > 0
       const hasQuoteSuggestions = quoteSuggestions.length > 0
@@ -891,6 +934,10 @@ export default function NovoEpisodio() {
             title: formData.title,
             description: formData.description,
             audio_url: audioUrl || null,
+            audio_original_url: audioUrl || null,
+            audio_original_type: uploadedAudioContentType || null,
+            audio_url_compatible: audioUrlCompatible || null,
+            audio_compatible_type: audioCompatibleType || null,
             duration_seconds: audioDuration,
             cover_image_url: finalImageUrl,
             status: scheduledPublishAt ? 'scheduled' : formData.status,
@@ -1113,6 +1160,10 @@ export default function NovoEpisodio() {
           <div className="bg-red-600 rounded-xl p-6 mb-5 text-center shadow-lg">
             <AudioRecorder onRecordingComplete={handleRecordingComplete} />
 
+            <p className="text-sm text-white mt-3">
+              Áudios gravados direto no navegador podem ficar em WEBM e não tocar no iPhone. Para publicação final, envie um MP3 ou M4A.
+            </p>
+
             {uploading && (
               <p className="text-sm text-white/80 mt-3">
                 ⏳ Enviando gravação...
@@ -1122,6 +1173,15 @@ export default function NovoEpisodio() {
             {audioUrl && (
               <div className="mt-4">
                 <audio src={audioUrl} controls className="w-full" />
+                {isAudioCompatible ? (
+                  <p className="text-sm text-green-300 mt-2">
+                    Formato compatível para iPhone/Safari.
+                  </p>
+                ) : audioCompatibilityWarning ? (
+                  <p className="text-sm text-yellow-300 mt-2">
+                    {audioCompatibilityWarning}
+                  </p>
+                ) : null}
                 <p className="text-sm text-white mt-2">✅ Áudio carregado!</p>
               </div>
             )}
@@ -1151,6 +1211,15 @@ export default function NovoEpisodio() {
             {audioUrl && (
               <div className="mt-4">
                 <audio src={audioUrl} controls className="w-full" />
+                {isAudioCompatible ? (
+                  <p className="text-sm text-green-300 mt-2">
+                    Formato compatível para iPhone/Safari.
+                  </p>
+                ) : audioCompatibilityWarning ? (
+                  <p className="text-sm text-yellow-300 mt-2">
+                    {audioCompatibilityWarning}
+                  </p>
+                ) : null}
                 <p className="text-sm text-green-400 mt-2">✅ Áudio carregado!</p>
               </div>
             )}
