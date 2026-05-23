@@ -6,6 +6,7 @@ import { FormEvent, useMemo, useState, type Dispatch, type SetStateAction } from
 type FilterValue = 'all' | 'problem' | 'confusing' | 'active' | 'profile' | 'responded'
 
 type IssueFilterValue =
+  | 'open'
   | 'all'
   | 'new'
   | 'reviewing'
@@ -213,6 +214,7 @@ const filterLabels: Record<FilterValue, string> = {
 }
 
 const issueFilterLabels: Record<IssueFilterValue, string> = {
+  open: 'Pendentes',
   all: 'Todos',
   new: 'Novos',
   reviewing: 'Em análise',
@@ -315,7 +317,7 @@ export default function AdminBetaTestersPage() {
   const [filter, setFilter] = useState<FilterValue>('all')
   const [expandedTesterId, setExpandedTesterId] = useState<string | null>(null)
   const [issueReports, setIssueReports] = useState<BetaIssueReport[]>([])
-  const [issueFilter, setIssueFilter] = useState<IssueFilterValue>('all')
+  const [issueFilter, setIssueFilter] = useState<IssueFilterValue>('open')
   const [issueUpdatingId, setIssueUpdatingId] = useState<string | null>(null)
   const [issueNotesDrafts, setIssueNotesDrafts] = useState<Record<string, string>>({})
 
@@ -390,6 +392,18 @@ export default function AdminBetaTestersPage() {
   }, [issueReports])
 
   const filteredIssueReports = useMemo(() => {
+    const openIssueStatuses = [
+      'new',
+      'reviewing',
+      'fixing',
+      'retest_requested',
+      'still_problem',
+    ]
+
+    if (issueFilter === 'open') {
+      return issueReports.filter((issue) => openIssueStatuses.includes(issue.status))
+    }
+
     if (issueFilter === 'problem' || issueFilter === 'confusing') {
       return issueReports.filter((issue) => issue.issue_type === issueFilter)
     }
@@ -1047,6 +1061,7 @@ function IssueQueueSection({
   onSaveNote: (issue: BetaIssueReport) => void
 }) {
   const filterItems: Array<[IssueFilterValue, string]> = [
+    ['open', 'Pendentes'],
     ['all', 'Todos'],
     ['new', 'Novos'],
     ['reviewing', 'Em análise'],
@@ -1147,6 +1162,12 @@ function IssueQueueSection({
       </div>
 
       <div className="mt-5 space-y-4">
+        {issueFilter === 'open' && (
+          <p className="rounded-2xl border border-amber-300/20 bg-amber-500/10 px-4 py-3 text-sm font-bold text-amber-100">
+            Mostrando apenas relatos pendentes. Resolvidos e ignorados ficam disponíveis nos filtros.
+          </p>
+        )}
+
         {issueReports.length === 0 && (
           <p className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-5 text-sm font-semibold text-slate-400">
             Nenhum relato encontrado para este filtro.
