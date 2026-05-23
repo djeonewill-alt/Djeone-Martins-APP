@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { FormEvent, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 
 type FilterValue = 'all' | 'problem' | 'confusing' | 'active' | 'profile' | 'responded'
+type AdminBetaSection = 'support' | 'testers' | 'metrics'
 
 type IssueFilterValue =
   | 'open'
@@ -252,6 +253,16 @@ function getIssueStatusClasses(status: string) {
   return 'border-orange-300/25 bg-orange-500/10 text-orange-100'
 }
 
+function getIssueCardClasses(status: string) {
+  if (status === 'resolved') return 'border-emerald-300/20 bg-emerald-500/10'
+  if (status === 'retest_requested') return 'border-amber-300/25 bg-amber-500/15'
+  if (status === 'fixing') return 'border-blue-300/20 bg-blue-500/10'
+  if (status === 'reviewing') return 'border-purple-300/20 bg-purple-500/10'
+  if (status === 'ignored') return 'border-slate-300/20 bg-slate-500/10'
+  if (status === 'still_problem') return 'border-red-300/30 bg-red-500/15'
+  return 'border-orange-300/25 bg-orange-500/10'
+}
+
 function isRetestEvent(eventType: string) {
   return ['retest_success', 'retest_problem', 'retest_confusing'].includes(eventType)
 }
@@ -315,6 +326,7 @@ export default function AdminBetaTestersPage() {
   const [message, setMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const [filter, setFilter] = useState<FilterValue>('all')
+  const [activeSection, setActiveSection] = useState<AdminBetaSection>('support')
   const [expandedTesterId, setExpandedTesterId] = useState<string | null>(null)
   const [issueReports, setIssueReports] = useState<BetaIssueReport[]>([])
   const [issueFilter, setIssueFilter] = useState<IssueFilterValue>('open')
@@ -377,9 +389,19 @@ export default function AdminBetaTestersPage() {
         if (issue.status === 'resolved') summary.resolved += 1
         if (issue.status === 'ignored') summary.ignored += 1
         if (issue.status === 'still_problem') summary.stillProblem += 1
+        if (
+          issue.status === 'new' ||
+          issue.status === 'reviewing' ||
+          issue.status === 'fixing' ||
+          issue.status === 'retest_requested' ||
+          issue.status === 'still_problem'
+        ) {
+          summary.open += 1
+        }
         return summary
       },
       {
+        open: 0,
         new: 0,
         reviewing: 0,
         fixing: 0,
@@ -702,7 +724,42 @@ export default function AdminBetaTestersPage() {
           </button>
         </header>
 
-        <section className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        <nav className="mt-5 grid gap-2 rounded-[26px] border border-white/10 bg-slate-900/70 p-2 shadow-2xl shadow-black/20 sm:grid-cols-3">
+          {[
+            ['support', 'Oficina de suporte'],
+            ['testers', 'Testadores'],
+            ['metrics', 'Métricas'],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setActiveSection(value as AdminBetaSection)}
+              className={`rounded-[20px] px-4 py-3 text-sm font-black transition ${
+                activeSection === value
+                  ? 'bg-blue-600 text-white shadow-xl shadow-blue-950/30'
+                  : 'bg-white/[0.04] text-slate-300 hover:bg-white/[0.08] hover:text-white'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        {activeSection === 'metrics' && (
+          <section className="mt-5 rounded-[30px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.2em] text-blue-300">
+                Métricas dos testes
+              </p>
+              <h2 className="mt-2 text-2xl font-black tracking-[-0.05em] text-white">
+                Histórico geral do Beta
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
+                Estas métricas mostram o histórico geral dos testes. A Oficina de suporte mostra apenas os relatos que precisam de acompanhamento.
+              </p>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
           <SummaryCard
             label="Cadastrados"
             value={dashboardSummary.total}
@@ -722,13 +779,13 @@ export default function AdminBetaTestersPage() {
             onClick={() => setFilter('profile')}
           />
           <SummaryCard
-            label="Respostas"
+            label="Respostas de missões"
             value={dashboardSummary.totalResults}
             active={filter === 'responded'}
             onClick={() => setFilter('responded')}
           />
           <SummaryCard
-            label="Problemas"
+            label="Problemas registrados"
             value={dashboardSummary.problems}
             tone="red"
             active={filter === 'problem'}
@@ -741,8 +798,11 @@ export default function AdminBetaTestersPage() {
             active={filter === 'confusing'}
             onClick={() => setFilter('confusing')}
           />
+            </div>
         </section>
+        )}
 
+        {activeSection === 'support' && (
         <IssueQueueSection
           issueReports={filteredIssueReports}
           issueFilter={issueFilter}
@@ -754,7 +814,9 @@ export default function AdminBetaTestersPage() {
           onStatusChange={handleIssueStatus}
           onSaveNote={handleSaveIssueNote}
         />
+        )}
 
+        {activeSection === 'testers' && (
         <section className="mt-5 grid gap-5 lg:grid-cols-[360px_1fr]">
           <form
             onSubmit={handleCreateTester}
@@ -991,6 +1053,7 @@ export default function AdminBetaTestersPage() {
             </div>
           </section>
         </section>
+        )}
       </div>
     </main>
   )
@@ -1046,6 +1109,7 @@ function IssueQueueSection({
   issueFilter: IssueFilterValue
   setIssueFilter: (filter: IssueFilterValue) => void
   issueSummary: {
+    open: number
     new: number
     reviewing: number
     fixing: number
@@ -1062,14 +1126,14 @@ function IssueQueueSection({
 }) {
   const filterItems: Array<[IssueFilterValue, string]> = [
     ['open', 'Pendentes'],
-    ['all', 'Todos'],
     ['new', 'Novos'],
     ['reviewing', 'Em análise'],
     ['fixing', 'Em correção'],
     ['retest_requested', 'Reteste liberado'],
+    ['still_problem', 'Ainda com problema'],
     ['resolved', 'Resolvidos'],
     ['ignored', 'Ignorados'],
-    ['still_problem', 'Ainda com problema'],
+    ['all', 'Todos'],
     ['problem', 'Problemas'],
     ['confusing', 'Dúvidas'],
   ]
@@ -1095,7 +1159,13 @@ function IssueQueueSection({
         </p>
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-7">
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-8">
+        <IssueSummaryButton
+          label="Pendentes"
+          value={issueSummary.open}
+          active={issueFilter === 'open'}
+          onClick={() => setIssueFilter('open')}
+        />
         <IssueSummaryButton
           label="Novos"
           value={issueSummary.new}
@@ -1184,11 +1254,7 @@ function IssueQueueSection({
           return (
             <article
               key={issue.id}
-              className={`rounded-[24px] border p-4 ${
-                issue.issue_type === 'problem'
-                  ? 'border-red-300/20 bg-red-500/10'
-                  : 'border-purple-300/20 bg-purple-500/10'
-              }`}
+              className={`rounded-[24px] border p-4 ${getIssueCardClasses(issue.status)}`}
             >
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
