@@ -77,6 +77,12 @@ const {
     }
   }, [currentEpisode?.id, dismissedEpisodeId])
 
+  useEffect(() => {
+    if (isPlaying && currentEpisode?.id && dismissedEpisodeId === currentEpisode.id) {
+      setDismissedEpisodeId(null)
+    }
+  }, [isPlaying, currentEpisode?.id, dismissedEpisodeId])
+
   if (!currentEpisode) return null
 
   if (dismissedEpisodeId === currentEpisode.id) return null
