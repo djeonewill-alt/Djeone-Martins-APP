@@ -1,7 +1,30 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { createSupabaseServerClient } from '@/lib/supabase/server'
 
 export const runtime = 'nodejs'
+
+const MAX_AUDIO_SIZE_BYTES = 250 * 1024 * 1024
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
+
+const validAudioTypes = [
+  'audio/mpeg',
+  'audio/mp3',
+  'audio/mp4',
+  'audio/m4a',
+  'audio/x-m4a',
+  'audio/aac',
+  'audio/ogg',
+  'audio/wav',
+  'audio/webm',
+]
+
+const validImageTypes = [
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+]
 
 function getRequiredEnv(name: string) {
   const value = process.env[name]
@@ -36,36 +59,49 @@ function getErrorMessage(error: unknown) {
   return String(error)
 }
 
-export async function POST(request: NextRequest) {
+async function isAdminSession() {
   try {
-    const formData = await request.formData()
-    const file = formData.get('file') as File | null
-    const type = (formData.get('type') as string | null) || 'audio'
+    const supabase = await createSupabaseServerClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    const adminEmail = (process.env.ADMIN_EMAIL || 'djeonewill@gmail.com').toLowerCase()
 
-    if (!file) {
-      return NextResponse.json({ error: 'Nenhum arquivo enviado' }, { status: 400 })
-    }
+    return Boolean(user?.email && user.email.toLowerCase() === adminEmail)
+  } catch {
+    return false
+  }
+}
 
-    const validAudioTypes = [
-      'audio/mpeg',
-      'audio/mp3',
-      'audio/mp4',
-      'audio/m4a',
-      'audio/x-m4a',
-      'audio/aac',
-      'audio/ogg',
-      'audio/wav',
-      'audio/webm',
-    ]
+async function getUploadAuthError(request: NextRequest) {
+  const adminSecret = process.env.ADMIN_API_SECRET || ''
 
-    const validImageTypes = [
-      'image/jpeg',
-      'image/jpg',
-      'image/png',
-      'image/webp',
-    ]
+  if (!adminSecret) {
+    return NextResponse.json(
+      { error: 'Configuração administrativa ausente.' },
+      { status: 500 }
+    )
+  }
 
-    if (type === 'audio' && !validAudioTypes.includes(file.type)) {
+  const headerPassword = request.headers.get('x-admin-password') || ''
+
+  if (headerPassword === adminSecret || (await isAdminSession())) {
+    return null
+  }
+
+  return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 })
+}
+
+function validateFile(file: File, type: string) {
+  if (type !== 'audio' && type !== 'cover') {
+    return NextResponse.json(
+      { error: 'Tipo de upload inválido. Use audio ou cover.' },
+      { status: 400 }
+    )
+  }
+
+  if (type === 'audio') {
+    if (!validAudioTypes.includes(file.type)) {
       return NextResponse.json(
         {
           error: `Tipo de arquivo inválido: ${file.type || 'sem tipo'}. Use MP3, M4A, AAC, OGG, WAV ou WEBM.`,
@@ -77,7 +113,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (type === 'cover' && !validImageTypes.includes(file.type)) {
+    if (file.size > MAX_AUDIO_SIZE_BYTES) {
+      return NextResponse.json(
+        {
+          error: 'Arquivo de áudio muito grande. Envie um arquivo de até 250 MB.',
+          fileName: file.name,
+          size: file.size,
+          maxSize: MAX_AUDIO_SIZE_BYTES,
+        },
+        { status: 400 }
+      )
+    }
+  }
+
+  if (type === 'cover') {
+    if (!validImageTypes.includes(file.type)) {
       return NextResponse.json(
         {
           error: `Tipo de imagem inválido: ${file.type || 'sem tipo'}. Use JPG, PNG ou WEBP.`,
@@ -87,6 +137,44 @@ export async function POST(request: NextRequest) {
         },
         { status: 400 }
       )
+    }
+
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      return NextResponse.json(
+        {
+          error: 'Imagem muito grande. Envie uma imagem de até 10 MB.',
+          fileName: file.name,
+          size: file.size,
+          maxSize: MAX_IMAGE_SIZE_BYTES,
+        },
+        { status: 400 }
+      )
+    }
+  }
+
+  return null
+}
+
+export async function POST(request: NextRequest) {
+  const authError = await getUploadAuthError(request)
+
+  if (authError) {
+    return authError
+  }
+
+  try {
+    const formData = await request.formData()
+    const file = formData.get('file') as File | null
+    const type = (formData.get('type') as string | null) || 'audio'
+
+    if (!file) {
+      return NextResponse.json({ error: 'Nenhum arquivo enviado' }, { status: 400 })
+    }
+
+    const fileValidationError = validateFile(file, type)
+
+    if (fileValidationError) {
+      return fileValidationError
     }
 
     const bucketName = getRequiredEnv('R2_BUCKET_NAME')
