@@ -64,6 +64,34 @@ function getLocalDateString() {
   return `${year}-${month}-${day}`
 }
 
+function getLocalDateStringFromDate(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+function getLocalTimeStringFromDate(date: Date) {
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+
+  return `${hours}:${minutes}`
+}
+
+function getScheduledDateTime(date: string, time: string) {
+  return new Date(`${date}T${time}:00`)
+}
+
+function getRoundedFutureDateTime(minutesAhead: number) {
+  const date = new Date(Date.now() + minutesAhead * 60 * 1000)
+  const roundedMinutes = Math.ceil(date.getMinutes() / 5) * 5
+
+  date.setMinutes(roundedMinutes, 0, 0)
+
+  return date
+}
+
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
     return error.message
@@ -902,7 +930,14 @@ export default function NovoEpisodio() {
 
     if (formData.scheduled_date) {
       const time = useDefaultTime ? '06:00' : formData.scheduled_time
-      scheduledPublishAt = new Date(`${formData.scheduled_date}T${time}:00`).toISOString()
+      const scheduledDateTime = getScheduledDateTime(formData.scheduled_date, time)
+
+      if (scheduledDateTime <= new Date()) {
+        alert('Escolha um horário futuro para agendar a publicação.')
+        return
+      }
+
+      scheduledPublishAt = scheduledDateTime.toISOString()
     }
 
     if (audioUrl && !audioUrlCompatible && (formData.status !== 'draft' || scheduledPublishAt)) {
@@ -1112,6 +1147,41 @@ export default function NovoEpisodio() {
   }
 
   const selectedTime = useDefaultTime ? '06:00' : formData.scheduled_time
+  const selectedScheduledDateTime = formData.scheduled_date
+    ? getScheduledDateTime(formData.scheduled_date, selectedTime)
+    : null
+  const isScheduledInPast =
+    selectedScheduledDateTime !== null && selectedScheduledDateTime <= new Date()
+  const scheduledPreview = selectedScheduledDateTime
+    ? selectedScheduledDateTime.toLocaleString('pt-BR', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+        timeZone: 'America/Sao_Paulo',
+      })
+    : ''
+
+  const setTomorrowMorningSchedule = () => {
+    const tomorrow = new Date()
+
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    setUseDefaultTime(true)
+    setFormData({
+      ...formData,
+      scheduled_date: getLocalDateStringFromDate(tomorrow),
+      scheduled_time: '06:00',
+    })
+  }
+
+  const setTodayInFifteenMinutesSchedule = () => {
+    const nextSlot = getRoundedFutureDateTime(15)
+
+    setUseDefaultTime(false)
+    setFormData({
+      ...formData,
+      scheduled_date: getLocalDateStringFromDate(nextSlot),
+      scheduled_time: getLocalTimeStringFromDate(nextSlot),
+    })
+  }
 
   return (
     <div className="admin-new-episode-page min-h-screen bg-slate-950">
@@ -1753,6 +1823,24 @@ export default function NovoEpisodio() {
             </h4>
 
             <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={setTomorrowMorningSchedule}
+                  className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-200 hover:border-blue-500 hover:text-white"
+                >
+                  Amanhã às 06:00
+                </button>
+
+                <button
+                  type="button"
+                  onClick={setTodayInFifteenMinutesSchedule}
+                  className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-200 hover:border-blue-500 hover:text-white"
+                >
+                  Hoje em 15 minutos
+                </button>
+              </div>
+
               <div>
                 <label className="block text-sm font-semibold text-slate-300 mb-2">
                   Data de Publicação
@@ -1761,6 +1849,7 @@ export default function NovoEpisodio() {
                 <input
                   type="date"
                   value={formData.scheduled_date}
+                  min={getLocalDateString()}
                   onChange={(e) => setFormData({ ...formData, scheduled_date: e.target.value })}
                   className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-3 focus:border-blue-500 outline-none"
                 />
@@ -1791,11 +1880,28 @@ export default function NovoEpisodio() {
                       <input
                         type="time"
                         value={formData.scheduled_time}
+                        step={300}
                         onChange={(e) => setFormData({ ...formData, scheduled_time: e.target.value })}
                         className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-3 focus:border-blue-500 outline-none"
                       />
                     </div>
                   )}
+
+                  <div className="rounded-lg border border-slate-800 bg-slate-950 p-3">
+                    <p className="text-sm text-slate-200">
+                      Será publicado em {scheduledPreview}, horário de Brasília.
+                    </p>
+
+                    <p className="text-xs text-slate-500 mt-1">
+                      No banco, esse horário aparece em UTC.
+                    </p>
+
+                    {isScheduledInPast && (
+                      <p className="text-sm text-red-300 mt-2">
+                        Esse horário já passou. Escolha um horário futuro.
+                      </p>
+                    )}
+                  </div>
                 </>
               )}
             </div>
