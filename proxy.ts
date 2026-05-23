@@ -17,6 +17,7 @@ const PUBLIC_ROUTES = [
 
 const PUBLIC_PREFIXES = [
   "/ep/",
+  "/api/cron/",
   "/api/og",
   "/palavra/",
 ];
