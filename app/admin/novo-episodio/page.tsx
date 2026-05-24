@@ -49,6 +49,21 @@ type AudioUploadResponse = {
   url?: string
   type?: string
   contentType?: string
+  extension?: string
+  sizeBytes?: number
+  compatibleAudioUrl?: string | null
+  compatibleAudioType?: string | null
+  isAudioCompatible?: boolean
+  error?: string
+}
+
+type PresignedUploadResponse = {
+  signedUrl?: string
+  publicUrl?: string
+  key?: string
+  contentType?: string
+  extension?: string
+  sizeBytes?: number
   compatibleAudioUrl?: string | null
   compatibleAudioType?: string | null
   isAudioCompatible?: boolean
@@ -263,6 +278,56 @@ export default function NovoEpisodio() {
     )
   }
 
+  const uploadAudioDirectToR2 = async (
+    file: Blob | File,
+    fileName: string,
+    folder = 'recordings'
+  ): Promise<AudioUploadResponse> => {
+    const contentType = (file.type || 'audio/webm').split(';')[0]
+
+    const presignResponse = await fetch('/api/r2/presigned-upload', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        fileName,
+        contentType,
+        sizeBytes: file.size,
+        folder,
+      }),
+    })
+
+    const presignData = (await presignResponse.json()) as PresignedUploadResponse
+
+    if (!presignResponse.ok || !presignData.signedUrl || !presignData.publicUrl) {
+      throw new Error(presignData.error || 'Erro ao preparar upload direto.')
+    }
+
+    const uploadResponse = await fetch(presignData.signedUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': presignData.contentType || contentType,
+      },
+      body: file,
+    })
+
+    if (!uploadResponse.ok) {
+      throw new Error('Erro ao enviar audio diretamente para o R2.')
+    }
+
+    return {
+      url: presignData.publicUrl,
+      type: presignData.contentType,
+      contentType: presignData.contentType,
+      extension: presignData.extension,
+      sizeBytes: presignData.sizeBytes,
+      compatibleAudioUrl: presignData.compatibleAudioUrl,
+      compatibleAudioType: presignData.compatibleAudioType,
+      isAudioCompatible: presignData.isAudioCompatible,
+    }
+  }
+
   const loadSeries = async () => {
     try {
       const { data, error } = await supabase
@@ -282,23 +347,14 @@ export default function NovoEpisodio() {
     setUploading(true)
 
     try {
-      const uploadFormData = new FormData()
-      uploadFormData.append('file', blob, 'recording.webm')
-      uploadFormData.append('type', 'audio')
-
-      const response = await fetch('/api/upload-audio', {
-        method: 'POST',
-        body: uploadFormData,
-      })
-
-      const data = (await response.json()) as AudioUploadResponse
+      const data = await uploadAudioDirectToR2(blob, 'recording.webm')
 
       if (data.url) {
         setAudioUrl(data.url)
         setAudioDuration(Math.round(duration))
         applyAudioUploadMetadata(data)
         resetAutomationData()
-        alert('✅ Gravação enviada com sucesso!')
+        alert('Gravação enviada para armazenamento. Para publicação final, ainda será necessário gerar versão MP3 compatível.')
       } else {
         throw new Error(data.error || 'Erro ao fazer upload')
       }
