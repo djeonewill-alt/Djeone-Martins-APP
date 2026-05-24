@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import AudioRecorder from '@/components/recorder/AudioRecorder'
+import { convertRecordingToMp3 } from '@/lib/audio/convertRecordingToMp3'
 import type { DailyQuoteSuggestion } from '@/lib/supabase'
 import { CARD_TEMPLATES, dataUrlToBlob, formatQuoteTextForDisplay, generateCardDataUrl, type CardTemplate } from '@/lib/daily-quote-card-generator'
 
@@ -185,6 +186,7 @@ export default function NovoEpisodio() {
 
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [isGeneratingCompatibleAudio, setIsGeneratingCompatibleAudio] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
   const [generatingQuote, setGeneratingQuote] = useState(false)
   const [generatingCards, setGeneratingCards] = useState(false)
@@ -192,9 +194,13 @@ export default function NovoEpisodio() {
 
   const [audioUrl, setAudioUrl] = useState('')
   const [audioDuration, setAudioDuration] = useState(0)
+  const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null)
+  const [audioOriginalUrl, setAudioOriginalUrl] = useState('')
+  const [audioOriginalType, setAudioOriginalType] = useState('')
   const [uploadedAudioContentType, setUploadedAudioContentType] = useState('')
   const [audioUrlCompatible, setAudioUrlCompatible] = useState('')
   const [audioCompatibleType, setAudioCompatibleType] = useState('')
+  const [audioCompatibleSizeBytes, setAudioCompatibleSizeBytes] = useState(0)
   const [isAudioCompatible, setIsAudioCompatible] = useState(false)
   const [audioCompatibilityWarning, setAudioCompatibilityWarning] = useState('')
 
@@ -350,7 +356,11 @@ export default function NovoEpisodio() {
       const data = await uploadAudioDirectToR2(blob, 'recording.webm')
 
       if (data.url) {
+        setRecordingBlob(blob)
         setAudioUrl(data.url)
+        setAudioOriginalUrl(data.url)
+        setAudioOriginalType(data.contentType || data.type || 'audio/webm')
+        setAudioCompatibleSizeBytes(0)
         setAudioDuration(Math.round(duration))
         applyAudioUploadMetadata(data)
         resetAutomationData()
@@ -363,6 +373,47 @@ export default function NovoEpisodio() {
       alert('❌ Erro ao enviar gravação. Tente novamente.')
     } finally {
       setUploading(false)
+    }
+  }
+
+  const handleGenerateCompatibleAudio = async () => {
+    if (!recordingBlob) {
+      alert('Não encontrei a gravação original neste navegador. Grave novamente ou envie um MP3/M4A.')
+      return
+    }
+
+    if (isGeneratingCompatibleAudio) return
+
+    setIsGeneratingCompatibleAudio(true)
+
+    try {
+      const mp3Audio = await convertRecordingToMp3(recordingBlob)
+      const uploadData = await uploadAudioDirectToR2(
+        mp3Audio.blob,
+        `recording-compatible-${Date.now()}.mp3`,
+        'audio'
+      )
+
+      if (!uploadData.url) {
+        throw new Error(uploadData.error || 'Erro ao enviar MP3 compatível.')
+      }
+
+      setAudioUrl(uploadData.url)
+      setAudioUrlCompatible(uploadData.compatibleAudioUrl || uploadData.url)
+      setAudioCompatibleType(uploadData.compatibleAudioType || mp3Audio.mimeType)
+      setAudioCompatibleSizeBytes(mp3Audio.sizeBytes)
+      setUploadedAudioContentType(mp3Audio.mimeType)
+      setIsAudioCompatible(true)
+      setAudioCompatibilityWarning('')
+      setAudioDuration(Math.round(mp3Audio.durationSeconds || audioDuration))
+      resetAutomationData()
+
+      alert('MP3 compatível gerado com sucesso. Agora este áudio pode ser publicado no iPhone, Android e computador.')
+    } catch (error) {
+      console.error('Erro ao gerar MP3 compatível:', error)
+      alert('Não foi possível gerar o MP3 neste aparelho. A gravação original continua disponível para baixar.')
+    } finally {
+      setIsGeneratingCompatibleAudio(false)
     }
   }
 
@@ -386,7 +437,11 @@ export default function NovoEpisodio() {
       const data = (await response.json()) as AudioUploadResponse
 
       if (data.url) {
+        setRecordingBlob(null)
         setAudioUrl(data.url)
+        setAudioOriginalUrl('')
+        setAudioOriginalType('')
+        setAudioCompatibleSizeBytes(data.sizeBytes || file.size)
         applyAudioUploadMetadata(data)
         resetAutomationData()
 
@@ -1025,8 +1080,8 @@ export default function NovoEpisodio() {
             title: formData.title,
             description: formData.description,
             audio_url: audioUrl || null,
-            audio_original_url: audioUrl || null,
-            audio_original_type: uploadedAudioContentType || null,
+            audio_original_url: audioOriginalUrl || audioUrl || null,
+            audio_original_type: audioOriginalType || uploadedAudioContentType || null,
             audio_url_compatible: audioUrlCompatible || null,
             audio_compatible_type: audioCompatibleType || null,
             duration_seconds: audioDuration,
@@ -1296,6 +1351,12 @@ export default function NovoEpisodio() {
               </p>
             )}
 
+            {isGeneratingCompatibleAudio && (
+              <p className="text-sm text-white/80 mt-3">
+                Gerando MP3 compatível...
+              </p>
+            )}
+
             {audioUrl && (
               <div className="mt-4">
                 <audio src={audioUrl} controls className="w-full" />
@@ -1310,6 +1371,35 @@ export default function NovoEpisodio() {
                 ) : null}
                 <p className="text-sm text-white mt-2">✅ Áudio carregado!</p>
               </div>
+            )}
+
+            {recordingBlob && audioUrl && !audioUrlCompatible && (
+              <div className="mt-4 space-y-3">
+                <button
+                  type="button"
+                  onClick={handleGenerateCompatibleAudio}
+                  disabled={uploading || isGeneratingCompatibleAudio}
+                  className="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                >
+                  {isGeneratingCompatibleAudio
+                    ? 'Gerando MP3 compatível...'
+                    : 'Gerar MP3 compatível para publicação'}
+                </button>
+
+                <a
+                  href={audioOriginalUrl || audioUrl}
+                  download="gravacao-original.webm"
+                  className="inline-block text-sm text-white underline hover:text-green-100"
+                >
+                  Baixar gravação original
+                </a>
+              </div>
+            )}
+
+            {audioCompatibleSizeBytes > 0 && activeTab === 'record' && (
+              <p className="text-xs text-green-200 mt-2">
+                MP3 compatível: {(audioCompatibleSizeBytes / 1024 / 1024).toFixed(2)} MB
+              </p>
             )}
           </div>
         ) : (
