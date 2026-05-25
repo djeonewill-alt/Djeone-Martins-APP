@@ -18,7 +18,6 @@ type SeriesContentRow = {
   is_free: boolean | null
   is_current: boolean | null
   total_episodes: number | null
-  episode_count: number | null
   order_index: number | null
   created_at: string | null
 }
@@ -192,7 +191,6 @@ export default function AdminContentCenterPage() {
               'is_free',
               'is_current',
               'total_episodes',
-              'episode_count',
               'order_index',
               'created_at',
             ].join(', ')
