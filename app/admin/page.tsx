@@ -237,8 +237,8 @@ export default function AdminDashboardPage() {
       tone: "blue",
     },
     {
-      title: "Central de ConteÃºdo",
-      description: "Transformar episÃ³dios em transcriÃ§Ã£o, frases e futuros posts.",
+      title: "Central de Conteúdo",
+      description: "Transformar episódios em transcrição, frases e futuros posts.",
       href: "/admin/central-conteudo",
       icon: "CC",
       tone: "purple",
