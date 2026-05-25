@@ -127,7 +127,7 @@ export async function generateMetadata({
   const baseUrl = getBaseUrl()
 
   const pageUrl = `${baseUrl}/palavra/${id}?share=quote-v24`
-  const imageUrl = `${baseUrl}/api/og/quote/${id}?v=quote-og-v24`
+  const imageUrl = `${baseUrl}/api/og/quote/${id}?v=quote-og-v25`
   const title = 'Palavra do Dia | Pr. Djeone Martins'
   const description = buildDescription(quote)
 

@@ -127,7 +127,7 @@ export async function GET(_request: Request, { params }: RouteProps) {
             position: 'absolute',
             inset: 0,
             display: 'flex',
-            background: 'rgba(2,6,23,0.70)',
+            background: 'rgba(2,6,23,0.62)',
           }}
         />
 
@@ -137,7 +137,7 @@ export async function GET(_request: Request, { params }: RouteProps) {
             inset: 0,
             display: 'flex',
             background:
-              'linear-gradient(180deg, rgba(2,6,23,0.48) 0%, rgba(2,6,23,0.12) 30%, rgba(2,6,23,0.12) 68%, rgba(2,6,23,0.58) 100%)',
+              'linear-gradient(180deg, rgba(2,6,23,0.44) 0%, rgba(2,6,23,0.10) 52%, rgba(2,6,23,0.54) 100%)',
           }}
         />
 
@@ -180,8 +180,7 @@ export async function GET(_request: Request, { params }: RouteProps) {
                 fontWeight: 900,
                 letterSpacing: 8,
                 color: '#fff4d6',
-                textShadow:
-                  '0 2px 2px rgba(0,0,0,0.95), 0 5px 16px rgba(0,0,0,0.98), 0 0 22px rgba(0,0,0,0.9)',
+                textShadow: '0 3px 10px rgba(0,0,0,0.92)',
                 textTransform: 'uppercase',
               }}
             >
@@ -199,8 +198,7 @@ export async function GET(_request: Request, { params }: RouteProps) {
               letterSpacing: -0.2,
               color: '#fffdf5',
               fontFamily: 'Georgia, serif',
-              textShadow:
-                '0 2px 2px rgba(0,0,0,0.92), 0 6px 20px rgba(0,0,0,0.98), 0 0 32px rgba(0,0,0,0.85)',
+              textShadow: '0 4px 14px rgba(0,0,0,0.94)',
             }}
           >
             {`“${fittedQuote}”`}
@@ -231,8 +229,7 @@ export async function GET(_request: Request, { params }: RouteProps) {
                 fontWeight: 700,
                 color: '#fffdf5',
                 fontFamily: 'Georgia, serif',
-                textShadow:
-                  '0 2px 2px rgba(0,0,0,0.92), 0 6px 18px rgba(0,0,0,0.98), 0 0 28px rgba(0,0,0,0.82)',
+                textShadow: '0 3px 12px rgba(0,0,0,0.92)',
               }}
             >
               Pr. Djeone Martins
@@ -245,8 +242,7 @@ export async function GET(_request: Request, { params }: RouteProps) {
                 fontWeight: 900,
                 letterSpacing: 5,
                 color: '#fff4d6',
-                textShadow:
-                  '0 2px 2px rgba(0,0,0,0.90), 0 5px 14px rgba(0,0,0,0.96)',
+                textShadow: '0 3px 10px rgba(0,0,0,0.90)',
                 textTransform: 'uppercase',
               }}
             >

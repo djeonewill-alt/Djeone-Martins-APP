@@ -117,7 +117,7 @@ export async function GET(request: Request, { params }: Props) {
             overflow: 'hidden',
             backgroundColor: '#020617',
             backgroundImage:
-              'radial-gradient(circle at 18% 18%, rgba(59,130,246,0.34), transparent 28%), radial-gradient(circle at 82% 82%, rgba(234,179,8,0.14), transparent 26%), linear-gradient(135deg, #020617, #0f172a 54%, #08111f)',
+              'linear-gradient(135deg, #020617, #0f172a 54%, #08111f)',
           }}
         >
           <div
@@ -125,7 +125,7 @@ export async function GET(request: Request, { params }: Props) {
               position: 'absolute',
               inset: 0,
               background:
-                'linear-gradient(0deg, rgba(2,6,23,0.78), rgba(2,6,23,0.18) 48%, rgba(2,6,23,0.58))',
+                'linear-gradient(0deg, rgba(2,6,23,0.74), rgba(2,6,23,0.30) 46%, rgba(2,6,23,0.72))',
             }}
           />
 
@@ -134,14 +134,14 @@ export async function GET(request: Request, { params }: Props) {
               position: 'relative',
               display: 'flex',
               flexDirection: 'column',
-              width: 1040,
-              height: 510,
-              borderRadius: 30,
-              padding: 28,
+              width: 704,
+              height: 348,
+              borderRadius: 22,
+              padding: 22,
               background:
                 'linear-gradient(135deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98))',
               border: '1px solid rgba(255,255,255,0.14)',
-              boxShadow: '0 28px 90px rgba(0,0,0,0.46)',
+              boxShadow: '0 18px 44px rgba(0,0,0,0.34)',
             }}
           >
             <div
@@ -150,18 +150,18 @@ export async function GET(request: Request, { params }: Props) {
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 color: '#dbeafe',
-                fontSize: 22,
+                fontSize: 14,
                 fontWeight: 900,
-                marginBottom: 18,
+                marginBottom: 12,
               }}
             >
               <span style={{ color: '#bfdbfe', letterSpacing: 3 }}>
-                ÁUDIO DE HOJE
+                NOVO DEVOCIONAL EM ÁUDIO
               </span>
               <span
                 style={{
                   color: '#93c5fd',
-                  fontSize: 20,
+                  fontSize: 13,
                   letterSpacing: 1.5,
                 }}
               >
@@ -174,9 +174,9 @@ export async function GET(request: Request, { params }: Props) {
                 display: 'flex',
                 gap: 12,
                 color: '#cbd5e1',
-                fontSize: 20,
+                fontSize: 14,
                 fontWeight: 800,
-                marginBottom: 20,
+                marginBottom: 14,
               }}
             >
               {metaItems.map((item, index) => (
@@ -197,7 +197,7 @@ export async function GET(request: Request, { params }: Props) {
                 alignItems: 'center',
                 justifyContent: 'center',
                 overflow: 'hidden',
-                borderRadius: 24,
+                borderRadius: 18,
                 backgroundColor: '#0f172a',
                 border: '1px solid rgba(255,255,255,0.12)',
               }}
@@ -230,7 +230,7 @@ export async function GET(request: Request, { params }: Props) {
                   position: 'absolute',
                   inset: 0,
                   background:
-                    'linear-gradient(0deg, rgba(2,6,23,0.88), rgba(2,6,23,0.42)), linear-gradient(90deg, rgba(2,6,23,0.72), rgba(2,6,23,0.5), rgba(2,6,23,0.72))',
+                    'linear-gradient(0deg, rgba(2,6,23,0.82), rgba(2,6,23,0.44))',
                 }}
               />
 
@@ -241,24 +241,21 @@ export async function GET(request: Request, { params }: Props) {
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  padding: '34px 64px',
+                  padding: '24px 42px',
                   textAlign: 'center',
                 }}
               >
                 <div
                   style={{
-                      maxWidth: 740,
+                      maxWidth: 520,
                       color: '#ffffff',
-                      fontSize: 57,
+                      fontSize: 40,
                       fontWeight: 900,
-                      lineHeight: 0.84,
-                      letterSpacing: '-2.4px',
+                      lineHeight: 0.94,
+                      letterSpacing: '-0.8px',
                       textAlign: 'center',
-                      textShadow:
-                        '0 4px 0 #020617, 0 8px 12px rgba(2,6,23,0.95), 1.5px 1.5px 0 #020617, -1.5px 1.5px 0 #020617',
-                      WebkitTextStrokeWidth: '2.4px',
-                      WebkitTextStrokeColor: '#ffffff',
-                      marginBottom: 18,
+                      textShadow: '0 4px 12px rgba(2,6,23,0.92)',
+                      marginBottom: 12,
                     }}
                 >
                   {title}
@@ -267,14 +264,11 @@ export async function GET(request: Request, { params }: Props) {
                 <div
                   style={{
                       color: '#f8fafc',
-                      fontSize: 25,
+                      fontSize: 18,
                       fontWeight: 900,
-                      letterSpacing: '-0.3px',
+                      letterSpacing: 0,
                       opacity: 0.97,
-                      textShadow:
-                        '0 3px 0 #07111f, 0 8px 14px rgba(2,6,23,0.96)',
-                      WebkitTextStrokeWidth: '0.55px',
-                      WebkitTextStrokeColor: '#07111f',
+                      textShadow: '0 3px 10px rgba(2,6,23,0.94)',
                     }}
                 >
                   Pr. Djeone Martins
@@ -285,8 +279,12 @@ export async function GET(request: Request, { params }: Props) {
         </div>
       ),
       {
-        width: 1200,
-        height: 630,
+        width: 800,
+        height: 420,
+        headers: {
+          'Cache-Control':
+            'public, max-age=300, s-maxage=86400, stale-while-revalidate=604800',
+        },
       }
     )
   } catch (error) {
