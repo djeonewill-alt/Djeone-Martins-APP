@@ -6,6 +6,7 @@ import type { DailyQuote } from '@/lib/supabase'
 import { formatQuoteTextForDisplay } from '@/lib/daily-quote-card-generator'
 import { useBetaTester } from '@/lib/beta/betaTester'
 import { confirmBetaShareRestriction } from '@/lib/beta/betaShareGuard'
+import { trackAppEvent } from '@/lib/analytics/client'
 
 type DailyQuoteCardProps = {
   className?: string
@@ -129,6 +130,16 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
       let shouldCountShare = false
 
       if (navigator.share) {
+        trackAppEvent('quote_share_clicked', {
+          entityType: 'daily_quote',
+          entityId: quote.id,
+          source: 'daily_quote_card',
+          metadata: {
+            channel: 'native_share',
+            entity: 'daily_quote',
+          },
+        })
+
         try {
           await navigator.share({
             url: quoteUrl,
@@ -148,6 +159,16 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
           return
         }
       } else {
+        trackAppEvent('quote_share_clicked', {
+          entityType: 'daily_quote',
+          entityId: quote.id,
+          source: 'daily_quote_card',
+          metadata: {
+            channel: 'clipboard',
+            entity: 'daily_quote',
+          },
+        })
+
         await navigator.clipboard.writeText(quoteUrl)
         alert('Link da Palavra do Dia copiado para compartilhar.')
         shouldCountShare = true

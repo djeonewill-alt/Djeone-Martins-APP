@@ -14,6 +14,7 @@ import TabOferta from '@/components/tabs/TabOferta'
 import TabFavoritos from '@/components/tabs/favorites/TabFavoritos'
 import BetaOnboarding from '@/components/tester/BetaOnboarding'
 import { useBetaTester } from '@/lib/beta/betaTester'
+import { trackAppEvent } from '@/lib/analytics/client'
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('hoje')
@@ -37,6 +38,23 @@ export default function Home() {
   ]
 
   useEffect(() => {
+    try {
+      const openedKey = 'djeone-analytics-app-opened-v1'
+
+      if (window.sessionStorage.getItem(openedKey) !== 'true') {
+        window.sessionStorage.setItem(openedKey, 'true')
+        trackAppEvent('app_opened', {
+          source: 'home',
+          metadata: { source: 'home' },
+        })
+      }
+    } catch {
+      trackAppEvent('app_opened', {
+        source: 'home',
+        metadata: { source: 'home' },
+      })
+    }
+
     const params = new URLSearchParams(window.location.search)
     const tab = params.get('tab')
     const view = params.get('view')

@@ -8,6 +8,7 @@ import { usePushNotifications } from '@/lib/notifications/usePushNotifications'
 import { useBetaTester } from '@/lib/beta/betaTester'
 import { confirmBetaShareRestriction } from '@/lib/beta/betaShareGuard'
 import { getPublicAppUrl } from '@/lib/appUrl'
+import { trackAppEvent } from '@/lib/analytics/client'
 import DailyQuoteCard from '@/components/daily-quote/DailyQuoteCard'
 import TodayAudioCard from '@/components/tabs/TodayAudioCard'
 import TodayActionCard from '@/components/tabs/today/TodayActionCard'
@@ -93,8 +94,39 @@ export default function TabHoje({
       }
 
       if (data) {
-        setTodayEpisode(data as Episode)
-        checkFavorite(data.id)
+        const loadedEpisode = data as Episode
+
+        setTodayEpisode(loadedEpisode)
+        checkFavorite(loadedEpisode.id)
+
+        try {
+          const viewedKey = `djeone-analytics-today-episode-viewed-${loadedEpisode.id}`
+
+          if (window.sessionStorage.getItem(viewedKey) !== 'true') {
+            window.sessionStorage.setItem(viewedKey, 'true')
+            trackAppEvent('episode_viewed', {
+              entityType: 'episode',
+              entityId: loadedEpisode.id,
+              source: 'today_tab',
+              metadata: {
+                title: loadedEpisode.title,
+                status: loadedEpisode.status || null,
+                source: 'today_tab',
+              },
+            })
+          }
+        } catch {
+          trackAppEvent('episode_viewed', {
+            entityType: 'episode',
+            entityId: loadedEpisode.id,
+            source: 'today_tab',
+            metadata: {
+              title: loadedEpisode.title,
+              status: loadedEpisode.status || null,
+              source: 'today_tab',
+            },
+          })
+        }
       } else {
         setTodayEpisode(null)
       }
@@ -188,10 +220,30 @@ export default function TabHoje({
       const episodeUrl = `${appUrl}/ep/${todayEpisode.id}?share=audio-v5`
 
       if (navigator.share) {
+        trackAppEvent('share_clicked', {
+          entityType: 'episode',
+          entityId: todayEpisode.id,
+          source: 'today_tab',
+          metadata: {
+            channel: 'native_share',
+            entity: 'episode',
+          },
+        })
+
         await navigator.share({
           url: episodeUrl,
         })
       } else {
+        trackAppEvent('share_clicked', {
+          entityType: 'episode',
+          entityId: todayEpisode.id,
+          source: 'today_tab',
+          metadata: {
+            channel: 'clipboard',
+            entity: 'episode',
+          },
+        })
+
         await navigator.clipboard.writeText(episodeUrl)
         alert('Link do áudio copiado para compartilhar!')
       }

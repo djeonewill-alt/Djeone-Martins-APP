@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { trackAppEvent } from '@/lib/analytics/client'
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
@@ -145,6 +146,12 @@ export function usePushNotifications() {
       }
 
       setIsSubscribed(true)
+      trackAppEvent('notification_enabled', {
+        source: 'push_settings',
+        metadata: {
+          source: 'push_settings',
+        },
+      })
       alert('✅ Notificações ativadas!')
       return true
     } catch (error) {

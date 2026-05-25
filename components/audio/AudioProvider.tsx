@@ -1,5 +1,6 @@
 ﻿'use client'
 import { getPreferredAudioUrl } from '@/lib/audio/compatibleAudio'
+import { trackAppEvent } from '@/lib/analytics/client'
 
 import { createContext, useContext, useState, useRef, useEffect } from 'react'
 
@@ -52,6 +53,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const [isExpanded, setIsExpanded] = useState(false)
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const currentEpisodeRef = useRef<Episode | null>(null)
+  const progressMilestonesRef = useRef<Record<string, Set<number>>>({})
 
   useEffect(() => {
   const audio = new Audio()
@@ -59,6 +62,37 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
   audio.addEventListener('timeupdate', () => {
     setCurrentTime(audio.currentTime)
+
+    const episode = currentEpisodeRef.current
+    const totalDuration =
+      Number.isFinite(audio.duration) && audio.duration > 0
+        ? audio.duration
+        : episode?.duration_seconds || 0
+
+    if (episode && totalDuration > 0) {
+      const progressPercent = Math.min((audio.currentTime / totalDuration) * 100, 100)
+      const completedMilestones =
+        progressMilestonesRef.current[episode.id] || new Set<number>()
+
+      ;([25, 50, 75] as const).forEach((milestone) => {
+        if (progressPercent >= milestone && !completedMilestones.has(milestone)) {
+          completedMilestones.add(milestone)
+          progressMilestonesRef.current[episode.id] = completedMilestones
+
+          trackAppEvent(`audio_progress_${milestone}`, {
+            entityType: 'episode',
+            entityId: episode.id,
+            source: 'audio_provider',
+            metadata: {
+              title: episode.title,
+              position_seconds: Math.floor(audio.currentTime || 0),
+              duration_seconds: Math.floor(totalDuration),
+              progress_percent: milestone,
+            },
+          })
+        }
+      })
+    }
     
     // Se duraÃ§Ã£o Ã© Infinity, tentar pegar do currentTime mÃ¡ximo
     if (!isFinite(audio.duration) || audio.duration === 0) {
@@ -102,6 +136,25 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   })
 
   audio.addEventListener('ended', () => {
+    const episode = currentEpisodeRef.current
+    const totalDuration =
+      Number.isFinite(audio.duration) && audio.duration > 0
+        ? audio.duration
+        : episode?.duration_seconds || 0
+
+    if (episode) {
+      trackAppEvent('audio_completed', {
+        entityType: 'episode',
+        entityId: episode.id,
+        source: 'audio_provider',
+        metadata: {
+          title: episode.title,
+          position_seconds: Math.floor(totalDuration || audio.currentTime || 0),
+          duration_seconds: Math.floor(totalDuration || 0),
+        },
+      })
+    }
+
     setIsPlaying(false)
     setCurrentTime(0)
   })
@@ -109,11 +162,14 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   return () => {
     audio.pause()
     audio.src = ''
+    currentEpisodeRef.current = null
   }
 }, [])
 
   const play = (episode: Episode) => {
   if (!audioRef.current) return
+
+  currentEpisodeRef.current = episode
 
   if (currentEpisode?.id !== episode.id) {
     audioRef.current.src = getPreferredAudioUrl(episode)
@@ -132,12 +188,45 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  trackAppEvent('audio_started', {
+    entityType: 'episode',
+    entityId: episode.id,
+    source: 'audio_provider',
+    metadata: {
+      title: episode.title,
+      bible_reference: episode.bible_reference || null,
+      series_title: episode.series_title || null,
+      duration_seconds: episode.duration_seconds || 0,
+    },
+  })
+
   audioRef.current.play()
   setIsPlaying(true)
 }
 
   const pause = () => {
     if (!audioRef.current) return
+
+    const episode = currentEpisodeRef.current
+
+    if (episode && !audioRef.current.paused) {
+      const totalDuration =
+        Number.isFinite(audioRef.current.duration) && audioRef.current.duration > 0
+          ? audioRef.current.duration
+          : episode.duration_seconds || 0
+
+      trackAppEvent('audio_paused', {
+        entityType: 'episode',
+        entityId: episode.id,
+        source: 'audio_provider',
+        metadata: {
+          title: episode.title,
+          position_seconds: Math.floor(audioRef.current.currentTime || 0),
+          duration_seconds: Math.floor(totalDuration || 0),
+        },
+      })
+    }
+
     audioRef.current.pause()
     setIsPlaying(false)
   }
