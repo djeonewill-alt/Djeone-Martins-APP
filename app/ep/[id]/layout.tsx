@@ -1,5 +1,6 @@
 import { Metadata } from 'next'
 import { supabase } from '@/lib/supabase'
+import { getPublicAppUrl } from '@/lib/appUrl'
 import { ReactNode } from 'react'
 
 type Props = {
@@ -32,7 +33,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
     const title = '🎧 Áudio devocional de hoje | Pr. Djeone Martins'
     const description = 'Ouça uma palavra bíblica para fortalecer sua fé hoje.'
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const appUrl = getPublicAppUrl()
     const episodeUrl = `${appUrl}/ep/${id}?share=audio-v5`
     const ogImageUrl = `${appUrl}/api/og/episode/${id}?v=audio-og-v5`
 

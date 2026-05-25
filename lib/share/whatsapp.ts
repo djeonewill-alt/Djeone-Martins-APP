@@ -1,10 +1,12 @@
+import { getPublicAppUrl } from '@/lib/appUrl'
+
 export function shareEpisodeWhatsApp(episode: {
   id: string
   title: string
   bible_reference: string
   series_title?: string
 }) {
-  const appUrl = window.location.origin
+  const appUrl = getPublicAppUrl()
   const episodeUrl = `${appUrl}/ep/${episode.id}`
   
   const message = `🎙️ *Ouça o devocional de hoje!*

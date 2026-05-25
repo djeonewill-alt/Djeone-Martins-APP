@@ -7,6 +7,7 @@ import { useAudio } from '@/components/audio/AudioProvider'
 import { usePushNotifications } from '@/lib/notifications/usePushNotifications'
 import { useBetaTester } from '@/lib/beta/betaTester'
 import { confirmBetaShareRestriction } from '@/lib/beta/betaShareGuard'
+import { getPublicAppUrl } from '@/lib/appUrl'
 import DailyQuoteCard from '@/components/daily-quote/DailyQuoteCard'
 import TodayAudioCard from '@/components/tabs/TodayAudioCard'
 import TodayActionCard from '@/components/tabs/today/TodayActionCard'
@@ -183,7 +184,8 @@ export default function TabHoje({
     setSharingEpisode(true)
 
     try {
-      const episodeUrl = `${window.location.origin}/ep/${todayEpisode.id}?share=audio-v5`
+      const appUrl = getPublicAppUrl()
+      const episodeUrl = `${appUrl}/ep/${todayEpisode.id}?share=audio-v5`
 
       if (navigator.share) {
         await navigator.share({
@@ -364,5 +366,4 @@ export default function TabHoje({
     </div>
   )
 }
-
 
