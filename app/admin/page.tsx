@@ -265,6 +265,13 @@ export default function AdminDashboardPage() {
       tone: "purple",
     },
     {
+      title: "Analytics",
+      description: "Acompanhar crescimento, uso, audio, compartilhamentos e saude do app.",
+      href: "/admin/analytics",
+      icon: "AN",
+      tone: "blue",
+    },
+    {
       title: "Testadores Beta",
       description: "Cadastre e acompanhe os e-mails autorizados para o Beta Fechado.",
       href: "/admin/testadores-beta",
