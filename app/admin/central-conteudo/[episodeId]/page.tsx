@@ -22,6 +22,8 @@ type ShortIdea = {
   title: string
   hook: string
   angle: string
+  suggested_opening_line?: string
+  why_it_can_work?: string
 }
 
 type CutSuggestion = {
@@ -31,11 +33,20 @@ type CutSuggestion = {
   reason: string
   hook: string
   source_excerpt?: string
+  suggested_caption_lines?: string[]
+}
+
+type StrongPhrase = {
+  text: string
+  use_case?: string
+  source_excerpt?: string
+  why_it_works?: string
+  score?: number
 }
 
 type ContentAssets = {
   devotional_summary: string
-  strong_phrases: string[]
+  strong_phrases: Array<string | StrongPhrase>
   whatsapp_text: string
   instagram_caption: string
   hashtags: string[]
@@ -145,6 +156,10 @@ function CopyButton({
       {copied ? 'Copiado' : label}
     </button>
   )
+}
+
+function getStrongPhraseText(phrase: string | StrongPhrase) {
+  return typeof phrase === 'string' ? phrase : phrase.text
 }
 
 export default function AdminContentStudioPage() {
@@ -491,13 +506,31 @@ export default function AdminContentStudioPage() {
                   <article className="rounded-2xl border border-amber-300/15 bg-amber-500/10 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <h2 className="text-sm font-black text-amber-50">Frases fortes</h2>
-                      <CopyButton value={contentAssets.strong_phrases.join('\n')} />
+                      <CopyButton value={contentAssets.strong_phrases.map(getStrongPhraseText).join('\n')} />
                     </div>
-                    <div className="mt-3 grid gap-2">
+                    <div className="mt-3 grid gap-3">
                       {contentAssets.strong_phrases.map((phrase, index) => (
-                        <p key={`${phrase}-${index}`} className="text-sm font-bold leading-6 text-amber-50/90">
-                          {phrase}
-                        </p>
+                        <div key={`${getStrongPhraseText(phrase)}-${index}`} className="rounded-xl border border-amber-200/10 bg-slate-950/30 p-3">
+                          <p className="text-sm font-bold leading-6 text-amber-50/90">
+                            {getStrongPhraseText(phrase)}
+                          </p>
+                          {typeof phrase !== 'string' && (
+                            <div className="mt-3 grid gap-2 text-xs leading-5 text-amber-100/70">
+                              {(phrase.use_case || phrase.score) && (
+                                <p className="font-black uppercase tracking-[0.12em] text-amber-100">
+                                  {phrase.use_case || 'uso livre'}
+                                  {phrase.score ? ` - nota ${phrase.score}` : ''}
+                                </p>
+                              )}
+                              {phrase.source_excerpt && (
+                                <p className="border-l-2 border-amber-200/30 pl-3">
+                                  {phrase.source_excerpt}
+                                </p>
+                              )}
+                              {phrase.why_it_works && <p>{phrase.why_it_works}</p>}
+                            </div>
+                          )}
+                        </div>
                       ))}
                     </div>
                   </article>
@@ -541,6 +574,14 @@ export default function AdminContentStudioPage() {
                           <p className="text-sm font-black text-blue-100">{idea.title}</p>
                           <p className="mt-2 text-xs font-bold leading-5 text-slate-300">{idea.hook}</p>
                           <p className="mt-1 text-xs leading-5 text-slate-500">{idea.angle}</p>
+                          {idea.suggested_opening_line && (
+                            <p className="mt-2 rounded-lg bg-blue-500/10 p-2 text-xs font-bold leading-5 text-blue-100">
+                              {idea.suggested_opening_line}
+                            </p>
+                          )}
+                          {idea.why_it_can_work && (
+                            <p className="mt-2 text-xs leading-5 text-slate-400">{idea.why_it_can_work}</p>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -567,6 +608,15 @@ export default function AdminContentStudioPage() {
                               <p className="mt-2 border-l-2 border-blue-300/30 pl-3 text-xs leading-5 text-slate-400">
                                 {cut.source_excerpt}
                               </p>
+                            )}
+                            {cut.suggested_caption_lines && cut.suggested_caption_lines.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {cut.suggested_caption_lines.map((line, lineIndex) => (
+                                  <span key={`${line}-${lineIndex}`} className="rounded-full border border-blue-300/20 bg-blue-500/10 px-2 py-1 text-[11px] font-bold text-blue-100">
+                                    {line}
+                                  </span>
+                                ))}
+                              </div>
                             )}
                           </div>
                         ))}

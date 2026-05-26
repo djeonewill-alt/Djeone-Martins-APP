@@ -13,6 +13,8 @@ type ShortIdea = {
   title: string
   hook: string
   angle: string
+  suggested_opening_line?: string
+  why_it_can_work?: string
 }
 
 type CutSuggestion = {
@@ -22,17 +24,33 @@ type CutSuggestion = {
   reason: string
   hook: string
   source_excerpt?: string
+  suggested_caption_lines?: string[]
+}
+
+type StrongPhrase = {
+  text: string
+  use_case?: string
+  source_excerpt?: string
+  why_it_works?: string
+  score?: number
+}
+
+type ContentAssetsMetadata = {
+  main_scripture?: string
+  key_themes?: string[]
+  theological_focus?: string
 }
 
 type ContentAssets = {
   devotional_summary: string
-  strong_phrases: string[]
+  strong_phrases: Array<string | StrongPhrase>
   whatsapp_text: string
   instagram_caption: string
   hashtags: string[]
   short_ideas: ShortIdea[]
   cut_suggestions: CutSuggestion[]
   cut_suggestions_note?: string
+  metadata?: ContentAssetsMetadata
 }
 
 const MAX_TRANSCRIPTION_CHARS = 28000
@@ -103,6 +121,43 @@ function normalizeStringArray(input: unknown, maxItems: number, maxLength: numbe
     .slice(0, maxItems)
 }
 
+function normalizeStrongPhrases(input: unknown): Array<string | StrongPhrase> {
+  if (!Array.isArray(input)) return []
+
+  return input
+    .map((item) => {
+      if (typeof item === 'string') {
+        return cleanText(item).slice(0, 180)
+      }
+
+      const value = item as {
+        text?: unknown
+        quote_text?: unknown
+        use_case?: unknown
+        source_excerpt?: unknown
+        why_it_works?: unknown
+        reason?: unknown
+        score?: unknown
+      }
+      const text = cleanText(String(value.text || value.quote_text || '')).slice(0, 180)
+      const rawScore = Number(value.score)
+
+      if (!text) return ''
+
+      return {
+        text,
+        use_case: cleanText(String(value.use_case || '')).slice(0, 40) || undefined,
+        source_excerpt: cleanText(String(value.source_excerpt || '')).slice(0, 260) || undefined,
+        why_it_works: cleanText(String(value.why_it_works || value.reason || '')).slice(0, 260) || undefined,
+        score: Number.isFinite(rawScore) ? Math.max(1, Math.min(10, Math.round(rawScore))) : undefined,
+      }
+    })
+    .filter((item) => {
+      return typeof item === 'string' ? Boolean(item) : Boolean(item.text)
+    })
+    .slice(0, 8)
+}
+
 function normalizeShortIdeas(input: unknown): ShortIdea[] {
   if (!Array.isArray(input)) return []
 
@@ -112,12 +167,16 @@ function normalizeShortIdeas(input: unknown): ShortIdea[] {
         title?: unknown
         hook?: unknown
         angle?: unknown
+        suggested_opening_line?: unknown
+        why_it_can_work?: unknown
       }
 
       return {
         title: cleanText(String(value.title || '')).slice(0, 120),
         hook: cleanText(String(value.hook || '')).slice(0, 220),
         angle: cleanText(String(value.angle || '')).slice(0, 220),
+        suggested_opening_line: cleanText(String(value.suggested_opening_line || '')).slice(0, 220) || undefined,
+        why_it_can_work: cleanText(String(value.why_it_can_work || '')).slice(0, 260) || undefined,
       }
     })
     .filter((item) => item.title && item.hook && item.angle)
@@ -181,6 +240,7 @@ function normalizeCutSuggestions(
         reason?: unknown
         hook?: unknown
         source_excerpt?: unknown
+        suggested_caption_lines?: unknown
       }
 
       return {
@@ -190,6 +250,7 @@ function normalizeCutSuggestions(
         reason: cleanText(String(value.reason || '')).slice(0, 240),
         hook: cleanText(String(value.hook || '')).slice(0, 220),
         source_excerpt: cleanText(String(value.source_excerpt || '')).slice(0, 260) || undefined,
+        suggested_caption_lines: normalizeStringArray(value.suggested_caption_lines, 4, 80),
       }
     })
     .filter((item) => {
@@ -232,6 +293,7 @@ function validateAssets(
     short_ideas?: unknown
     cut_suggestions?: unknown
     cut_suggestions_note?: unknown
+    metadata?: unknown
   }
 
   const source = (parsed.assets || parsed) as typeof parsed
@@ -239,8 +301,8 @@ function validateAssets(
   const devotionalSummary = cleanText(String(source.devotional_summary || ''))
   const whatsappText = cleanText(String(source.whatsapp_text || ''))
   const instagramCaption = cleanText(String(source.instagram_caption || ''))
-  const strongPhrases = normalizeStringArray(source.strong_phrases, 8, 180)
-  const hashtags = normalizeStringArray(source.hashtags, 12, 40)
+  const strongPhrases = normalizeStrongPhrases(source.strong_phrases)
+  const hashtags = normalizeStringArray(source.hashtags, 8, 40)
   const shortIdeas = normalizeShortIdeas(source.short_ideas)
   const cutSuggestions = options.hasReliableSegments
     ? normalizeCutSuggestions(source.cut_suggestions, options.transcriptionSegments)
@@ -248,6 +310,16 @@ function validateAssets(
   const cutSuggestionsNote = cleanText(
     String(source.cut_suggestions_note || '')
   )
+  const rawMetadata = (source.metadata || {}) as {
+    main_scripture?: unknown
+    key_themes?: unknown
+    theological_focus?: unknown
+  }
+  const metadata = {
+    main_scripture: cleanText(String(rawMetadata.main_scripture || '')).slice(0, 120) || undefined,
+    key_themes: normalizeStringArray(rawMetadata.key_themes, 8, 60),
+    theological_focus: cleanText(String(rawMetadata.theological_focus || '')).slice(0, 180) || undefined,
+  }
 
   if (!devotionalSummary) {
     throw new Error('A IA não gerou resumo devocional.')
@@ -276,6 +348,10 @@ function validateAssets(
     cut_suggestions_note: options.hasReliableSegments
       ? cutSuggestionsNote || undefined
       : cutSuggestionsNote || MISSING_TIMESTAMPS_NOTE,
+    metadata:
+      metadata.main_scripture || metadata.key_themes.length || metadata.theological_focus
+        ? metadata
+        : undefined,
   }
 }
 
@@ -325,7 +401,9 @@ REGRAS PARA CORTES COM TIMESTAMP:
 - o start e o end devem encostar em limites reais de segmentos;
 - cada corte deve ter source_excerpt com uma fala real do trecho;
 - evite cortes de "bom dia", saudacao, aviso administrativo, explicacao de serie/projeto, introducao longa, oracao final longa e pedido final de compartilhar/cadastrar;
-- priorize gancho forte, frase biblica marcante, aplicacao direta, tensao espiritual, contraste e momento emocional.
+- ignore trechos sem frase forte nos primeiros 3 segundos;
+- priorize frase biblica marcante, interpretacao teologica forte, aplicacao direta, tensao espiritual, contraste, momento emocional e gancho que prende nos primeiros 3 segundos;
+- inclua suggested_caption_lines com 2 a 4 linhas curtas para legenda do video.
 `.trim()
     : `
 REGRAS PARA CORTES SEM TIMESTAMP:
@@ -344,6 +422,45 @@ REGRAS PARA CORTES SEM TIMESTAMP:
     : 'Sem sugestões anteriores.'
 
   return `
+Voce e especialista em transformar transcricoes de devocionais biblicos em conteudos para WhatsApp, Instagram, cards e Shorts/Reels/TikToks.
+
+Sua tarefa e extrair conteudo especifico da mensagem, com linguagem pastoral, biblica, clara, memoravel e fiel ao audio.
+
+PRINCIPIOS FUNDAMENTAIS:
+- extraia insights especificos da mensagem;
+- use nomes biblicos, lugares, personagens, eventos, objetos e imagens concretas quando aparecerem na transcricao;
+- crie contrastes espirituais, paradoxos pastorais e aplicacoes diretas;
+- mantenha fidelidade absoluta a transcricao;
+- nao invente dados, testemunhos, promessas absolutas, informacoes externas ou timestamps;
+- nao prometa cura, prosperidade ou resultados automaticos;
+- evite frases genericas que poderiam servir para qualquer devocional.
+
+EXEMPLOS BONS:
+- "Jerusalem tinha o templo, mas Jesus repousava em Betania."
+- "O menor versiculo da Biblia nasceu na casa da aflicao: Jesus chorou."
+- "A casa da aflicao se tornou lugar de repouso para o Filho de Deus."
+
+EXEMPLOS RUINS:
+- "Jesus transforma dor em esperanca."
+- "Na aflicao, Jesus esta presente."
+- "Deus tem um proposito na dor."
+
+RUBRICA INTERNA:
+Avalie cada frase, ideia de short e corte por especificidade biblica, forca do gancho, fidelidade a transcricao, potencial de retencao e utilidade pratica. So devolva candidatos fortes.
+
+STRONG_PHRASES:
+- retorne objetos, nao apenas strings, quando possivel;
+- cada frase deve conter pelo menos um destes elementos: nome biblico especifico, contraste teologico, imagem visual concreta, paradoxo espiritual ou aplicacao direta ao ouvinte;
+- varie use_case entre card, short, whatsapp e instagram;
+- cada frase precisa de source_excerpt real e why_it_works;
+- evite repetir a mesma estrutura e evite vocabulario abstrato repetido como dor, esperanca, aflicao, vida, transformacao, processo e proposito.
+
+FORMATOS:
+- devotional_summary: 2 a 3 paragrafos curtos, fiel ao audio, especifico, pastoral, mencionando elementos reais da mensagem;
+- whatsapp_text: natural, curto, pastoral, pronto para envio, sem parecer propaganda, com CTA suave para ouvir o devocional completo quando couber;
+- instagram_caption: primeira linha com gancho forte, corpo curto, aplicacao espiritual, CTA suave; hashtags separadas no campo hashtags;
+- short_ideas: ideias editoriais com gancho forte, abertura sugerida e motivo de retencao.
+
 Você é um editor devocional cristão brasileiro, com linguagem pastoral, bíblica, clara e compartilhável.
 
 Leia a transcrição de um episódio devocional e gere conteúdos textuais derivados, sem publicar em redes e sem inventar dados.
@@ -388,16 +505,26 @@ Responda SOMENTE em JSON válido, exatamente neste formato:
 
 {
   "assets": {
-    "devotional_summary": "resumo devocional de 1 a 2 parágrafos curtos",
-    "strong_phrases": ["frase curta 1", "frase curta 2", "frase curta 3"],
+    "devotional_summary": "resumo devocional de 2 a 3 paragrafos curtos",
+    "strong_phrases": [
+      {
+        "text": "frase especifica e memoravel",
+        "use_case": "card",
+        "source_excerpt": "trecho real da transcricao",
+        "why_it_works": "por que a frase e forte e especifica",
+        "score": 9
+      }
+    ],
     "whatsapp_text": "texto pronto para WhatsApp",
     "instagram_caption": "legenda pronta para Instagram",
     "hashtags": ["#Devocional", "#PalavraDoDia"],
     "short_ideas": [
       {
         "title": "ideia do short",
-        "hook": "primeira frase forte do vídeo",
-        "angle": "ângulo editorial"
+        "hook": "primeira frase forte do video",
+        "angle": "angulo editorial",
+        "suggested_opening_line": "linha de abertura sugerida",
+        "why_it_can_work": "por que essa ideia prende atencao"
       }
     ],
     "cut_suggestions": [
@@ -407,18 +534,24 @@ Responda SOMENTE em JSON válido, exatamente neste formato:
         "end": 45,
         "reason": "por que esse trecho funciona",
         "hook": "gancho de abertura",
-        "source_excerpt": "fala real da transcricao que justifica o corte"
+        "source_excerpt": "fala real da transcricao que justifica o corte",
+        "suggested_caption_lines": ["linha curta 1", "linha curta 2"]
       }
     ],
-    "cut_suggestions_note": "aviso opcional quando nao houver timestamps"
+    "cut_suggestions_note": "aviso opcional quando nao houver timestamps",
+    "metadata": {
+      "main_scripture": "referencia principal",
+      "key_themes": ["tema 1", "tema 2"],
+      "theological_focus": "foco teologico da mensagem"
+    }
   }
 }
 
 Retorne:
-- 3 a 8 strong_phrases;
+- 5 a 8 strong_phrases;
 - 3 a 5 short_ideas;
 - até 5 cut_suggestions;
-- hashtags entre 4 e 10.
+- hashtags entre 5 e 8.
 `.trim()
 }
 
