@@ -55,6 +55,9 @@ type ContentAssets = {
 
 const MAX_TRANSCRIPTION_CHARS = 28000
 const MAX_SEGMENTS = 80
+const MIN_CUT_SECONDS = 15
+const SOFT_MIN_CUT_SECONDS = 20
+const MAX_CUT_SECONDS = 75
 const MISSING_TIMESTAMPS_NOTE =
   'Este episodio nao possui segmentos com timestamps. Gere uma transcricao com timestamps para cortes precisos.'
 
@@ -119,6 +122,22 @@ function normalizeStringArray(input: unknown, maxItems: number, maxLength: numbe
     .filter(Boolean)
     .map((item) => item.slice(0, maxLength))
     .slice(0, maxItems)
+}
+
+function countWords(text: string) {
+  return text.split(/\s+/).filter(Boolean).length
+}
+
+function normalizeCaptionLines(input: unknown) {
+  if (!Array.isArray(input)) return []
+
+  return input
+    .map((item) => cleanText(String(item || '')).slice(0, 80))
+    .filter((line) => {
+      const wordCount = countWords(line)
+      return wordCount >= 3 && wordCount <= 7
+    })
+    .slice(0, 5)
 }
 
 function normalizeStrongPhrases(input: unknown): Array<string | StrongPhrase> {
@@ -225,6 +244,24 @@ function looksLikeWeakCut(text: string) {
   return weakPatterns.some((pattern) => pattern.test(text))
 }
 
+function hasStrongShortCutSignal(cut: Pick<CutSuggestion, 'hook' | 'source_excerpt'>) {
+  return countWords(cut.hook) >= 6 && countWords(cut.source_excerpt || '') >= 8
+}
+
+function hasUsefulShortDuration(cut: Pick<CutSuggestion, 'start' | 'end' | 'hook' | 'source_excerpt'>) {
+  const duration = cut.end - cut.start
+
+  if (duration < MIN_CUT_SECONDS || duration > MAX_CUT_SECONDS) {
+    return false
+  }
+
+  if (duration < SOFT_MIN_CUT_SECONDS) {
+    return hasStrongShortCutSignal(cut)
+  }
+
+  return true
+}
+
 function normalizeCutSuggestions(
   input: unknown,
   segments: TranscriptionSegment[]
@@ -250,7 +287,7 @@ function normalizeCutSuggestions(
         reason: cleanText(String(value.reason || '')).slice(0, 240),
         hook: cleanText(String(value.hook || '')).slice(0, 220),
         source_excerpt: cleanText(String(value.source_excerpt || '')).slice(0, 260) || undefined,
-        suggested_caption_lines: normalizeStringArray(value.suggested_caption_lines, 4, 80),
+        suggested_caption_lines: normalizeCaptionLines(value.suggested_caption_lines),
       }
     })
     .filter((item) => {
@@ -269,6 +306,7 @@ function normalizeCutSuggestions(
         Number.isFinite(item.end) &&
         item.start >= 0 &&
         item.end > item.start &&
+        hasUsefulShortDuration(item) &&
         isCutInsideKnownSegments(item, segments) &&
         !looksLikeWeakCut(combinedText)
       )
@@ -345,9 +383,11 @@ function validateAssets(
     hashtags,
     short_ideas: shortIdeas,
     cut_suggestions: cutSuggestions,
-    cut_suggestions_note: options.hasReliableSegments
-      ? cutSuggestionsNote || undefined
-      : cutSuggestionsNote || MISSING_TIMESTAMPS_NOTE,
+    cut_suggestions_note: !options.hasReliableSegments
+      ? cutSuggestionsNote || MISSING_TIMESTAMPS_NOTE
+      : cutSuggestions.length === 0
+        ? cutSuggestionsNote || 'Nenhum corte editorial com duracao util foi encontrado.'
+        : undefined,
     metadata:
       metadata.main_scripture || metadata.key_themes.length || metadata.theological_focus
         ? metadata
@@ -401,9 +441,15 @@ REGRAS PARA CORTES COM TIMESTAMP:
 - o start e o end devem encostar em limites reais de segmentos;
 - cada corte deve ter source_excerpt com uma fala real do trecho;
 - evite cortes de "bom dia", saudacao, aviso administrativo, explicacao de serie/projeto, introducao longa, oracao final longa e pedido final de compartilhar/cadastrar;
+- corte ideal: 30 a 60 segundos; corte aceitavel: 20 a 75 segundos;
+- nao use cortes com menos de 15 segundos como cut_suggestion;
+- se um trecho forte tiver menos de 20 segundos, use como strong_phrase, suggested_opening_line ou caption line, nao como corte principal;
+- forme blocos completos de ideia: gancho, desenvolvimento curto, aplicacao ou frase final;
+- agrupe segmentos vizinhos quando necessario para formar uma ideia completa;
+- evite corte isolado de uma unica frase curta ou dependente de contexto anterior nao incluido;
 - ignore trechos sem frase forte nos primeiros 3 segundos;
 - priorize frase biblica marcante, interpretacao teologica forte, aplicacao direta, tensao espiritual, contraste, momento emocional e gancho que prende nos primeiros 3 segundos;
-- inclua suggested_caption_lines com 2 a 4 linhas curtas para legenda do video.
+- inclua suggested_caption_lines com linhas curtas de 3 a 7 palavras para legenda animada.
 `.trim()
     : `
 REGRAS PARA CORTES SEM TIMESTAMP:

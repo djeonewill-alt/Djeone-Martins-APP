@@ -162,6 +162,10 @@ function getStrongPhraseText(phrase: string | StrongPhrase) {
   return typeof phrase === 'string' ? phrase : phrase.text
 }
 
+function getCutDuration(cut: CutSuggestion) {
+  return Math.max(0, Math.round(cut.end - cut.start))
+}
+
 export default function AdminContentStudioPage() {
   const params = useParams<{ episodeId: string }>()
   const router = useRouter()
@@ -571,16 +575,25 @@ export default function AdminContentStudioPage() {
                     <div className="mt-3 grid gap-3">
                       {contentAssets.short_ideas.map((idea, index) => (
                         <div key={`${idea.title}-${index}`} className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
-                          <p className="text-sm font-black text-blue-100">{idea.title}</p>
-                          <p className="mt-2 text-xs font-bold leading-5 text-slate-300">{idea.hook}</p>
-                          <p className="mt-1 text-xs leading-5 text-slate-500">{idea.angle}</p>
+                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Titulo</p>
+                          <p className="mt-1 text-sm font-black text-blue-100">{idea.title}</p>
+                          <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Gancho</p>
+                          <p className="mt-1 text-xs font-bold leading-5 text-slate-300">{idea.hook}</p>
                           {idea.suggested_opening_line && (
-                            <p className="mt-2 rounded-lg bg-blue-500/10 p-2 text-xs font-bold leading-5 text-blue-100">
-                              {idea.suggested_opening_line}
-                            </p>
+                            <>
+                              <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Abertura sugerida</p>
+                              <p className="mt-1 rounded-lg bg-blue-500/10 p-2 text-xs font-bold leading-5 text-blue-100">
+                                {idea.suggested_opening_line}
+                              </p>
+                            </>
                           )}
+                          <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Angulo</p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">{idea.angle}</p>
                           {idea.why_it_can_work && (
-                            <p className="mt-2 text-xs leading-5 text-slate-400">{idea.why_it_can_work}</p>
+                            <>
+                              <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Por que pode funcionar</p>
+                              <p className="mt-1 text-xs leading-5 text-slate-400">{idea.why_it_can_work}</p>
+                            </>
                           )}
                         </div>
                       ))}
@@ -588,8 +601,8 @@ export default function AdminContentStudioPage() {
                   </article>
 
                   <article className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
-                    <h2 className="text-sm font-black text-white">Sugestões de cortes</h2>
-                    {contentAssets.cut_suggestions_note && (
+                    <h2 className="text-sm font-black text-white">Sugestões de cortes editoriais</h2>
+                    {contentAssets.cut_suggestions.length === 0 && contentAssets.cut_suggestions_note && (
                       <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-500/10 p-3 text-xs font-bold leading-5 text-amber-50">
                         {contentAssets.cut_suggestions_note}
                       </p>
@@ -598,25 +611,44 @@ export default function AdminContentStudioPage() {
                       <div className="mt-3 grid gap-3">
                         {contentAssets.cut_suggestions.map((cut, index) => (
                           <div key={`${cut.title}-${index}`} className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
-                            <p className="text-xs font-black text-blue-200">
-                              {formatSegmentTime(cut.start)} - {formatSegmentTime(cut.end)}
-                            </p>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-xs font-black text-blue-200">
+                                {formatSegmentTime(cut.start)} - {formatSegmentTime(cut.end)}
+                              </span>
+                              <span className="rounded-full border border-white/10 bg-slate-950 px-2 py-1 text-[11px] font-black text-slate-300">
+                                {formatDuration(getCutDuration(cut))}
+                              </span>
+                              {getCutDuration(cut) < 20 && (
+                                <span className="rounded-full border border-amber-300/20 bg-amber-500/10 px-2 py-1 text-[11px] font-black text-amber-100">
+                                  Trecho curto / usar como gancho
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Titulo</p>
                             <p className="mt-1 text-sm font-black text-white">{cut.title}</p>
-                            <p className="mt-2 text-xs font-bold leading-5 text-slate-300">{cut.hook}</p>
-                            <p className="mt-1 text-xs leading-5 text-slate-500">{cut.reason}</p>
+                            <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Gancho</p>
+                            <p className="mt-1 text-xs font-bold leading-5 text-slate-300">{cut.hook}</p>
                             {cut.source_excerpt && (
-                              <p className="mt-2 border-l-2 border-blue-300/30 pl-3 text-xs leading-5 text-slate-400">
-                                {cut.source_excerpt}
-                              </p>
+                              <>
+                                <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Trecho-base</p>
+                                <p className="mt-1 border-l-2 border-blue-300/30 pl-3 text-xs leading-5 text-slate-400">
+                                  {cut.source_excerpt}
+                                </p>
+                              </>
                             )}
+                            <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Motivo</p>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">{cut.reason}</p>
                             {cut.suggested_caption_lines && cut.suggested_caption_lines.length > 0 && (
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {cut.suggested_caption_lines.map((line, lineIndex) => (
-                                  <span key={`${line}-${lineIndex}`} className="rounded-full border border-blue-300/20 bg-blue-500/10 px-2 py-1 text-[11px] font-bold text-blue-100">
-                                    {line}
-                                  </span>
-                                ))}
-                              </div>
+                              <>
+                                <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Linhas de legenda</p>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {cut.suggested_caption_lines.map((line, lineIndex) => (
+                                    <span key={`${line}-${lineIndex}`} className="rounded-full border border-blue-300/20 bg-blue-500/10 px-2 py-1 text-[11px] font-bold text-blue-100">
+                                      {line}
+                                    </span>
+                                  ))}
+                                </div>
+                              </>
                             )}
                           </div>
                         ))}
@@ -633,14 +665,8 @@ export default function AdminContentStudioPage() {
 
             <section className="rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20">
               <p className="text-[11px] font-black uppercase tracking-[0.20em] text-blue-300">
-                Shorts/Reels/TikToks
+                Transcricao com timestamps
               </p>
-
-              {contentAssets?.cut_suggestions_note && (
-                <p className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-500/10 p-4 text-sm font-bold leading-6 text-amber-50">
-                  {contentAssets.cut_suggestions_note}
-                </p>
-              )}
 
               {segments.length > 0 ? (
                 <div className="mt-4 grid max-h-[360px] gap-2 overflow-y-auto">
@@ -660,7 +686,7 @@ export default function AdminContentStudioPage() {
                 </div>
               ) : (
                 <p className="mt-4 rounded-2xl border border-dashed border-white/10 bg-slate-950/70 p-4 text-sm font-bold text-slate-500">
-                  Sem segmentos sincronizados. Quando existirem, esta area ajudara a sugerir cortes.
+                  Sem segmentos sincronizados. Esta area mostra dados tecnicos da transcricao quando houver timestamps.
                 </p>
               )}
             </section>
