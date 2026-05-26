@@ -13,6 +13,17 @@ type EventName =
   | 'share_clicked'
   | 'quote_share_clicked'
   | 'notification_enabled'
+  | 'public_episode_opened'
+  | 'public_episode_audio_started'
+  | 'public_episode_audio_progress_25'
+  | 'public_episode_audio_progress_50'
+  | 'public_episode_audio_progress_75'
+  | 'public_episode_audio_completed'
+  | 'public_episode_share_clicked'
+  | 'public_episode_open_app_clicked'
+  | 'public_quote_opened'
+  | 'public_quote_share_clicked'
+  | 'public_quote_open_app_clicked'
 
 type LatestEvent = {
   id: string
@@ -36,6 +47,17 @@ const eventNames: EventName[] = [
   'share_clicked',
   'quote_share_clicked',
   'notification_enabled',
+  'public_episode_opened',
+  'public_episode_audio_started',
+  'public_episode_audio_progress_25',
+  'public_episode_audio_progress_50',
+  'public_episode_audio_progress_75',
+  'public_episode_audio_completed',
+  'public_episode_share_clicked',
+  'public_episode_open_app_clicked',
+  'public_quote_opened',
+  'public_quote_share_clicked',
+  'public_quote_open_app_clicked',
 ]
 
 const openIssueStatuses = ['new', 'reviewing', 'fixing', 'retest_requested', 'still_problem']
@@ -189,7 +211,6 @@ export async function GET(request: NextRequest) {
         eventCounts,
       },
       funnel: {
-        episode_viewed: eventCounts.episode_viewed || 0,
         audio_started: eventCounts.audio_started || 0,
         audio_progress_25: eventCounts.audio_progress_25 || 0,
         audio_progress_50: eventCounts.audio_progress_50 || 0,
