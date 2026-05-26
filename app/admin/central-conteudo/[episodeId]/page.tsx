@@ -98,6 +98,12 @@ type EpisodeStudioRow = {
   daily_quote_suggestions: DailyQuoteSuggestion[] | null
   daily_quote_status: string | null
   daily_quote_generated_at: string | null
+  transcription_words_url: string | null
+  transcription_words_key: string | null
+  transcription_words_count: number | null
+  transcription_words_generated_at: string | null
+  transcription_words_status: string | null
+  transcription_words_error: string | null
 }
 
 function formatDateTime(value?: string | null) {
@@ -132,7 +138,7 @@ function InfoPill({
   tone = 'slate',
 }: {
   label: string
-  tone?: 'slate' | 'blue' | 'green' | 'amber' | 'rose'
+  tone?: 'slate' | 'blue' | 'green' | 'amber' | 'rose' | 'cyan'
 }) {
   const classNameByTone = {
     slate: 'border-white/10 bg-slate-950 text-slate-300',
@@ -140,6 +146,7 @@ function InfoPill({
     green: 'border-emerald-300/20 bg-emerald-500/10 text-emerald-100',
     amber: 'border-amber-300/20 bg-amber-500/10 text-amber-100',
     rose: 'border-rose-300/20 bg-rose-500/10 text-rose-100',
+    cyan: 'border-cyan-300/20 bg-cyan-500/10 text-cyan-100',
   }
 
   return (
@@ -212,6 +219,8 @@ export default function AdminContentStudioPage() {
   const [contentAssets, setContentAssets] = useState<ContentAssets | null>(null)
   const [generatingMode, setGeneratingMode] = useState<GenerationMode | null>(null)
   const [contentAssetsError, setContentAssetsError] = useState('')
+  const [generatingWordTimestamps, setGeneratingWordTimestamps] = useState(false)
+  const [wordTimestampsError, setWordTimestampsError] = useState('')
 
   useEffect(() => {
     loadEpisode()
@@ -248,6 +257,12 @@ export default function AdminContentStudioPage() {
             'daily_quote_suggestions',
             'daily_quote_status',
             'daily_quote_generated_at',
+            'transcription_words_url',
+            'transcription_words_key',
+            'transcription_words_count',
+            'transcription_words_generated_at',
+            'transcription_words_status',
+            'transcription_words_error',
           ].join(', ')
         )
         .eq('id', episodeId)
@@ -258,6 +273,7 @@ export default function AdminContentStudioPage() {
       setEpisode((data as unknown) as EpisodeStudioRow)
       setContentAssets(null)
       setContentAssetsError('')
+      setWordTimestampsError('')
     } catch (error) {
       console.error('Erro ao carregar estudio de conteudo:', error)
       setErrorMessage('Nao foi possivel carregar este episodio.')
@@ -317,6 +333,72 @@ export default function AdminContentStudioPage() {
     }
   }
 
+  async function handleGenerateWordTimestamps() {
+    if (!episode) return
+
+    try {
+      setGeneratingWordTimestamps(true)
+      setWordTimestampsError('')
+      setEpisode((current) => {
+        return current
+          ? {
+              ...current,
+              transcription_words_status: 'processing',
+              transcription_words_error: null,
+            }
+          : current
+      })
+
+      const response = await fetch('/api/ai/generate-word-timestamps', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          episodeId: episode.id,
+        }),
+      })
+      const payload = await response.json()
+
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error || 'Nao foi possivel gerar timestamps avancados.')
+      }
+
+      setEpisode((current) => {
+        return current
+          ? {
+              ...current,
+              transcription_words_url: payload.wordsUrl,
+              transcription_words_key: payload.wordsKey,
+              transcription_words_count: payload.wordsCount,
+              transcription_words_status: payload.status,
+              transcription_words_generated_at: new Date().toISOString(),
+              transcription_words_error: null,
+            }
+          : current
+      })
+    } catch (error) {
+      console.error('Erro ao gerar timestamps avancados:', error)
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Nao foi possivel gerar timestamps avancados.'
+
+      setWordTimestampsError(message)
+      setEpisode((current) => {
+        return current
+          ? {
+              ...current,
+              transcription_words_status: 'error',
+              transcription_words_error: message,
+            }
+          : current
+      })
+    } finally {
+      setGeneratingWordTimestamps(false)
+    }
+  }
+
   if (loading) {
     return (
       <main className="min-h-screen bg-slate-950 px-4 py-6 text-white">
@@ -348,6 +430,9 @@ export default function AdminContentStudioPage() {
   const segments = episode.transcription_segments || []
   const suggestions = episode.daily_quote_suggestions || []
   const hasTranscription = Boolean(episode.transcription_text?.trim())
+  const wordTimestampStatus =
+    episode.transcription_words_status ||
+    (episode.transcription_words_url ? 'ready' : 'missing')
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6 lg:px-8">
@@ -374,6 +459,10 @@ export default function AdminContentStudioPage() {
               <InfoPill label={episode.audio_url_compatible ? 'Audio compativel' : 'Audio incompativel'} tone={episode.audio_url_compatible ? 'green' : 'amber'} />
               <InfoPill label={hasTranscription ? 'Transcricao pronta' : 'Sem transcricao'} tone={hasTranscription ? 'green' : 'rose'} />
               {segments.length > 0 && <InfoPill label={`${segments.length} segmentos`} tone="blue" />}
+              <InfoPill
+                label={wordTimestampStatus === 'ready' ? 'Words prontos' : 'Sem words'}
+                tone={wordTimestampStatus === 'ready' ? 'green' : wordTimestampStatus === 'error' ? 'rose' : 'slate'}
+              />
               {suggestions.length > 0 && <InfoPill label={`${suggestions.length} frases fortes`} tone="amber" />}
             </div>
           </div>
@@ -500,6 +589,67 @@ export default function AdminContentStudioPage() {
           </div>
 
           <aside className="grid gap-5 self-start">
+            <section className="rounded-[34px] border border-cyan-300/15 bg-cyan-500/10 p-5 shadow-2xl shadow-black/20">
+              <p className="text-[11px] font-black uppercase tracking-[0.20em] text-cyan-200">
+                Timestamps avancados
+              </p>
+
+              <p className="mt-3 text-sm leading-6 text-cyan-50/80">
+                Usado futuramente para cortes cirurgicos e legendas animadas.
+              </p>
+
+              <div className="mt-4 grid gap-3 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <InfoPill
+                    label={generatingWordTimestamps ? 'processing' : wordTimestampStatus}
+                    tone={
+                      generatingWordTimestamps || wordTimestampStatus === 'processing'
+                        ? 'blue'
+                        : wordTimestampStatus === 'ready'
+                          ? 'green'
+                          : wordTimestampStatus === 'error'
+                            ? 'rose'
+                            : 'slate'
+                    }
+                  />
+                  {episode.transcription_words_count ? (
+                    <InfoPill label={`${episode.transcription_words_count} palavras`} tone="cyan" />
+                  ) : null}
+                </div>
+
+                {episode.transcription_words_generated_at && (
+                  <p className="text-xs font-bold text-slate-500">
+                    Gerado em {formatDateTime(episode.transcription_words_generated_at)}
+                  </p>
+                )}
+
+                {episode.transcription_words_key && (
+                  <p className="break-all text-xs leading-5 text-cyan-100/70">
+                    {episode.transcription_words_key}
+                  </p>
+                )}
+
+                {(wordTimestampsError || episode.transcription_words_error) && (
+                  <p className="rounded-xl border border-rose-300/20 bg-rose-500/10 p-3 text-xs font-bold leading-5 text-rose-100">
+                    {wordTimestampsError || episode.transcription_words_error}
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleGenerateWordTimestamps}
+                disabled={generatingWordTimestamps}
+                className="mt-4 w-full rounded-2xl bg-cyan-600 px-5 py-4 text-sm font-black text-white shadow-xl shadow-cyan-950/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+              >
+                {generatingWordTimestamps
+                  ? 'Gerando timestamps...'
+                  : wordTimestampStatus === 'ready'
+                    ? 'Regenerar timestamps avancados'
+                    : 'Gerar timestamps avancados'}
+              </button>
+            </section>
+
             <section className="rounded-[34px] border border-blue-300/15 bg-blue-500/10 p-5 shadow-2xl shadow-black/20">
               <p className="text-[11px] font-black uppercase tracking-[0.20em] text-blue-200">
                 Conteudos textuais
