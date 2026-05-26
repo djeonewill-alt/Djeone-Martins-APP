@@ -18,6 +18,7 @@ type PublicDailyQuote = {
   card_image_url?: string | null
   background_image_url?: string | null
   source_image_url?: string | null
+  share_image_url?: string | null
   date?: string | null
   episode?: {
     id?: string | null
@@ -37,24 +38,6 @@ function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value
   )
-}
-
-function getBaseUrl() {
-  const explicitUrl =
-    process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL
-
-  if (explicitUrl) {
-    return explicitUrl.replace(/\/+$/, '')
-  }
-
-  const vercelUrl =
-    process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL
-
-  if (vercelUrl) {
-    return `https://${vercelUrl.replace(/^https?:\/\//, '')}`.replace(/\/+$/, '')
-  }
-
-  return 'http://localhost:3000'
 }
 
 function normalizeText(text?: string | null) {
@@ -93,6 +76,7 @@ async function getDailyQuote(id: string): Promise<PublicDailyQuote | null> {
       card_image_url,
       background_image_url,
       source_image_url,
+      share_image_url,
       date,
       status,
       episode:episodes (
@@ -125,10 +109,10 @@ export async function generateMetadata({
 }: PageProps): Promise<Metadata> {
   const { id } = await params
   const quote = await getDailyQuote(id)
-  const baseUrl = getBaseUrl()
+  const baseUrl = getPublicAppUrl()
 
-  const pageUrl = `${baseUrl}/palavra/${id}?share=quote-v24`
-  const imageUrl = `${baseUrl}/api/og/quote/${id}?v=quote-og-v25`
+  const pageUrl = `${baseUrl}/palavra/${id}?share=quote-v25`
+  const imageUrl = quote?.share_image_url || `${baseUrl}/api/og/quote/${id}?v=quote-og-v25`
   const title = 'Palavra do Dia | Pr. Djeone Martins'
   const description = buildDescription(quote)
 

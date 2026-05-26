@@ -7,6 +7,7 @@ import { formatQuoteTextForDisplay } from '@/lib/daily-quote-card-generator'
 import { useBetaTester } from '@/lib/beta/betaTester'
 import { confirmBetaShareRestriction } from '@/lib/beta/betaShareGuard'
 import { trackAppEvent } from '@/lib/analytics/client'
+import { getPublicAppUrl } from '@/lib/appUrl'
 
 type DailyQuoteCardProps = {
   className?: string
@@ -125,7 +126,7 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
     setSharing(true)
 
     try {
-      const quoteUrl = `${window.location.origin}/palavra/${quote.id}?share=quote-v24`
+      const quoteUrl = `${getPublicAppUrl()}/palavra/${quote.id}?share=quote-v25`
 
       let shouldCountShare = false
 
