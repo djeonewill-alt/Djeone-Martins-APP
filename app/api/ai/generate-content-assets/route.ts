@@ -53,13 +53,32 @@ type ContentAssets = {
   metadata?: ContentAssetsMetadata
 }
 
+type GenerationMode =
+  | 'all'
+  | 'summary'
+  | 'phrases'
+  | 'whatsapp'
+  | 'instagram'
+  | 'short_ideas'
+  | 'cuts'
+
 const MAX_TRANSCRIPTION_CHARS = 28000
 const MAX_SEGMENTS = 80
 const MIN_CUT_SECONDS = 15
-const SOFT_MIN_CUT_SECONDS = 20
+const SOFT_MIN_CUT_SECONDS = 25
 const MAX_CUT_SECONDS = 75
 const MISSING_TIMESTAMPS_NOTE =
   'Este episodio nao possui segmentos com timestamps. Gere uma transcricao com timestamps para cortes precisos.'
+
+const GENERATION_MODES: GenerationMode[] = [
+  'all',
+  'summary',
+  'phrases',
+  'whatsapp',
+  'instagram',
+  'short_ideas',
+  'cuts',
+]
 
 function cleanText(text: string) {
   return text
@@ -67,6 +86,11 @@ function cleanText(text: string) {
     .replace(/[“”]/g, '"')
     .replace(/[‘’]/g, "'")
     .trim()
+}
+
+function normalizeMode(input: unknown): GenerationMode {
+  const mode = cleanText(String(input || 'all')) as GenerationMode
+  return GENERATION_MODES.includes(mode) ? mode : 'all'
 }
 
 function extractJsonFromText(text: string) {
@@ -317,10 +341,11 @@ function normalizeCutSuggestions(
 function validateAssets(
   input: unknown,
   options: {
+    mode: GenerationMode
     hasReliableSegments: boolean
     transcriptionSegments: TranscriptionSegment[]
   }
-): ContentAssets {
+): Partial<ContentAssets> {
   const parsed = input as {
     assets?: unknown
     devotional_summary?: unknown
@@ -359,40 +384,66 @@ function validateAssets(
     theological_focus: cleanText(String(rawMetadata.theological_focus || '')).slice(0, 180) || undefined,
   }
 
-  if (!devotionalSummary) {
+  if ((options.mode === 'all' || options.mode === 'summary') && !devotionalSummary) {
     throw new Error('A IA não gerou resumo devocional.')
   }
 
-  if (strongPhrases.length < 3) {
+  if ((options.mode === 'all' || options.mode === 'phrases') && strongPhrases.length < 3) {
     throw new Error('A IA não gerou frases fortes suficientes.')
   }
 
-  if (!whatsappText) {
+  if ((options.mode === 'all' || options.mode === 'whatsapp') && !whatsappText) {
     throw new Error('A IA não gerou texto para WhatsApp.')
   }
 
-  if (!instagramCaption) {
+  if ((options.mode === 'all' || options.mode === 'instagram') && !instagramCaption) {
     throw new Error('A IA não gerou legenda para Instagram.')
   }
 
-  return {
-    devotional_summary: devotionalSummary,
-    strong_phrases: strongPhrases,
-    whatsapp_text: whatsappText,
-    instagram_caption: instagramCaption,
-    hashtags,
-    short_ideas: shortIdeas,
-    cut_suggestions: cutSuggestions,
-    cut_suggestions_note: !options.hasReliableSegments
+  if ((options.mode === 'all' || options.mode === 'short_ideas') && shortIdeas.length < 1) {
+    throw new Error('A IA não gerou ideias de Shorts.')
+  }
+
+  const assets: Partial<ContentAssets> = {}
+
+  if (options.mode === 'all' || options.mode === 'summary') {
+    assets.devotional_summary = devotionalSummary
+  }
+
+  if (options.mode === 'all' || options.mode === 'phrases') {
+    assets.strong_phrases = strongPhrases
+  }
+
+  if (options.mode === 'all' || options.mode === 'whatsapp') {
+    assets.whatsapp_text = whatsappText
+  }
+
+  if (options.mode === 'all' || options.mode === 'instagram') {
+    assets.instagram_caption = instagramCaption
+    assets.hashtags = hashtags
+  }
+
+  if (options.mode === 'all' || options.mode === 'short_ideas') {
+    assets.short_ideas = shortIdeas
+  }
+
+  if (options.mode === 'all' || options.mode === 'cuts') {
+    assets.cut_suggestions = cutSuggestions
+    assets.cut_suggestions_note = !options.hasReliableSegments
       ? cutSuggestionsNote || MISSING_TIMESTAMPS_NOTE
       : cutSuggestions.length === 0
         ? cutSuggestionsNote || 'Nenhum corte editorial com duracao util foi encontrado.'
-        : undefined,
-    metadata:
-      metadata.main_scripture || metadata.key_themes.length || metadata.theological_focus
-        ? metadata
-        : undefined,
+        : undefined
   }
+
+  if (
+    options.mode === 'all' &&
+    (metadata.main_scripture || metadata.key_themes.length || metadata.theological_focus)
+  ) {
+    assets.metadata = metadata
+  }
+
+  return assets
 }
 
 async function requireAdminUser() {
@@ -416,6 +467,142 @@ async function requireAdminUser() {
   return { ok: true as const }
 }
 
+function buildModeOutputContract(mode: GenerationMode) {
+  const contracts: Record<GenerationMode, string> = {
+    all: `
+Gere todos os blocos abaixo.
+
+{
+  "assets": {
+    "devotional_summary": "resumo devocional de 2 a 3 paragrafos curtos",
+    "strong_phrases": [
+      {
+        "text": "frase especifica e memoravel",
+        "use_case": "card",
+        "source_excerpt": "trecho real da transcricao",
+        "why_it_works": "por que a frase e forte e especifica",
+        "score": 9
+      }
+    ],
+    "whatsapp_text": "texto pronto para WhatsApp",
+    "instagram_caption": "legenda pronta para Instagram",
+    "hashtags": ["#Devocional", "#PalavraDoDia"],
+    "short_ideas": [
+      {
+        "title": "ideia do short",
+        "hook": "primeira frase forte do video",
+        "angle": "angulo editorial",
+        "suggested_opening_line": "linha de abertura sugerida",
+        "why_it_can_work": "por que essa ideia prende atencao"
+      }
+    ],
+    "cut_suggestions": [
+      {
+        "title": "nome do corte",
+        "start": 10,
+        "end": 45,
+        "reason": "por que esse trecho funciona",
+        "hook": "gancho de abertura",
+        "source_excerpt": "fala real da transcricao que justifica o corte",
+        "suggested_caption_lines": ["linha curta 1", "linha curta 2"]
+      }
+    ],
+    "cut_suggestions_note": "aviso opcional quando nao houver timestamps",
+    "metadata": {
+      "main_scripture": "referencia principal",
+      "key_themes": ["tema 1", "tema 2"],
+      "theological_focus": "foco teologico da mensagem"
+    }
+  }
+}
+
+Retorne 5 a 8 strong_phrases, 3 a 5 short_ideas, ate 5 cut_suggestions e 5 a 8 hashtags.
+`.trim(),
+    summary: `
+Gere somente devotional_summary.
+{
+  "assets": {
+    "devotional_summary": "resumo devocional de 2 a 3 paragrafos curtos"
+  }
+}
+`.trim(),
+    phrases: `
+Gere somente strong_phrases.
+{
+  "assets": {
+    "strong_phrases": [
+      {
+        "text": "frase especifica e memoravel",
+        "use_case": "card",
+        "source_excerpt": "trecho real da transcricao",
+        "why_it_works": "por que a frase e forte e especifica",
+        "score": 9
+      }
+    ]
+  }
+}
+Retorne 5 a 8 frases.
+`.trim(),
+    whatsapp: `
+Gere somente whatsapp_text.
+{
+  "assets": {
+    "whatsapp_text": "texto curto, pastoral e pronto para WhatsApp"
+  }
+}
+`.trim(),
+    instagram: `
+Gere somente instagram_caption e hashtags.
+{
+  "assets": {
+    "instagram_caption": "legenda com primeira linha forte, corpo curto e CTA suave",
+    "hashtags": ["#Devocional", "#PalavraDoDia"]
+  }
+}
+Retorne 5 a 8 hashtags.
+`.trim(),
+    short_ideas: `
+Gere somente short_ideas.
+{
+  "assets": {
+    "short_ideas": [
+      {
+        "title": "ideia do short",
+        "hook": "gancho forte",
+        "angle": "angulo editorial",
+        "suggested_opening_line": "linha de abertura sugerida",
+        "why_it_can_work": "por que essa ideia prende atencao"
+      }
+    ]
+  }
+}
+Retorne 3 a 5 ideias.
+`.trim(),
+    cuts: `
+Gere somente cut_suggestions e cut_suggestions_note.
+{
+  "assets": {
+    "cut_suggestions": [
+      {
+        "title": "nome do corte",
+        "start": 10,
+        "end": 45,
+        "hook": "gancho de abertura",
+        "reason": "por que esse trecho funciona como short",
+        "source_excerpt": "fala real da transcricao que justifica o corte",
+        "suggested_caption_lines": ["linha curta 1", "linha curta 2"]
+      }
+    ],
+    "cut_suggestions_note": "aviso somente se nao houver cortes possiveis"
+  }
+}
+Retorne ate 5 cortes editoriais.
+`.trim(),
+  }
+
+  return contracts[mode]
+}
+
 function buildPrompt(params: {
   title: string
   bibleReference: string
@@ -424,6 +611,7 @@ function buildPrompt(params: {
   transcriptionSegments: TranscriptionSegment[]
   dailyQuoteSuggestions: unknown
   hasReliableSegments: boolean
+  mode: GenerationMode
 }) {
   const segmentsText = params.transcriptionSegments.length
     ? params.transcriptionSegments
@@ -436,16 +624,22 @@ function buildPrompt(params: {
   const cutInstructions = params.hasReliableSegments
     ? `
 REGRAS PARA CORTES COM TIMESTAMP:
+- nao corte o audio mecanicamente;
+- nao fatie de 30 em 30 segundos;
+- primeiro leia a transcricao inteira e identifique momentos fortes;
+- depois escolha inicio e fim naturais da ideia;
+- so entao ajuste para duracao ideal;
 - gere cut_suggestions somente usando tempos presentes nos segmentos informados;
 - nunca invente timestamps;
 - o start e o end devem encostar em limites reais de segmentos;
 - cada corte deve ter source_excerpt com uma fala real do trecho;
 - evite cortes de "bom dia", saudacao, aviso administrativo, explicacao de serie/projeto, introducao longa, oracao final longa e pedido final de compartilhar/cadastrar;
-- corte ideal: 30 a 60 segundos; corte aceitavel: 20 a 75 segundos;
+- corte ideal: 30 a 60 segundos; corte aceitavel: 25 a 75 segundos;
 - nao use cortes com menos de 15 segundos como cut_suggestion;
 - se um trecho forte tiver menos de 20 segundos, use como strong_phrase, suggested_opening_line ou caption line, nao como corte principal;
-- forme blocos completos de ideia: gancho, desenvolvimento curto, aplicacao ou frase final;
+- forme blocos completos de ideia: começo com gancho, desenvolvimento curto, aplicacao ou frase final;
 - agrupe segmentos vizinhos quando necessario para formar uma ideia completa;
+- cada corte precisa fazer sentido para quem nao ouviu o audio inteiro;
 - evite corte isolado de uma unica frase curta ou dependente de contexto anterior nao incluido;
 - ignore trechos sem frase forte nos primeiros 3 segundos;
 - priorize frase biblica marcante, interpretacao teologica forte, aplicacao direta, tensao espiritual, contraste, momento emocional e gancho que prende nos primeiros 3 segundos;
@@ -501,31 +695,11 @@ STRONG_PHRASES:
 - cada frase precisa de source_excerpt real e why_it_works;
 - evite repetir a mesma estrutura e evite vocabulario abstrato repetido como dor, esperanca, aflicao, vida, transformacao, processo e proposito.
 
-FORMATOS:
+FORMATOS GERAIS:
 - devotional_summary: 2 a 3 paragrafos curtos, fiel ao audio, especifico, pastoral, mencionando elementos reais da mensagem;
 - whatsapp_text: natural, curto, pastoral, pronto para envio, sem parecer propaganda, com CTA suave para ouvir o devocional completo quando couber;
 - instagram_caption: primeira linha com gancho forte, corpo curto, aplicacao espiritual, CTA suave; hashtags separadas no campo hashtags;
 - short_ideas: ideias editoriais com gancho forte, abertura sugerida e motivo de retencao.
-
-Você é um editor devocional cristão brasileiro, com linguagem pastoral, bíblica, clara e compartilhável.
-
-Leia a transcrição de um episódio devocional e gere conteúdos textuais derivados, sem publicar em redes e sem inventar dados.
-
-REGRAS:
-- preserve fidelidade ao conteúdo do episódio;
-- não invente testemunhos, datas, promessas absolutas ou informações externas;
-- não prometa cura, prosperidade ou resultados automáticos;
-- use português brasileiro natural;
-- mantenha tom devocional, pastoral e simples;
-- frases fortes devem ser curtas, memoráveis e fiéis ao conteúdo;
-- texto de WhatsApp deve estar pronto para envio;
-- legenda de Instagram deve ter chamada suave, sem exagero;
-- hashtags devem ser relevantes e sem acentos;
-- ideias de shorts devem ter gancho forte;
-- strong_phrases devem nascer de pontos reais da transcricao;
-- strong_phrases devem variar uso e estrutura: card, short, WhatsApp e Instagram;
-- prefira frases especificas do episodio, nao frases genericas que serviriam para qualquer devocional;
-- evite repetir palavras abstratas como dor, esperanca, aflicao, vida, transformacao, processo e proposito, salvo quando forem centrais no trecho.
 
 ${cutInstructions}
 
@@ -547,57 +721,12 @@ ${segmentsText}
 TRANSCRIÇÃO:
 ${params.transcriptionText}
 
-Responda SOMENTE em JSON válido, exatamente neste formato:
+MODO SOLICITADO:
+${params.mode}
 
-{
-  "assets": {
-    "devotional_summary": "resumo devocional de 2 a 3 paragrafos curtos",
-    "strong_phrases": [
-      {
-        "text": "frase especifica e memoravel",
-        "use_case": "card",
-        "source_excerpt": "trecho real da transcricao",
-        "why_it_works": "por que a frase e forte e especifica",
-        "score": 9
-      }
-    ],
-    "whatsapp_text": "texto pronto para WhatsApp",
-    "instagram_caption": "legenda pronta para Instagram",
-    "hashtags": ["#Devocional", "#PalavraDoDia"],
-    "short_ideas": [
-      {
-        "title": "ideia do short",
-        "hook": "primeira frase forte do video",
-        "angle": "angulo editorial",
-        "suggested_opening_line": "linha de abertura sugerida",
-        "why_it_can_work": "por que essa ideia prende atencao"
-      }
-    ],
-    "cut_suggestions": [
-      {
-        "title": "nome do corte",
-        "start": 10,
-        "end": 45,
-        "reason": "por que esse trecho funciona",
-        "hook": "gancho de abertura",
-        "source_excerpt": "fala real da transcricao que justifica o corte",
-        "suggested_caption_lines": ["linha curta 1", "linha curta 2"]
-      }
-    ],
-    "cut_suggestions_note": "aviso opcional quando nao houver timestamps",
-    "metadata": {
-      "main_scripture": "referencia principal",
-      "key_themes": ["tema 1", "tema 2"],
-      "theological_focus": "foco teologico da mensagem"
-    }
-  }
-}
+Responda SOMENTE em JSON valido, exatamente com o bloco pedido abaixo. Nao inclua campos de outros modos.
 
-Retorne:
-- 5 a 8 strong_phrases;
-- 3 a 5 short_ideas;
-- até 5 cut_suggestions;
-- hashtags entre 5 e 8.
+${buildModeOutputContract(params.mode)}
 `.trim()
 }
 
@@ -609,6 +738,7 @@ async function generateWithOpenAI(params: {
   transcriptionSegments: TranscriptionSegment[]
   dailyQuoteSuggestions: unknown
   hasReliableSegments: boolean
+  mode: GenerationMode
 }) {
   const apiKey = process.env.OPENAI_API_KEY
 
@@ -666,6 +796,7 @@ async function generateWithOpenAI(params: {
   return {
     model,
     assets: validateAssets(extractJsonFromText(content), {
+      mode: params.mode,
       hasReliableSegments: params.hasReliableSegments,
       transcriptionSegments: params.transcriptionSegments,
     }),
@@ -691,6 +822,7 @@ export async function POST(request: NextRequest) {
     const transcriptionText = cleanText(String(body.transcription_text || ''))
     const transcriptionSegments = normalizeSegments(body.transcription_segments)
     const hasReliableSegments = transcriptionSegments.length > 0
+    const mode = normalizeMode(body.mode)
 
     if (!episodeId) {
       return NextResponse.json(
@@ -717,12 +849,14 @@ export async function POST(request: NextRequest) {
       transcriptionSegments,
       dailyQuoteSuggestions: body.daily_quote_suggestions,
       hasReliableSegments,
+      mode,
     })
 
     return NextResponse.json({
       success: true,
       provider: 'openai',
       model: result.model,
+      mode,
       assets: result.assets,
     })
   } catch (error) {

@@ -55,6 +55,25 @@ type ContentAssets = {
   cut_suggestions_note?: string
 }
 
+type GenerationMode =
+  | 'all'
+  | 'summary'
+  | 'phrases'
+  | 'whatsapp'
+  | 'instagram'
+  | 'short_ideas'
+  | 'cuts'
+
+const EMPTY_CONTENT_ASSETS: ContentAssets = {
+  devotional_summary: '',
+  strong_phrases: [],
+  whatsapp_text: '',
+  instagram_caption: '',
+  hashtags: [],
+  short_ideas: [],
+  cut_suggestions: [],
+}
+
 type EpisodeStudioRow = {
   id: string
   title: string
@@ -166,6 +185,20 @@ function getCutDuration(cut: CutSuggestion) {
   return Math.max(0, Math.round(cut.end - cut.start))
 }
 
+function getGenerateLabel(mode: GenerationMode, idleLabel: string) {
+  return generatingLabels[mode] || idleLabel
+}
+
+const generatingLabels: Record<GenerationMode, string> = {
+  all: 'Gerando tudo...',
+  summary: 'Gerando resumo...',
+  phrases: 'Gerando frases...',
+  whatsapp: 'Gerando WhatsApp...',
+  instagram: 'Gerando Instagram...',
+  short_ideas: 'Gerando ideias...',
+  cuts: 'Gerando cortes...',
+}
+
 export default function AdminContentStudioPage() {
   const params = useParams<{ episodeId: string }>()
   const router = useRouter()
@@ -175,7 +208,7 @@ export default function AdminContentStudioPage() {
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
   const [contentAssets, setContentAssets] = useState<ContentAssets | null>(null)
-  const [generatingContentAssets, setGeneratingContentAssets] = useState(false)
+  const [generatingMode, setGeneratingMode] = useState<GenerationMode | null>(null)
   const [contentAssetsError, setContentAssetsError] = useState('')
 
   useEffect(() => {
@@ -231,14 +264,14 @@ export default function AdminContentStudioPage() {
     }
   }
 
-  async function handleGenerateContentAssets() {
+  async function handleGenerateContentAssets(mode: GenerationMode = 'all') {
     if (!episode?.transcription_text?.trim()) {
       setContentAssetsError('Este episodio precisa de transcricao para gerar conteudos.')
       return
     }
 
     try {
-      setGeneratingContentAssets(true)
+      setGeneratingMode(mode)
       setContentAssetsError('')
 
       const response = await fetch('/api/ai/generate-content-assets', {
@@ -254,6 +287,7 @@ export default function AdminContentStudioPage() {
           transcription_text: episode.transcription_text,
           transcription_segments: episode.transcription_segments,
           daily_quote_suggestions: episode.daily_quote_suggestions,
+          mode,
         }),
       })
 
@@ -263,7 +297,12 @@ export default function AdminContentStudioPage() {
         throw new Error(payload.error || 'Nao foi possivel gerar conteudos.')
       }
 
-      setContentAssets(payload.assets as ContentAssets)
+      setContentAssets((current) => {
+        return {
+          ...(current || EMPTY_CONTENT_ASSETS),
+          ...(payload.assets as Partial<ContentAssets>),
+        }
+      })
     } catch (error) {
       console.error('Erro ao gerar conteudos:', error)
       setContentAssetsError(
@@ -272,7 +311,7 @@ export default function AdminContentStudioPage() {
           : 'Nao foi possivel gerar conteudos.'
       )
     } finally {
-      setGeneratingContentAssets(false)
+      setGeneratingMode(null)
     }
   }
 
@@ -482,12 +521,33 @@ export default function AdminContentStudioPage() {
 
               <button
                 type="button"
-                onClick={handleGenerateContentAssets}
-                disabled={!hasTranscription || generatingContentAssets}
+                onClick={() => handleGenerateContentAssets('all')}
+                disabled={!hasTranscription || Boolean(generatingMode)}
                 className="mt-5 w-full rounded-2xl bg-blue-600 px-5 py-4 text-sm font-black text-white shadow-xl shadow-blue-950/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
               >
-                {generatingContentAssets ? 'Gerando conteudos...' : 'Gerar conteúdos'}
+                {generatingMode === 'all' ? generatingLabels.all : 'Gerar tudo'}
               </button>
+
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {([
+                  ['summary', 'Gerar resumo'],
+                  ['phrases', 'Gerar frases'],
+                  ['whatsapp', 'Gerar WhatsApp'],
+                  ['instagram', 'Gerar Instagram'],
+                  ['short_ideas', 'Gerar ideias'],
+                  ['cuts', 'Gerar cortes'],
+                ] as Array<[GenerationMode, string]>).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => handleGenerateContentAssets(mode)}
+                    disabled={!hasTranscription || Boolean(generatingMode)}
+                    className="rounded-xl border border-blue-200/15 bg-slate-950/60 px-3 py-3 text-xs font-black text-blue-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                  >
+                    {generatingMode === mode ? getGenerateLabel(mode, label) : label}
+                  </button>
+                ))}
+              </div>
             </section>
 
             {contentAssets && (
@@ -497,6 +557,7 @@ export default function AdminContentStudioPage() {
                 </p>
 
                 <div className="mt-4 grid gap-4">
+                  {contentAssets.devotional_summary && (
                   <article className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <h2 className="text-sm font-black text-white">Resumo devocional</h2>
@@ -506,7 +567,9 @@ export default function AdminContentStudioPage() {
                       {contentAssets.devotional_summary}
                     </p>
                   </article>
+                  )}
 
+                  {contentAssets.strong_phrases.length > 0 && (
                   <article className="rounded-2xl border border-amber-300/15 bg-amber-500/10 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <h2 className="text-sm font-black text-amber-50">Frases fortes</h2>
@@ -538,7 +601,9 @@ export default function AdminContentStudioPage() {
                       ))}
                     </div>
                   </article>
+                  )}
 
+                  {contentAssets.whatsapp_text && (
                   <article className="rounded-2xl border border-emerald-300/15 bg-emerald-500/10 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <h2 className="text-sm font-black text-emerald-50">Texto para WhatsApp</h2>
@@ -548,7 +613,9 @@ export default function AdminContentStudioPage() {
                       {contentAssets.whatsapp_text}
                     </p>
                   </article>
+                  )}
 
+                  {contentAssets.instagram_caption && (
                   <article className="rounded-2xl border border-purple-300/15 bg-purple-500/10 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <h2 className="text-sm font-black text-purple-50">Legenda Instagram</h2>
@@ -558,7 +625,9 @@ export default function AdminContentStudioPage() {
                       {contentAssets.instagram_caption}
                     </p>
                   </article>
+                  )}
 
+                  {contentAssets.hashtags.length > 0 && (
                   <article className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
                     <h2 className="text-sm font-black text-white">Hashtags</h2>
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -569,7 +638,9 @@ export default function AdminContentStudioPage() {
                       ))}
                     </div>
                   </article>
+                  )}
 
+                  {contentAssets.short_ideas.length > 0 && (
                   <article className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
                     <h2 className="text-sm font-black text-white">Ideias de Shorts</h2>
                     <div className="mt-3 grid gap-3">
@@ -599,7 +670,9 @@ export default function AdminContentStudioPage() {
                       ))}
                     </div>
                   </article>
+                  )}
 
+                  {(contentAssets.cut_suggestions.length > 0 || contentAssets.cut_suggestions_note) && (
                   <article className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
                     <h2 className="text-sm font-black text-white">Sugestões de cortes editoriais</h2>
                     {contentAssets.cut_suggestions.length === 0 && contentAssets.cut_suggestions_note && (
@@ -659,6 +732,7 @@ export default function AdminContentStudioPage() {
                       </p>
                     )}
                   </article>
+                  )}
                 </div>
               </section>
             )}
