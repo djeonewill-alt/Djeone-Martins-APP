@@ -1,6 +1,7 @@
 ﻿'use client'
 
 import { useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { useAudio } from '../AudioProvider'
 import ExpandedHeader from './ExpandedHeader'
 import ExpandedHero from './ExpandedHero'
@@ -8,6 +9,7 @@ import PlayerControls from './PlayerControls'
 import TranscriptPanel from './TranscriptPanel'
 
 export default function ExpandedPlayer() {
+  const pathname = usePathname()
   const {
     currentEpisode,
     isPlaying,
@@ -24,6 +26,10 @@ export default function ExpandedPlayer() {
   } = useAudio()
 
   const [captionsEnabled, setCaptionsEnabled] = useState(true)
+  const isPublicContentPage =
+    pathname.startsWith('/ep/') || pathname.startsWith('/palavra/')
+
+  if (isPublicContentPage) return null
 
   if (!isExpanded || !currentEpisode) return null
 

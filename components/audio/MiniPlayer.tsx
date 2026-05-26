@@ -70,6 +70,8 @@ const {
   } = useAudio()
 
   const [dismissedEpisodeId, setDismissedEpisodeId] = useState<string | null>(null)
+  const isPublicContentPage =
+    pathname.startsWith('/ep/') || pathname.startsWith('/palavra/')
 
   useEffect(() => {
     if (currentEpisode?.id !== dismissedEpisodeId) {
@@ -83,13 +85,13 @@ const {
     }
   }, [isPlaying, currentEpisode?.id, dismissedEpisodeId])
 
+  if (isPublicContentPage) return null
+
   if (!currentEpisode) return null
 
   if (dismissedEpisodeId === currentEpisode.id) return null
 
   const progress = duration > 0 ? Math.min((currentTime / duration) * 100, 100) : 0
-  const isPublicContentPage =
-    pathname.startsWith('/ep/') || pathname.startsWith('/palavra/')
   const playerBottom = isPublicContentPage
     ? 'calc(18px + env(safe-area-inset-bottom))'
     : 'calc(118px + env(safe-area-inset-bottom))'

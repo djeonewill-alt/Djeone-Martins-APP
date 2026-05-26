@@ -105,7 +105,6 @@ export default function EpisodePage() {
   const {
     play,
     togglePlay,
-    toggleExpanded,
     currentEpisode,
     isPlaying,
     currentTime,
@@ -265,8 +264,6 @@ export default function EpisodePage() {
             referrer: typeof document !== 'undefined' ? document.referrer || null : null,
           },
         })
-        trackPublicAudioStarted(typedEpisode)
-        play(buildPlayerEpisode(typedEpisode))
       }
     } catch (error) {
       console.error('Erro ao carregar episódio:', error)
@@ -289,17 +286,6 @@ export default function EpisodePage() {
 
     trackPublicAudioStarted(episode)
     play(buildPlayerEpisode(episode))
-  }
-
-  const handleOpenPlayer = () => {
-    if (!episode) return
-
-    if (currentEpisode?.id !== episode.id) {
-      trackPublicAudioStarted(episode)
-      play(buildPlayerEpisode(episode))
-    }
-
-    toggleExpanded()
   }
 
   async function handleShareEpisode() {
@@ -511,24 +497,17 @@ export default function EpisodePage() {
               </p>
             </div>
 
-            <div className="grid grid-cols-[64px_1fr] gap-3">
-              <button
-                type="button"
-                onClick={handlePlay}
-                className="flex h-14 items-center justify-center rounded-2xl bg-white text-blue-700 shadow-[0_18px_45px_rgba(255,255,255,0.14)] active:scale-95"
-                aria-label={isEpisodePlaying ? 'Pausar áudio' : 'Tocar áudio'}
-              >
+            <button
+              type="button"
+              onClick={handlePlay}
+              className="flex h-14 w-full items-center justify-center gap-3 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white shadow-[0_16px_40px_rgba(37,99,235,0.32)] active:scale-[0.98]"
+              aria-label={isEpisodePlaying ? 'Pausar áudio' : 'Tocar áudio'}
+            >
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-blue-700">
                 {isEpisodePlaying ? <PauseIcon /> : <PlayIcon />}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleOpenPlayer}
-                className="h-14 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white shadow-[0_16px_40px_rgba(37,99,235,0.32)] active:scale-[0.98]"
-              >
-                Abrir player completo
-              </button>
-            </div>
+              </span>
+              {isEpisodePlaying ? 'Pausar áudio' : 'Tocar áudio'}
+            </button>
 
             <p className="text-sm font-semibold leading-6 text-slate-300">
               No app: áudios diários, Palavra do Dia, oração e séries bíblicas.
