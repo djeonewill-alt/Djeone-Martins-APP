@@ -20,6 +20,9 @@ export type AnalyticsEventName =
   | 'public_episode_audio_completed'
   | 'public_episode_share_clicked'
   | 'public_episode_open_app_clicked'
+  | 'public_quote_opened'
+  | 'public_quote_share_clicked'
+  | 'public_quote_open_app_clicked'
 
 type AnalyticsPayload = {
   entityType?: string

@@ -1,7 +1,8 @@
 ﻿import type { Metadata } from 'next'
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createSupabaseAdminClient } from '@/lib/supabase/admin'
+import { getPublicAppUrl } from '@/lib/appUrl'
+import PublicQuoteActions from './PublicQuoteActions'
 
 type RouteParams = {
   id: string
@@ -195,8 +196,10 @@ export default async function PalavraDoDiaPage({ params }: PageProps) {
 
   const duration = formatDuration(quote.episode?.duration_seconds)
   const episodeHref = quote.episode?.id
-    ? `/ep/${quote.episode.id}?from=palavra&share=quote-v4`
-    : '/'
+    ? `/ep/${quote.episode.id}?from=palavra&share=quote-v25`
+    : null
+  const quotePreview = normalizeText(quote.quote_text).slice(0, 140)
+  const canonicalUrl = `${getPublicAppUrl()}/palavra/${quote.id}?share=quote-v25`
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.20),transparent_35%),linear-gradient(135deg,#020617,#0f172a_52%,#020617)] px-4 py-6 text-white">
@@ -270,21 +273,16 @@ export default async function PalavraDoDiaPage({ params }: PageProps) {
                   </div>
                 </div>
 
-                <Link
-                  href={episodeHref}
-                  className="mt-4 block rounded-full bg-blue-600 px-5 py-3 text-center text-sm font-black text-white transition hover:bg-blue-500"
-                >
-                  Ouvir devocional
-                </Link>
               </div>
             )}
 
-            <Link
-              href="/"
-              className="block rounded-full bg-white px-5 py-3 text-center text-sm font-black text-slate-950 transition hover:bg-blue-100"
-            >
-              Abrir app
-            </Link>
+            <PublicQuoteActions
+              quoteId={quote.id}
+              quotePreview={quotePreview}
+              episodeId={quote.episode?.id || null}
+              episodeHref={episodeHref}
+              canonicalUrl={canonicalUrl}
+            />
           </div>
         </div>
       </section>

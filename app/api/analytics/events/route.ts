@@ -24,6 +24,9 @@ type AnalyticsEventName =
   | 'public_episode_audio_completed'
   | 'public_episode_share_clicked'
   | 'public_episode_open_app_clicked'
+  | 'public_quote_opened'
+  | 'public_quote_share_clicked'
+  | 'public_quote_open_app_clicked'
 
 const allowedEvents = new Set<AnalyticsEventName>([
   'app_opened',
@@ -45,6 +48,9 @@ const allowedEvents = new Set<AnalyticsEventName>([
   'public_episode_audio_completed',
   'public_episode_share_clicked',
   'public_episode_open_app_clicked',
+  'public_quote_opened',
+  'public_quote_share_clicked',
+  'public_quote_open_app_clicked',
 ])
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
