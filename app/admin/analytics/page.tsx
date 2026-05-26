@@ -3,8 +3,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 
-import { supabase } from '@/lib/supabase'
-
 type EventName =
   | 'app_opened'
   | 'episode_viewed'
@@ -30,51 +28,72 @@ type LatestEvent = {
   created_at: string
 }
 
-type AnalyticsStats = {
-  totalUsers: number
-  newUsersToday: number
-  eventsToday: number
-  activeToday: number
-  betaPendingIssues: number
-  eventCounts: EventCounts
+type AnalyticsResponse = {
+  period: {
+    label: string
+    since: string
+    until: string
+  }
+  metrics: {
+    totalUsers: number
+    newUsers: number
+    totalEvents: number
+    activeUsers: number
+    betaPendingIssues: number
+    eventCounts: EventCounts
+  }
+  funnel: Pick<
+    EventCounts,
+    | 'episode_viewed'
+    | 'audio_started'
+    | 'audio_progress_25'
+    | 'audio_progress_50'
+    | 'audio_progress_75'
+    | 'audio_completed'
+  >
   latestEvents: LatestEvent[]
 }
 
-const eventNames: EventName[] = [
-  'app_opened',
-  'episode_viewed',
-  'audio_started',
-  'audio_paused',
-  'audio_progress_25',
-  'audio_progress_50',
-  'audio_progress_75',
-  'audio_completed',
-  'share_clicked',
-  'quote_share_clicked',
-  'notification_enabled',
-]
+const initialEventCounts: EventCounts = {
+  app_opened: 0,
+  episode_viewed: 0,
+  audio_started: 0,
+  audio_paused: 0,
+  audio_progress_25: 0,
+  audio_progress_50: 0,
+  audio_progress_75: 0,
+  audio_completed: 0,
+  share_clicked: 0,
+  quote_share_clicked: 0,
+  notification_enabled: 0,
+}
 
-const initialEventCounts = eventNames.reduce((acc, eventName) => {
-  acc[eventName] = 0
-  return acc
-}, {} as EventCounts)
-
-const initialStats: AnalyticsStats = {
-  totalUsers: 0,
-  newUsersToday: 0,
-  eventsToday: 0,
-  activeToday: 0,
-  betaPendingIssues: 0,
-  eventCounts: initialEventCounts,
+const initialData: AnalyticsResponse = {
+  period: {
+    label: 'ultimas 24h',
+    since: '',
+    until: '',
+  },
+  metrics: {
+    totalUsers: 0,
+    newUsers: 0,
+    totalEvents: 0,
+    activeUsers: 0,
+    betaPendingIssues: 0,
+    eventCounts: initialEventCounts,
+  },
+  funnel: {
+    episode_viewed: 0,
+    audio_started: 0,
+    audio_progress_25: 0,
+    audio_progress_50: 0,
+    audio_progress_75: 0,
+    audio_completed: 0,
+  },
   latestEvents: [],
 }
 
-function getTodayStartIso() {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  return today.toISOString()
-}
+const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? ''
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat('pt-BR').format(value)
@@ -112,88 +131,6 @@ function summarizeMetadata(metadata: Record<string, unknown> | null) {
       return key + ': ' + text.slice(0, 80)
     })
     .join(' | ')
-}
-
-async function safeCount(
-  tableName: string,
-  filter?: (query: any) => any
-): Promise<number> {
-  try {
-    let query = supabase
-      .from(tableName)
-      .select('id', { count: 'exact', head: true })
-
-    if (filter) query = filter(query)
-
-    const { count, error } = await query
-
-    if (error) {
-      console.warn('[analytics-admin] erro ao contar ' + tableName, error.message)
-      return 0
-    }
-
-    return count || 0
-  } catch (error) {
-    console.warn('[analytics-admin] erro inesperado ao contar ' + tableName, error)
-    return 0
-  }
-}
-
-async function loadEventCounts(todayStartIso: string) {
-  const countPairs = await Promise.all(
-    eventNames.map(async (eventName) => {
-      const count = await safeCount('app_events', (query) =>
-        query.eq('event_name', eventName).gte('created_at', todayStartIso)
-      )
-
-      return [eventName, count] as const
-    })
-  )
-
-  return countPairs.reduce((acc, [eventName, count]) => {
-    acc[eventName] = count
-    return acc
-  }, { ...initialEventCounts })
-}
-
-async function loadActiveToday(todayStartIso: string) {
-  try {
-    const { data, error } = await supabase
-      .from('app_events')
-      .select('device_id, session_id')
-      .eq('event_name', 'app_opened')
-      .gte('created_at', todayStartIso)
-      .limit(2000)
-
-    if (error) throw error
-
-    const activeKeys = new Set<string>()
-
-    ;(data || []).forEach((event) => {
-      const deviceId = typeof event.device_id === 'string' ? event.device_id : ''
-      const sessionId = typeof event.session_id === 'string' ? event.session_id : ''
-      const key = deviceId || sessionId
-
-      if (key) activeKeys.add(key)
-    })
-
-    return activeKeys.size
-  } catch (error) {
-    console.warn('[analytics-admin] erro ao calcular ativos hoje', error)
-    return 0
-  }
-}
-
-async function loadLatestEvents() {
-  const { data, error } = await supabase
-    .from('app_events')
-    .select('id, event_name, entity_type, entity_id, source, metadata, created_at')
-    .order('created_at', { ascending: false })
-    .limit(30)
-
-  if (error) throw error
-
-  return (data || []) as LatestEvent[]
 }
 
 function MetricCard({
@@ -258,7 +195,7 @@ function FunnelBar({ label, value, max }: { label: string; value: number; max: n
 }
 
 export default function AdminAnalyticsPage() {
-  const [stats, setStats] = useState<AnalyticsStats>(initialStats)
+  const [data, setData] = useState<AnalyticsResponse>(initialData)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [lastUpdated, setLastUpdated] = useState('')
@@ -268,36 +205,18 @@ export default function AdminAnalyticsPage() {
       setLoading(true)
       setLoadError('')
 
-      const todayStartIso = getTodayStartIso()
-
-      const [
-        totalUsers,
-        newUsersToday,
-        eventsToday,
-        activeToday,
-        betaPendingIssues,
-        eventCounts,
-        latestEvents,
-      ] = await Promise.all([
-        safeCount('profiles'),
-        safeCount('profiles', (query) => query.gte('created_at', todayStartIso)),
-        safeCount('app_events', (query) => query.gte('created_at', todayStartIso)),
-        loadActiveToday(todayStartIso),
-        safeCount('beta_issue_reports', (query) => query.neq('status', 'resolved')),
-        loadEventCounts(todayStartIso),
-        loadLatestEvents(),
-      ])
-
-      setStats({
-        totalUsers,
-        newUsersToday,
-        eventsToday,
-        activeToday,
-        betaPendingIssues,
-        eventCounts,
-        latestEvents,
+      const response = await fetch('/api/admin/analytics', {
+        headers: {
+          'x-admin-password': ADMIN_PASSWORD,
+        },
       })
+      const payload = await response.json()
 
+      if (!response.ok) {
+        throw new Error(payload.error || 'Nao foi possivel carregar analytics.')
+      }
+
+      setData(payload as AnalyticsResponse)
       setLastUpdated(
         new Intl.DateTimeFormat('pt-BR', {
           hour: '2-digit',
@@ -306,8 +225,9 @@ export default function AdminAnalyticsPage() {
         }).format(new Date())
       )
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro ao carregar analytics.'
       console.error('Erro ao carregar analytics:', error)
-      setLoadError('Nao foi possivel carregar as metricas agora.')
+      setLoadError(message)
     } finally {
       setLoading(false)
     }
@@ -319,17 +239,18 @@ export default function AdminAnalyticsPage() {
 
   const funnel = useMemo(
     () => [
-      { label: 'Episodio visualizado', value: stats.eventCounts.episode_viewed },
-      { label: 'Play', value: stats.eventCounts.audio_started },
-      { label: '25%', value: stats.eventCounts.audio_progress_25 },
-      { label: '50%', value: stats.eventCounts.audio_progress_50 },
-      { label: '75%', value: stats.eventCounts.audio_progress_75 },
-      { label: 'Concluido', value: stats.eventCounts.audio_completed },
+      { label: 'Episodio visualizado', value: data.funnel.episode_viewed },
+      { label: 'Play', value: data.funnel.audio_started },
+      { label: '25%', value: data.funnel.audio_progress_25 },
+      { label: '50%', value: data.funnel.audio_progress_50 },
+      { label: '75%', value: data.funnel.audio_progress_75 },
+      { label: 'Concluido', value: data.funnel.audio_completed },
     ],
-    [stats.eventCounts]
+    [data.funnel]
   )
 
   const funnelMax = Math.max(funnel[0]?.value || 0, ...funnel.map((item) => item.value), 1)
+  const eventCounts = data.metrics.eventCounts
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6 lg:px-8">
@@ -350,7 +271,7 @@ export default function AdminAnalyticsPage() {
               Metricas do aplicativo
             </h1>
             <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-400">
-              Primeira visao operacional baseada em app_events e dados administrativos ja existentes.
+              Leitura via service role no servidor. Periodo: {data.period.label}.
             </p>
           </div>
 
@@ -378,28 +299,28 @@ export default function AdminAnalyticsPage() {
         )}
 
         <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-          <MetricCard title="Usuarios cadastrados" value={stats.totalUsers} helper="Total em profiles" tone="blue" />
-          <MetricCard title="Novos hoje" value={stats.newUsersToday} helper="Profiles criados hoje" tone="green" />
-          <MetricCard title="Ativos hoje" value={stats.activeToday} helper="Dispositivos/sessoes com app_opened" tone="gold" />
-          <MetricCard title="Plays hoje" value={stats.eventCounts.audio_started} helper="Eventos audio_started" tone="purple" />
-          <MetricCard title="Concluiram audio" value={stats.eventCounts.audio_completed} helper="Eventos audio_completed" tone="green" />
-          <MetricCard title="Compartilharam audio" value={stats.eventCounts.share_clicked} helper="Cliques em compartilhar episodio" tone="blue" />
-          <MetricCard title="Compartilharam Palavra" value={stats.eventCounts.quote_share_clicked} helper="Cliques em compartilhar Palavra" tone="purple" />
-          <MetricCard title="Notificacoes ativadas" value={stats.eventCounts.notification_enabled} helper="Eventos notification_enabled" tone="gold" />
-          <MetricCard title="Problemas pendentes" value={stats.betaPendingIssues} helper="Beta issues nao resolvidas" tone="rose" />
-          <MetricCard title="Eventos hoje" value={stats.eventsToday} helper="Total em app_events hoje" tone="stone" />
+          <MetricCard title="Usuarios cadastrados" value={data.metrics.totalUsers} helper="Total em profiles" tone="blue" />
+          <MetricCard title="Novos 24h" value={data.metrics.newUsers} helper="Profiles criados nas ultimas 24h" tone="green" />
+          <MetricCard title="Ativos 24h" value={data.metrics.activeUsers} helper="User, device ou sessao distintos" tone="gold" />
+          <MetricCard title="Plays 24h" value={eventCounts.audio_started} helper="Eventos audio_started" tone="purple" />
+          <MetricCard title="Concluiram audio" value={eventCounts.audio_completed} helper="Eventos audio_completed" tone="green" />
+          <MetricCard title="Compartilharam audio" value={eventCounts.share_clicked} helper="Cliques em compartilhar episodio" tone="blue" />
+          <MetricCard title="Compartilharam Palavra" value={eventCounts.quote_share_clicked} helper="Cliques em compartilhar Palavra" tone="purple" />
+          <MetricCard title="Notificacoes ativadas" value={eventCounts.notification_enabled} helper="Eventos notification_enabled" tone="gold" />
+          <MetricCard title="Problemas pendentes" value={data.metrics.betaPendingIssues} helper="Beta issues abertas" tone="rose" />
+          <MetricCard title="Eventos 24h" value={data.metrics.totalEvents} helper="Total em app_events" tone="stone" />
         </section>
 
         <section className="mt-8 grid gap-6 lg:grid-cols-[420px_1fr]">
           <div className="rounded-[32px] border border-white/10 bg-slate-900/70 p-5 shadow-2xl shadow-black/20">
             <p className="text-[11px] font-black uppercase tracking-[0.22em] text-blue-300">
-              Funil do audio de hoje
+              Funil do audio
             </p>
             <h2 className="mt-2 text-2xl font-black tracking-[-0.05em]">
               Escuta do devocional
             </h2>
             <p className="mt-3 text-sm leading-6 text-slate-400">
-              Conta os eventos emitidos hoje. Nesta versao, o funil ainda nao separa por episodio especifico.
+              Conta eventos das ultimas 24h. Nesta versao, o funil ainda nao separa por episodio especifico.
             </p>
 
             <div className="mt-5 grid gap-3">
@@ -428,7 +349,7 @@ export default function AdminAnalyticsPage() {
               <p className="mt-6 rounded-2xl border border-white/10 bg-slate-950/60 p-5 text-sm font-bold text-slate-400">
                 Carregando eventos...
               </p>
-            ) : stats.latestEvents.length === 0 ? (
+            ) : data.latestEvents.length === 0 ? (
               <p className="mt-6 rounded-2xl border border-white/10 bg-slate-950/60 p-5 text-sm leading-6 text-slate-400">
                 Ainda nao ha eventos em app_events para exibir.
               </p>
@@ -442,7 +363,7 @@ export default function AdminAnalyticsPage() {
                 </div>
 
                 <div className="divide-y divide-white/10">
-                  {stats.latestEvents.map((event) => (
+                  {data.latestEvents.map((event) => (
                     <article
                       key={event.id}
                       className="grid grid-cols-[130px_110px_1fr] gap-3 bg-slate-900/40 px-4 py-3 text-xs lg:grid-cols-[170px_120px_150px_1fr]"

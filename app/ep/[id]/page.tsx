@@ -1,9 +1,11 @@
 ﻿'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAudio } from '@/components/audio/AudioProvider'
+import { getPublicAppUrl } from '@/lib/appUrl'
+import { trackAppEvent, type AnalyticsEventName } from '@/lib/analytics/client'
 import type { Episode } from '@/lib/supabase'
 
 type EpisodeSeries = {
@@ -71,15 +73,107 @@ export default function EpisodePage() {
     toggleExpanded,
     currentEpisode,
     isPlaying,
+    currentTime,
+    duration,
   } = useAudio()
 
   const [episode, setEpisode] = useState<PublicEpisode | null>(null)
   const [loading, setLoading] = useState(true)
+  const publicAudioStartedRef = useRef(false)
+  const publicAudioCompletedRef = useRef(false)
+  const publicProgressMilestonesRef = useRef<Set<number>>(new Set())
 
   useEffect(() => {
+    publicAudioStartedRef.current = false
+    publicAudioCompletedRef.current = false
+    publicProgressMilestonesRef.current = new Set()
     loadEpisode()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id])
+
+  useEffect(() => {
+    if (!episode || currentEpisode?.id !== episode.id || duration <= 0) return
+
+    const progressPercent = Math.min((currentTime / duration) * 100, 100)
+
+    ;([25, 50, 75] as const).forEach((milestone) => {
+      if (
+        progressPercent >= milestone &&
+        !publicProgressMilestonesRef.current.has(milestone)
+      ) {
+        publicProgressMilestonesRef.current.add(milestone)
+        trackPublicEpisodeEvent(('public_episode_audio_progress_' + milestone) as AnalyticsEventName, {
+          position_seconds: Math.floor(currentTime || 0),
+          duration_seconds: Math.floor(duration),
+          progress_percent: milestone,
+        })
+      }
+    })
+
+    if (progressPercent >= 98 && !publicAudioCompletedRef.current) {
+      publicAudioCompletedRef.current = true
+      trackPublicEpisodeEvent('public_episode_audio_completed', {
+        position_seconds: Math.floor(currentTime || duration || 0),
+        duration_seconds: Math.floor(duration),
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [episode?.id, currentEpisode?.id, currentTime, duration])
+
+  function getShareParam() {
+    if (typeof window === 'undefined') return null
+
+    return new URLSearchParams(window.location.search).get('share')
+  }
+
+  function getPublicEpisodeUrl() {
+    if (!episode) return ''
+
+    return getPublicAppUrl() + '/ep/' + episode.id + '?share=audio-v5'
+  }
+
+  function buildPublicMetadata(extraMetadata: Record<string, unknown> = {}) {
+    return {
+      title: episode?.title || null,
+      bible_reference: episode?.bible_reference || null,
+      share_param: getShareParam(),
+      path: typeof window !== 'undefined' ? window.location.pathname : null,
+      referrer: typeof document !== 'undefined' ? document.referrer || null : null,
+      ...extraMetadata,
+    }
+  }
+
+  function trackPublicEpisodeEvent(
+    eventName: AnalyticsEventName,
+    metadata: Record<string, unknown> = {}
+  ) {
+    if (!episode) return
+
+    trackAppEvent(eventName, {
+      entityType: 'episode',
+      entityId: episode.id,
+      source: 'public_episode_page',
+      metadata: buildPublicMetadata(metadata),
+    })
+  }
+
+  function trackPublicAudioStarted(typedEpisode: PublicEpisode) {
+    if (publicAudioStartedRef.current) return
+
+    publicAudioStartedRef.current = true
+    trackAppEvent('public_episode_audio_started', {
+      entityType: 'episode',
+      entityId: typedEpisode.id,
+      source: 'public_episode_page',
+      metadata: {
+        title: typedEpisode.title,
+        bible_reference: typedEpisode.bible_reference || null,
+        share_param: getShareParam(),
+        path: typeof window !== 'undefined' ? window.location.pathname : null,
+        referrer: typeof document !== 'undefined' ? document.referrer || null : null,
+      },
+    })
+  }
 
   function buildPlayerEpisode(typedEpisode: PublicEpisode) {
     return {
@@ -124,6 +218,19 @@ export default function EpisodePage() {
       setEpisode(typedEpisode)
 
       if (typedEpisode) {
+        trackAppEvent('public_episode_opened', {
+          entityType: 'episode',
+          entityId: typedEpisode.id,
+          source: 'public_episode_page',
+          metadata: {
+            title: typedEpisode.title,
+            bible_reference: typedEpisode.bible_reference || null,
+            share_param: getShareParam(),
+            path: typeof window !== 'undefined' ? window.location.pathname : null,
+            referrer: typeof document !== 'undefined' ? document.referrer || null : null,
+          },
+        })
+        trackPublicAudioStarted(typedEpisode)
         play(buildPlayerEpisode(typedEpisode))
       }
     } catch (error) {
@@ -138,10 +245,14 @@ export default function EpisodePage() {
     if (!episode) return
 
     if (currentEpisode?.id === episode.id) {
+      if (!isPlaying) {
+        trackPublicAudioStarted(episode)
+      }
       togglePlay()
       return
     }
 
+    trackPublicAudioStarted(episode)
     play(buildPlayerEpisode(episode))
   }
 
@@ -149,10 +260,63 @@ export default function EpisodePage() {
     if (!episode) return
 
     if (currentEpisode?.id !== episode.id) {
+      trackPublicAudioStarted(episode)
       play(buildPlayerEpisode(episode))
     }
 
     toggleExpanded()
+  }
+
+  async function handleShareEpisode() {
+    if (!episode) return
+
+    const episodeUrl = getPublicEpisodeUrl()
+    const message = 'Ouca o devocional de hoje: ' + episodeUrl
+
+    try {
+      if (navigator.share) {
+        trackPublicEpisodeEvent('public_episode_share_clicked', {
+          channel: 'native_share',
+          share_param: 'audio-v5',
+        })
+        await navigator.share({
+          title: episode.title,
+          text: 'Ouca o devocional de hoje.',
+          url: episodeUrl,
+        })
+        return
+      }
+
+      const whatsappUrl = 'https://wa.me/?text=' + encodeURIComponent(message)
+      trackPublicEpisodeEvent('public_episode_share_clicked', {
+        channel: 'whatsapp',
+        share_param: 'audio-v5',
+      })
+
+      const opened = window.open(whatsappUrl, '_blank')
+
+      if (!opened) {
+        await navigator.clipboard.writeText(episodeUrl)
+        alert('Link copiado para compartilhar.')
+      }
+    } catch (error) {
+      try {
+        await navigator.clipboard.writeText(episodeUrl)
+        alert('Link copiado para compartilhar.')
+      } catch (clipboardError) {
+        console.error('Erro ao compartilhar episodio:', error, clipboardError)
+      }
+    }
+  }
+
+  function handleOpenApp() {
+    if (episode) {
+      trackPublicEpisodeEvent('public_episode_open_app_clicked', {
+        share_param: getShareParam(),
+      })
+    }
+
+    router.push('/')
   }
 
   if (loading) {
@@ -189,7 +353,7 @@ export default function EpisodePage() {
 
           <button
             type="button"
-            onClick={() => router.push('/')}
+            onClick={handleOpenApp}
             className="w-full rounded-full bg-white px-5 py-3 text-sm font-black text-slate-950"
           >
             Abrir app
@@ -326,7 +490,15 @@ export default function EpisodePage() {
 
             <button
               type="button"
-              onClick={() => router.push('/')}
+              onClick={handleShareEpisode}
+              className="w-full rounded-full bg-emerald-500 px-5 py-3 text-sm font-black text-emerald-950 shadow-[0_16px_40px_rgba(16,185,129,0.24)] transition hover:bg-emerald-400 active:scale-[0.98]"
+            >
+              Compartilhar no WhatsApp
+            </button>
+
+            <button
+              type="button"
+              onClick={handleOpenApp}
               className="w-full rounded-full border border-white/10 bg-white/[0.06] px-5 py-3 text-sm font-bold text-white transition hover:bg-white/10"
             >
               Abrir app completo
@@ -337,3 +509,4 @@ export default function EpisodePage() {
     </main>
   )
 }
+

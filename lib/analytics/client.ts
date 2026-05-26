@@ -12,6 +12,14 @@ export type AnalyticsEventName =
   | 'share_clicked'
   | 'quote_share_clicked'
   | 'notification_enabled'
+  | 'public_episode_opened'
+  | 'public_episode_audio_started'
+  | 'public_episode_audio_progress_25'
+  | 'public_episode_audio_progress_50'
+  | 'public_episode_audio_progress_75'
+  | 'public_episode_audio_completed'
+  | 'public_episode_share_clicked'
+  | 'public_episode_open_app_clicked'
 
 type AnalyticsPayload = {
   entityType?: string
