@@ -30,6 +30,7 @@ type CutSuggestion = {
   end: number
   reason: string
   hook: string
+  source_excerpt?: string
 }
 
 type ContentAssets = {
@@ -40,6 +41,7 @@ type ContentAssets = {
   hashtags: string[]
   short_ideas: ShortIdea[]
   cut_suggestions: CutSuggestion[]
+  cut_suggestions_note?: string
 }
 
 type EpisodeStudioRow = {
@@ -546,6 +548,11 @@ export default function AdminContentStudioPage() {
 
                   <article className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
                     <h2 className="text-sm font-black text-white">Sugestões de cortes</h2>
+                    {contentAssets.cut_suggestions_note && (
+                      <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-500/10 p-3 text-xs font-bold leading-5 text-amber-50">
+                        {contentAssets.cut_suggestions_note}
+                      </p>
+                    )}
                     {contentAssets.cut_suggestions.length > 0 ? (
                       <div className="mt-3 grid gap-3">
                         {contentAssets.cut_suggestions.map((cut, index) => (
@@ -556,6 +563,11 @@ export default function AdminContentStudioPage() {
                             <p className="mt-1 text-sm font-black text-white">{cut.title}</p>
                             <p className="mt-2 text-xs font-bold leading-5 text-slate-300">{cut.hook}</p>
                             <p className="mt-1 text-xs leading-5 text-slate-500">{cut.reason}</p>
+                            {cut.source_excerpt && (
+                              <p className="mt-2 border-l-2 border-blue-300/30 pl-3 text-xs leading-5 text-slate-400">
+                                {cut.source_excerpt}
+                              </p>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -573,6 +585,12 @@ export default function AdminContentStudioPage() {
               <p className="text-[11px] font-black uppercase tracking-[0.20em] text-blue-300">
                 Shorts/Reels/TikToks
               </p>
+
+              {contentAssets?.cut_suggestions_note && (
+                <p className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-500/10 p-4 text-sm font-bold leading-6 text-amber-50">
+                  {contentAssets.cut_suggestions_note}
+                </p>
+              )}
 
               {segments.length > 0 ? (
                 <div className="mt-4 grid max-h-[360px] gap-2 overflow-y-auto">

@@ -21,6 +21,7 @@ type CutSuggestion = {
   end: number
   reason: string
   hook: string
+  source_excerpt?: string
 }
 
 type ContentAssets = {
@@ -31,10 +32,13 @@ type ContentAssets = {
   hashtags: string[]
   short_ideas: ShortIdea[]
   cut_suggestions: CutSuggestion[]
+  cut_suggestions_note?: string
 }
 
 const MAX_TRANSCRIPTION_CHARS = 28000
 const MAX_SEGMENTS = 80
+const MISSING_TIMESTAMPS_NOTE =
+  'Este episodio nao possui segmentos com timestamps. Gere uma transcricao com timestamps para cortes precisos.'
 
 function cleanText(text: string) {
   return text
@@ -120,7 +124,52 @@ function normalizeShortIdeas(input: unknown): ShortIdea[] {
     .slice(0, 5)
 }
 
-function normalizeCutSuggestions(input: unknown): CutSuggestion[] {
+function isNearKnownBoundary(value: number, segments: TranscriptionSegment[]) {
+  return segments.some((segment) => {
+    return Math.abs(segment.start - value) <= 1.5 || Math.abs(segment.end - value) <= 1.5
+  })
+}
+
+function isCutInsideKnownSegments(
+  cut: Pick<CutSuggestion, 'start' | 'end'>,
+  segments: TranscriptionSegment[]
+) {
+  if (!segments.length) return false
+
+  const firstStart = segments[0]?.start ?? 0
+  const lastEnd = segments[segments.length - 1]?.end ?? 0
+
+  return (
+    cut.start >= firstStart - 0.5 &&
+    cut.end <= lastEnd + 0.5 &&
+    isNearKnownBoundary(cut.start, segments) &&
+    isNearKnownBoundary(cut.end, segments)
+  )
+}
+
+function looksLikeWeakCut(text: string) {
+  const weakPatterns = [
+    /\bbom dia\b/i,
+    /\bboa tarde\b/i,
+    /\bboa noite\b/i,
+    /\bsauda[cç][aã]o\b/i,
+    /\baviso\b/i,
+    /\badministrativo\b/i,
+    /\bs[ée]rie\b/i,
+    /\bprojeto\b/i,
+    /\bintrodu[cç][aã]o\b/i,
+    /\bora[cç][aã]o final\b/i,
+    /\bcompartilhar\b/i,
+    /\bcadastrar\b/i,
+  ]
+
+  return weakPatterns.some((pattern) => pattern.test(text))
+}
+
+function normalizeCutSuggestions(
+  input: unknown,
+  segments: TranscriptionSegment[]
+): CutSuggestion[] {
   if (!Array.isArray(input)) return []
 
   return input
@@ -131,6 +180,7 @@ function normalizeCutSuggestions(input: unknown): CutSuggestion[] {
         end?: unknown
         reason?: unknown
         hook?: unknown
+        source_excerpt?: unknown
       }
 
       return {
@@ -139,9 +189,17 @@ function normalizeCutSuggestions(input: unknown): CutSuggestion[] {
         end: Number(value.end),
         reason: cleanText(String(value.reason || '')).slice(0, 240),
         hook: cleanText(String(value.hook || '')).slice(0, 220),
+        source_excerpt: cleanText(String(value.source_excerpt || '')).slice(0, 260) || undefined,
       }
     })
     .filter((item) => {
+      const combinedText = [
+        item.title,
+        item.reason,
+        item.hook,
+        item.source_excerpt || '',
+      ].join(' ')
+
       return (
         item.title &&
         item.reason &&
@@ -149,13 +207,21 @@ function normalizeCutSuggestions(input: unknown): CutSuggestion[] {
         Number.isFinite(item.start) &&
         Number.isFinite(item.end) &&
         item.start >= 0 &&
-        item.end > item.start
+        item.end > item.start &&
+        isCutInsideKnownSegments(item, segments) &&
+        !looksLikeWeakCut(combinedText)
       )
     })
     .slice(0, 5)
 }
 
-function validateAssets(input: unknown): ContentAssets {
+function validateAssets(
+  input: unknown,
+  options: {
+    hasReliableSegments: boolean
+    transcriptionSegments: TranscriptionSegment[]
+  }
+): ContentAssets {
   const parsed = input as {
     assets?: unknown
     devotional_summary?: unknown
@@ -165,6 +231,7 @@ function validateAssets(input: unknown): ContentAssets {
     hashtags?: unknown
     short_ideas?: unknown
     cut_suggestions?: unknown
+    cut_suggestions_note?: unknown
   }
 
   const source = (parsed.assets || parsed) as typeof parsed
@@ -175,7 +242,12 @@ function validateAssets(input: unknown): ContentAssets {
   const strongPhrases = normalizeStringArray(source.strong_phrases, 8, 180)
   const hashtags = normalizeStringArray(source.hashtags, 12, 40)
   const shortIdeas = normalizeShortIdeas(source.short_ideas)
-  const cutSuggestions = normalizeCutSuggestions(source.cut_suggestions)
+  const cutSuggestions = options.hasReliableSegments
+    ? normalizeCutSuggestions(source.cut_suggestions, options.transcriptionSegments)
+    : []
+  const cutSuggestionsNote = cleanText(
+    String(source.cut_suggestions_note || '')
+  )
 
   if (!devotionalSummary) {
     throw new Error('A IA não gerou resumo devocional.')
@@ -201,6 +273,9 @@ function validateAssets(input: unknown): ContentAssets {
     hashtags,
     short_ideas: shortIdeas,
     cut_suggestions: cutSuggestions,
+    cut_suggestions_note: options.hasReliableSegments
+      ? cutSuggestionsNote || undefined
+      : cutSuggestionsNote || MISSING_TIMESTAMPS_NOTE,
   }
 }
 
@@ -232,6 +307,7 @@ function buildPrompt(params: {
   transcriptionText: string
   transcriptionSegments: TranscriptionSegment[]
   dailyQuoteSuggestions: unknown
+  hasReliableSegments: boolean
 }) {
   const segmentsText = params.transcriptionSegments.length
     ? params.transcriptionSegments
@@ -240,6 +316,25 @@ function buildPrompt(params: {
         })
         .join('\n')
     : 'Sem segmentos com timestamp.'
+
+  const cutInstructions = params.hasReliableSegments
+    ? `
+REGRAS PARA CORTES COM TIMESTAMP:
+- gere cut_suggestions somente usando tempos presentes nos segmentos informados;
+- nunca invente timestamps;
+- o start e o end devem encostar em limites reais de segmentos;
+- cada corte deve ter source_excerpt com uma fala real do trecho;
+- evite cortes de "bom dia", saudacao, aviso administrativo, explicacao de serie/projeto, introducao longa, oracao final longa e pedido final de compartilhar/cadastrar;
+- priorize gancho forte, frase biblica marcante, aplicacao direta, tensao espiritual, contraste e momento emocional.
+`.trim()
+    : `
+REGRAS PARA CORTES SEM TIMESTAMP:
+- este episodio nao possui segmentos confiaveis com start/end/text;
+- nao gere cut_suggestions com timestamps;
+- retorne cut_suggestions como [];
+- gere apenas short_ideas editoriais sem tempos;
+- retorne cut_suggestions_note com a mensagem: "${MISSING_TIMESTAMPS_NOTE}".
+`.trim()
 
   const quoteSuggestions = Array.isArray(params.dailyQuoteSuggestions)
     ? params.dailyQuoteSuggestions
@@ -264,7 +359,12 @@ REGRAS:
 - legenda de Instagram deve ter chamada suave, sem exagero;
 - hashtags devem ser relevantes e sem acentos;
 - ideias de shorts devem ter gancho forte;
-- cortes devem usar timestamps dos segmentos quando houver segmentos válidos.
+- strong_phrases devem nascer de pontos reais da transcricao;
+- strong_phrases devem variar uso e estrutura: card, short, WhatsApp e Instagram;
+- prefira frases especificas do episodio, nao frases genericas que serviriam para qualquer devocional;
+- evite repetir palavras abstratas como dor, esperanca, aflicao, vida, transformacao, processo e proposito, salvo quando forem centrais no trecho.
+
+${cutInstructions}
 
 TÍTULO:
 ${params.title || 'Não informado'}
@@ -306,9 +406,11 @@ Responda SOMENTE em JSON válido, exatamente neste formato:
         "start": 10,
         "end": 45,
         "reason": "por que esse trecho funciona",
-        "hook": "gancho de abertura"
+        "hook": "gancho de abertura",
+        "source_excerpt": "fala real da transcricao que justifica o corte"
       }
-    ]
+    ],
+    "cut_suggestions_note": "aviso opcional quando nao houver timestamps"
   }
 }
 
@@ -327,6 +429,7 @@ async function generateWithOpenAI(params: {
   transcriptionText: string
   transcriptionSegments: TranscriptionSegment[]
   dailyQuoteSuggestions: unknown
+  hasReliableSegments: boolean
 }) {
   const apiKey = process.env.OPENAI_API_KEY
 
@@ -383,7 +486,10 @@ async function generateWithOpenAI(params: {
 
   return {
     model,
-    assets: validateAssets(extractJsonFromText(content)),
+    assets: validateAssets(extractJsonFromText(content), {
+      hasReliableSegments: params.hasReliableSegments,
+      transcriptionSegments: params.transcriptionSegments,
+    }),
   }
 }
 
@@ -405,6 +511,7 @@ export async function POST(request: NextRequest) {
     const description = cleanText(String(body.description || ''))
     const transcriptionText = cleanText(String(body.transcription_text || ''))
     const transcriptionSegments = normalizeSegments(body.transcription_segments)
+    const hasReliableSegments = transcriptionSegments.length > 0
 
     if (!episodeId) {
       return NextResponse.json(
@@ -430,6 +537,7 @@ export async function POST(request: NextRequest) {
       transcriptionText: transcriptionText.slice(0, MAX_TRANSCRIPTION_CHARS),
       transcriptionSegments,
       dailyQuoteSuggestions: body.daily_quote_suggestions,
+      hasReliableSegments,
     })
 
     return NextResponse.json({

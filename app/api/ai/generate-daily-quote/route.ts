@@ -4,6 +4,9 @@ type DailyQuoteSuggestion = {
   quote_text: string
   reason: string
   score: number
+  source_excerpt?: string
+  use_case?: string
+  specificity_reason?: string
 }
 
 type GenerateResult = {
@@ -127,9 +130,38 @@ function hasWeakGenericLanguage(text: string) {
     /\bde alguma forma\b/i,
     /\bnão se esqueça\b/i,
     /\bvai dar tudo certo\b/i,
+    /\bDeus transforma\b.*\b(dor|esperança|vida)\b/i,
+    /\bJesus transforma\b.*\b(dor|esperança|vida)\b/i,
+    /\b(encontre|receba) esperança\b/i,
+    /\bno meio da dor\b/i,
+    /\bprocesso de transformação\b/i,
+    /\bpropósito para sua vida\b/i,
   ]
 
   return genericPatterns.some((pattern) => pattern.test(text))
+}
+
+function hasOverusedDevotionalVocabulary(text: string) {
+  const normalized = text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+
+  const overusedWords = [
+    'dor',
+    'esperanca',
+    'aflicao',
+    'vida',
+    'transformacao',
+    'processo',
+    'proposito',
+  ]
+
+  const hits = overusedWords.filter((word) => {
+    return new RegExp(`\\b${word}\\b`, 'i').test(normalized)
+  })
+
+  return hits.length >= 3
 }
 
 function looksBrokenOrUnclear(text: string) {
@@ -163,13 +195,14 @@ Sua tarefa é ler a transcrição de um áudio devocional e criar frases fortes 
 A frase deve parecer uma sentença devocional poderosa, curta e memorável, como algo que uma pessoa salvaria, compartilharia ou levaria para oração.
 
 PROCESSO EDITORIAL:
-Antes de criar as frases, identifique mentalmente:
+Antes de criar as frases, gere pelo menos 12 candidatas internamente e identifique mentalmente:
 1. o tema espiritual central;
 2. a tensão humana presente no áudio;
 3. a imagem bíblica principal;
 4. o princípio espiritual aplicável;
 5. a direção pastoral para quem vai ler;
-6. a frase mais memorável possível para transformar isso em Palavra do Dia.
+6. um trecho real da transcrição que sustenta cada frase;
+7. a frase mais memorável possível para transformar isso em Palavra do Dia.
 
 A FRASE DEVE UNIR:
 - verdade bíblica;
@@ -197,6 +230,16 @@ NÃO GERE:
 - frase com repetição excessiva;
 - frase confusa;
 - frase que pareça que foi copiada sem lapidação.
+- frase que poderia servir para qualquer devocional;
+- frase baseada apenas em palavras abstratas como dor, esperança, aflição, vida, transformação, processo ou propósito, salvo quando essas palavras forem centrais no trecho real;
+- cinco frases com a mesma estrutura verbal;
+- frase sem conexão rastreável com a transcrição.
+
+REGRA DE ESPECIFICIDADE:
+Cada frase deve nascer de um ponto real da transcrição.
+Use personagens, lugares, ações, contrastes, imagens bíblicas ou aplicações pastorais presentes no conteúdo.
+Prefira frases específicas, como "Jerusalém tinha o templo, mas Jesus repousava em Betânia", em vez de frases genéricas como "Jesus transforma dor em esperança".
+Se não houver apoio claro na transcrição, descarte a candidata.
 
 REGRA TEOLÓGICA:
 Quando houver personagens, lugares, objetos ou símbolos bíblicos, use-os com sabedoria pastoral.
@@ -215,6 +258,7 @@ Prefira frases com imagens fortes e simples.
 Prefira linguagem pastoral, clara e profunda.
 Evite frases comuns demais.
 Evite frases que qualquer IA poderia escrever sem entender o áudio.
+Varie a construção das frases: algumas podem servir para card, outras para short, WhatsApp ou Instagram, mas todas devem funcionar como Palavra do Dia.
 
 CRITÉRIOS DE NOTA:
 10 = frase muito forte, memorável, bíblica, pastoral, emocional e pronta para card.
@@ -231,7 +275,7 @@ REGRAS DE TAMANHO:
 - Não use hashtags.
 
 IMPORTANTE:
-Gere 8 candidatas internamente, mas retorne somente as 5 melhores.
+Gere 12 candidatas internamente, mas retorne somente as 5 melhores.
 Não retorne frases medianas apenas para completar número.
 Se uma frase não tiver força espiritual real, descarte.
 
@@ -251,7 +295,10 @@ Responda SOMENTE em JSON válido, exatamente neste formato:
     {
       "quote_text": "frase forte aqui",
       "reason": "explique em uma frase curta por que essa frase tem força devocional",
-      "score": 9
+      "score": 9,
+      "source_excerpt": "trecho curto da transcrição que sustenta a frase",
+      "use_case": "card",
+      "specificity_reason": "por que a frase é específica deste episódio"
     }
   ]
 }
@@ -273,12 +320,18 @@ function validateSuggestions(input: unknown): DailyQuoteSuggestion[] {
         quote_text?: unknown
         reason?: unknown
         score?: unknown
+        source_excerpt?: unknown
+        use_case?: unknown
+        specificity_reason?: unknown
       }
 
       const quoteText = normalizeSuggestion(String(value.quote_text || ''))
       const reason = cleanText(
         String(value.reason || 'Frase com força devocional.')
       )
+      const sourceExcerpt = cleanText(String(value.source_excerpt || '')).slice(0, 220)
+      const useCase = cleanText(String(value.use_case || '')).slice(0, 40)
+      const specificityReason = cleanText(String(value.specificity_reason || '')).slice(0, 220)
       const rawScore = Number(value.score)
       const score = Number.isFinite(rawScore) ? rawScore : 8
       const wordCount = countWords(quoteText)
@@ -287,6 +340,9 @@ function validateSuggestions(input: unknown): DailyQuoteSuggestion[] {
         quote_text: quoteText,
         reason,
         score: Math.max(1, Math.min(10, Math.round(score))),
+        source_excerpt: sourceExcerpt || undefined,
+        use_case: useCase || undefined,
+        specificity_reason: specificityReason || undefined,
         wordCount,
       }
     })
@@ -300,6 +356,7 @@ function validateSuggestions(input: unknown): DailyQuoteSuggestion[] {
         !looksLikeQuestion(item.quote_text) &&
         !looksLikeHistoricalSummary(item.quote_text) &&
         !hasWeakGenericLanguage(item.quote_text) &&
+        !hasOverusedDevotionalVocabulary(item.quote_text) &&
         !looksBrokenOrUnclear(item.quote_text) &&
         !hasExcessiveRepetition(item.quote_text)
       )
