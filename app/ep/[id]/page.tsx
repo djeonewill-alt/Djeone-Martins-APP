@@ -63,6 +63,41 @@ function PauseIcon() {
   )
 }
 
+function WhatsAppShareIcon() {
+  return (
+    <svg
+      className="h-8 w-8"
+      viewBox="0 0 48 48"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M22.4 8.8c-7.5 0-13.6 5.8-13.6 13 0 2.6.8 5.1 2.3 7.2L9.6 36l7.2-1.8c1.7.5 3.5.8 5.6.8 7.5 0 13.6-5.8 13.6-13s-6.1-13.2-13.6-13.2Z"
+        fill="white"
+      />
+      <path
+        d="M22.5 11.8c-5.8 0-10.6 4.5-10.6 10.1 0 2.3.8 4.4 2.2 6.1l-.8 3.5 3.7-.9c1.6.8 3.4 1.3 5.5 1.3 5.8 0 10.5-4.5 10.5-10s-4.7-10.1-10.5-10.1Zm5.7 14.4c-.2.7-1.2 1.4-1.9 1.5-.5.1-1.2.2-3.9-.9-3.3-1.4-5.4-4.6-5.6-4.8-.1-.2-1.3-1.8-1.3-3.4s.8-2.4 1.2-2.8c.3-.3.7-.4 1-.4h.7c.2 0 .5 0 .8.6.3.7 1 2.4 1.1 2.6.1.2.1.4 0 .7-.2.3-.3.5-.5.7-.2.2-.4.4-.2.8.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.4 2.5 1.6.3.1.6.1.8-.1.2-.3.9-1 1.1-1.3.2-.3.5-.3.8-.2.3.1 2.1 1 2.4 1.2.3.2.6.3.7.4.1.2.1 1-.2 1.8Z"
+        fill="#16A34A"
+      />
+      <path
+        d="M31.5 8.5h8v8M39.2 8.8 28.8 19.2"
+        stroke="white"
+        strokeWidth="4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M31.5 8.5h8v8M39.2 8.8 28.8 19.2"
+        stroke="#0F5132"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity="0.45"
+      />
+    </svg>
+  )
+}
+
 export default function EpisodePage() {
   const router = useRouter()
   const params = useParams()
@@ -385,9 +420,14 @@ export default function EpisodePage() {
   const isCurrentEpisode = currentEpisode?.id === episode.id
   const isEpisodePlaying = isCurrentEpisode && isPlaying
   const durationLabel = formatDuration(episode.duration_seconds)
+  const metaLine = [
+    episode.bible_reference || 'Devocional',
+    durationLabel,
+    'Áudio devocional',
+  ].join(' · ')
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-slate-950 px-4 pb-40 pt-6 text-white">
+    <main className="relative min-h-screen overflow-hidden bg-slate-950 px-4 pb-32 pt-5 text-white">
       {coverImage && (
         <img
           src={coverImage}
@@ -398,9 +438,26 @@ export default function EpisodePage() {
 
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.22),transparent_38%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,23,1))]" />
 
-      <section className="relative mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-md flex-col justify-center">
-        <div className="overflow-hidden rounded-[34px] border border-white/10 bg-slate-950/78 shadow-[0_24px_80px_rgba(0,0,0,0.54)] backdrop-blur-xl">
-          <div className="relative h-[250px] overflow-hidden bg-slate-900">
+      <section className="relative mx-auto flex min-h-[calc(100vh-1.25rem)] w-full max-w-md flex-col justify-center">
+        <div className="overflow-hidden rounded-[30px] border border-white/10 bg-slate-950/78 shadow-[0_24px_80px_rgba(0,0,0,0.54)] backdrop-blur-xl">
+          <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
+            <img
+              src="/pastor.png"
+              alt="Pr. Djeone Martins"
+              className="h-11 w-11 shrink-0 rounded-full object-cover ring-2 ring-blue-300/20"
+            />
+
+            <div className="min-w-0">
+              <p className="truncate text-sm font-black text-white">
+                Pr. Djeone Martins
+              </p>
+              <p className="text-xs font-bold text-blue-200">
+                Devocional Diário
+              </p>
+            </div>
+          </div>
+
+          <div className="relative h-[190px] overflow-hidden bg-slate-900 sm:h-[220px]">
             {coverImage ? (
               <img
                 src={coverImage}
@@ -427,53 +484,24 @@ export default function EpisodePage() {
             </div>
 
             <div className="absolute inset-x-5 bottom-5">
-              <p className="mb-2 text-xs font-bold text-blue-100">
-                {episode.bible_reference || 'Devocional'}
+              <p className="mb-2 truncate text-xs font-bold text-blue-100">
+                {metaLine}
               </p>
 
-              <h1 className="text-[2rem] font-black leading-[0.98] tracking-[-0.06em] text-white drop-shadow-[0_4px_18px_rgba(0,0,0,0.9)]">
+              <h1 className="text-[1.75rem] font-black leading-[1] tracking-[-0.05em] text-white drop-shadow-[0_4px_18px_rgba(0,0,0,0.9)] sm:text-[2rem]">
                 {episode.title}
               </h1>
             </div>
           </div>
 
-          <div className="space-y-5 px-5 py-5">
-            <div className="grid grid-cols-3 rounded-[22px] border border-white/10 bg-white/[0.04] p-3 text-center">
-              <div>
-                <p className="text-[10px] font-bold text-slate-400">
-                  Base
-                </p>
-                <p className="mt-1 truncate text-xs font-black text-white">
-                  {episode.bible_reference || 'Devocional'}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-[10px] font-bold text-slate-400">
-                  Duração
-                </p>
-                <p className="mt-1 text-xs font-black text-white">
-                  {durationLabel}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-[10px] font-bold text-slate-400">
-                  Autor
-                </p>
-                <p className="mt-1 truncate text-xs font-black text-white">
-                  Pr. Djeone
-                </p>
-              </div>
-            </div>
-
+          <div className="space-y-4 px-5 py-5">
             {episode.description && (
-              <p className="text-sm leading-relaxed text-slate-300">
+              <p className="line-clamp-2 text-sm leading-relaxed text-slate-300">
                 {episode.description}
               </p>
             )}
 
-            <div className="rounded-[26px] border border-blue-300/15 bg-blue-500/10 p-4">
+            <div className="rounded-[22px] border border-blue-300/15 bg-blue-500/10 p-4">
               <p className="text-[11px] font-black uppercase tracking-[0.18em] text-blue-200">
                 Ouça agora
               </p>
@@ -483,11 +511,11 @@ export default function EpisodePage() {
               </p>
             </div>
 
-            <div className="grid grid-cols-[72px_1fr] gap-3">
+            <div className="grid grid-cols-[64px_1fr] gap-3">
               <button
                 type="button"
                 onClick={handlePlay}
-                className="flex h-[58px] items-center justify-center rounded-2xl bg-white text-blue-700 shadow-[0_18px_45px_rgba(255,255,255,0.14)] active:scale-95"
+                className="flex h-14 items-center justify-center rounded-2xl bg-white text-blue-700 shadow-[0_18px_45px_rgba(255,255,255,0.14)] active:scale-95"
                 aria-label={isEpisodePlaying ? 'Pausar áudio' : 'Tocar áudio'}
               >
                 {isEpisodePlaying ? <PauseIcon /> : <PlayIcon />}
@@ -496,62 +524,39 @@ export default function EpisodePage() {
               <button
                 type="button"
                 onClick={handleOpenPlayer}
-                className="h-[58px] rounded-2xl bg-blue-600 px-5 text-sm font-black text-white shadow-[0_16px_40px_rgba(37,99,235,0.32)] active:scale-[0.98]"
+                className="h-14 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white shadow-[0_16px_40px_rgba(37,99,235,0.32)] active:scale-[0.98]"
               >
                 Abrir player completo
               </button>
             </div>
 
-            <button
-              type="button"
-              onClick={handleShareEpisode}
-              className="w-full rounded-full bg-emerald-500 px-5 py-3 text-sm font-black text-emerald-950 shadow-[0_16px_40px_rgba(16,185,129,0.24)] transition hover:bg-emerald-400 active:scale-[0.98]"
-            >
-              Compartilhar no WhatsApp
-            </button>
+            <p className="text-sm font-semibold leading-6 text-slate-300">
+              No app: áudios diários, Palavra do Dia, oração e séries bíblicas.
+            </p>
 
-            <div className="flex items-center gap-4 rounded-[26px] border border-white/10 bg-white/[0.05] p-4">
-              <img
-                src="/pastor.png"
-                alt="Pr. Djeone Martins"
-                className="h-16 w-16 shrink-0 rounded-2xl object-cover ring-1 ring-blue-200/20"
-              />
+            <div className="grid grid-cols-[1fr_60px] gap-3">
+              <button
+                type="button"
+                onClick={handleReceiveDailyDevotionals}
+                className="min-h-[56px] rounded-full bg-white px-5 text-sm font-black text-slate-950 shadow-[0_18px_45px_rgba(255,255,255,0.14)] transition hover:bg-blue-100 active:scale-[0.98]"
+              >
+                Receber devocionais diários
+              </button>
 
-              <div className="min-w-0">
-                <p className="text-sm font-black text-white">
-                  Com Pr. Djeone Martins
-                </p>
-                <p className="mt-1 text-sm leading-relaxed text-slate-300">
-                  Devocionais bíblicos para fortalecer sua fé todos os dias.
-                </p>
-              </div>
+              <button
+                type="button"
+                onClick={handleShareEpisode}
+                aria-label="Compartilhar no WhatsApp"
+                className="flex h-[56px] w-[60px] items-center justify-center rounded-2xl border border-emerald-200/25 bg-emerald-500 text-white shadow-[0_16px_40px_rgba(16,185,129,0.28)] transition hover:bg-emerald-400 active:scale-[0.96]"
+              >
+                <WhatsAppShareIcon />
+              </button>
             </div>
-
-            <div className="rounded-[26px] border border-white/10 bg-slate-900/70 p-4">
-              <p className="text-sm font-black text-white">
-                No app você encontra:
-              </p>
-
-              <ul className="mt-3 space-y-2 text-sm font-semibold leading-6 text-slate-300">
-                <li>Devocionais em áudio todos os dias</li>
-                <li>Palavra do Dia para compartilhar</li>
-                <li>Leitura bíblica e oração</li>
-                <li>Séries para crescer na fé</li>
-              </ul>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleReceiveDailyDevotionals}
-              className="w-full rounded-full bg-white px-5 py-3 text-sm font-black text-slate-950 shadow-[0_18px_45px_rgba(255,255,255,0.14)] transition hover:bg-blue-100 active:scale-[0.98]"
-            >
-              Receber devocionais diários
-            </button>
 
             <button
               type="button"
               onClick={handleOpenAppHome}
-              className="w-full rounded-full border border-white/10 bg-white/[0.06] px-5 py-3 text-sm font-bold text-white transition hover:bg-white/10"
+              className="mx-auto block px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-blue-200 transition hover:text-white"
             >
               Já tenho conta
             </button>
