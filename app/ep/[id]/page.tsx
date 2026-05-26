@@ -309,10 +309,24 @@ export default function EpisodePage() {
     }
   }
 
-  function handleOpenApp() {
+  function handleReceiveDailyDevotionals() {
     if (episode) {
       trackPublicEpisodeEvent('public_episode_open_app_clicked', {
         share_param: getShareParam(),
+        target: 'daily_devotionals_signup',
+        source: 'public_episode_page',
+      })
+    }
+
+    router.push('/cadastro?source=public_episode&episode=' + episode?.id)
+  }
+
+  function handleOpenAppHome() {
+    if (episode) {
+      trackPublicEpisodeEvent('public_episode_open_app_clicked', {
+        share_param: getShareParam(),
+        target: 'app_home',
+        source: 'public_episode_page',
       })
     }
 
@@ -353,7 +367,7 @@ export default function EpisodePage() {
 
           <button
             type="button"
-            onClick={handleOpenApp}
+            onClick={handleOpenAppHome}
             className="w-full rounded-full bg-white px-5 py-3 text-sm font-black text-slate-950"
           >
             Abrir app
@@ -461,11 +475,11 @@ export default function EpisodePage() {
 
             <div className="rounded-[26px] border border-blue-300/15 bg-blue-500/10 p-4">
               <p className="text-[11px] font-black uppercase tracking-[0.18em] text-blue-200">
-                Player disponível
+                Ouça agora
               </p>
 
               <p className="mt-2 text-sm leading-relaxed text-slate-200">
-                Ouça este devocional agora pelo player fixo abaixo ou abra a experiência completa.
+                Dê play e receba uma palavra bíblica para fortalecer seu dia.
               </p>
             </div>
 
@@ -496,12 +510,50 @@ export default function EpisodePage() {
               Compartilhar no WhatsApp
             </button>
 
+            <div className="flex items-center gap-4 rounded-[26px] border border-white/10 bg-white/[0.05] p-4">
+              <img
+                src="/pastor.png"
+                alt="Pr. Djeone Martins"
+                className="h-16 w-16 shrink-0 rounded-2xl object-cover ring-1 ring-blue-200/20"
+              />
+
+              <div className="min-w-0">
+                <p className="text-sm font-black text-white">
+                  Com Pr. Djeone Martins
+                </p>
+                <p className="mt-1 text-sm leading-relaxed text-slate-300">
+                  Devocionais bíblicos para fortalecer sua fé todos os dias.
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-[26px] border border-white/10 bg-slate-900/70 p-4">
+              <p className="text-sm font-black text-white">
+                No app você encontra:
+              </p>
+
+              <ul className="mt-3 space-y-2 text-sm font-semibold leading-6 text-slate-300">
+                <li>Devocionais em áudio todos os dias</li>
+                <li>Palavra do Dia para compartilhar</li>
+                <li>Leitura bíblica e oração</li>
+                <li>Séries para crescer na fé</li>
+              </ul>
+            </div>
+
             <button
               type="button"
-              onClick={handleOpenApp}
+              onClick={handleReceiveDailyDevotionals}
+              className="w-full rounded-full bg-white px-5 py-3 text-sm font-black text-slate-950 shadow-[0_18px_45px_rgba(255,255,255,0.14)] transition hover:bg-blue-100 active:scale-[0.98]"
+            >
+              Receber devocionais diários
+            </button>
+
+            <button
+              type="button"
+              onClick={handleOpenAppHome}
               className="w-full rounded-full border border-white/10 bg-white/[0.06] px-5 py-3 text-sm font-bold text-white transition hover:bg-white/10"
             >
-              Abrir app completo
+              Já tenho conta
             </button>
           </div>
         </div>

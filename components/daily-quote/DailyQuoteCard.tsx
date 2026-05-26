@@ -4,8 +4,6 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { DailyQuote } from '@/lib/supabase'
 import { formatQuoteTextForDisplay } from '@/lib/daily-quote-card-generator'
-import { useBetaTester } from '@/lib/beta/betaTester'
-import { confirmBetaShareRestriction } from '@/lib/beta/betaShareGuard'
 import { trackAppEvent } from '@/lib/analytics/client'
 import { getPublicAppUrl } from '@/lib/appUrl'
 
@@ -18,7 +16,6 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
   const [loading, setLoading] = useState(true)
   const [liked, setLiked] = useState(false)
   const [sharing, setSharing] = useState(false)
-  const { isBetaTester } = useBetaTester()
 
   useEffect(() => {
     loadDailyQuote()
@@ -120,8 +117,6 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
 
   const handleShare = async () => {
     if (!quote || sharing) return
-
-    if (!confirmBetaShareRestriction(isBetaTester)) return
 
     setSharing(true)
 
@@ -311,7 +306,6 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
     </section>
   )
 }
-
 
 
 
