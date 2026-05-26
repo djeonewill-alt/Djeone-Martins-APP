@@ -18,6 +18,30 @@ type DailyQuoteSuggestion = {
   score?: number
 }
 
+type ShortIdea = {
+  title: string
+  hook: string
+  angle: string
+}
+
+type CutSuggestion = {
+  title: string
+  start: number
+  end: number
+  reason: string
+  hook: string
+}
+
+type ContentAssets = {
+  devotional_summary: string
+  strong_phrases: string[]
+  whatsapp_text: string
+  instagram_caption: string
+  hashtags: string[]
+  short_ideas: ShortIdea[]
+  cut_suggestions: CutSuggestion[]
+}
+
 type EpisodeStudioRow = {
   id: string
   title: string
@@ -91,14 +115,32 @@ function InfoPill({
   )
 }
 
-function FutureButton({ children }: { children: string }) {
+function CopyButton({
+  value,
+  label = 'Copiar',
+}: {
+  value: string
+  label?: string
+}) {
+  const [copied, setCopied] = useState(false)
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1800)
+    } catch (error) {
+      console.error('Erro ao copiar conteudo:', error)
+    }
+  }
+
   return (
     <button
       type="button"
-      disabled
-      className="rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm font-black text-slate-500 disabled:cursor-not-allowed"
+      onClick={handleCopy}
+      className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs font-black text-blue-100 active:scale-[0.98]"
     >
-      {children}
+      {copied ? 'Copiado' : label}
     </button>
   )
 }
@@ -111,6 +153,9 @@ export default function AdminContentStudioPage() {
   const [episode, setEpisode] = useState<EpisodeStudioRow | null>(null)
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
+  const [contentAssets, setContentAssets] = useState<ContentAssets | null>(null)
+  const [generatingContentAssets, setGeneratingContentAssets] = useState(false)
+  const [contentAssetsError, setContentAssetsError] = useState('')
 
   useEffect(() => {
     loadEpisode()
@@ -155,11 +200,58 @@ export default function AdminContentStudioPage() {
       if (error) throw error
 
       setEpisode((data as unknown) as EpisodeStudioRow)
+      setContentAssets(null)
+      setContentAssetsError('')
     } catch (error) {
       console.error('Erro ao carregar estudio de conteudo:', error)
       setErrorMessage('Nao foi possivel carregar este episodio.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleGenerateContentAssets() {
+    if (!episode?.transcription_text?.trim()) {
+      setContentAssetsError('Este episodio precisa de transcricao para gerar conteudos.')
+      return
+    }
+
+    try {
+      setGeneratingContentAssets(true)
+      setContentAssetsError('')
+
+      const response = await fetch('/api/ai/generate-content-assets', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          episodeId: episode.id,
+          title: episode.title,
+          bible_reference: episode.bible_reference,
+          description: episode.description,
+          transcription_text: episode.transcription_text,
+          transcription_segments: episode.transcription_segments,
+          daily_quote_suggestions: episode.daily_quote_suggestions,
+        }),
+      })
+
+      const payload = await response.json()
+
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error || 'Nao foi possivel gerar conteudos.')
+      }
+
+      setContentAssets(payload.assets as ContentAssets)
+    } catch (error) {
+      console.error('Erro ao gerar conteudos:', error)
+      setContentAssetsError(
+        error instanceof Error
+          ? error.message
+          : 'Nao foi possivel gerar conteudos.'
+      )
+    } finally {
+      setGeneratingContentAssets(false)
     }
   }
 
@@ -348,21 +440,134 @@ export default function AdminContentStudioPage() {
           <aside className="grid gap-5 self-start">
             <section className="rounded-[34px] border border-blue-300/15 bg-blue-500/10 p-5 shadow-2xl shadow-black/20">
               <p className="text-[11px] font-black uppercase tracking-[0.20em] text-blue-200">
-                Proximos conteudos
+                Conteudos textuais
               </p>
 
               <p className="mt-3 text-sm leading-6 text-blue-50/80">
-                Em breve: estes conteudos serao gerados a partir da transcricao.
+                Gere resumo, textos para redes, frases e sugestoes de cortes a partir da transcricao.
               </p>
 
-              <div className="mt-5 grid gap-3">
-                <FutureButton>Gerar resumo</FutureButton>
-                <FutureButton>Gerar texto para WhatsApp</FutureButton>
-                <FutureButton>Gerar legenda Instagram</FutureButton>
-                <FutureButton>Gerar roteiro de short</FutureButton>
-                <FutureButton>Gerar sugestoes de cortes</FutureButton>
-              </div>
+              {!hasTranscription && (
+                <div className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-500/10 p-4 text-sm font-bold leading-6 text-amber-50">
+                  Este episódio precisa de transcrição para gerar conteúdos.
+                </div>
+              )}
+
+              {contentAssetsError && (
+                <div className="mt-4 rounded-2xl border border-rose-300/20 bg-rose-500/10 p-4 text-sm font-bold leading-6 text-rose-100">
+                  {contentAssetsError}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleGenerateContentAssets}
+                disabled={!hasTranscription || generatingContentAssets}
+                className="mt-5 w-full rounded-2xl bg-blue-600 px-5 py-4 text-sm font-black text-white shadow-xl shadow-blue-950/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+              >
+                {generatingContentAssets ? 'Gerando conteudos...' : 'Gerar conteúdos'}
+              </button>
             </section>
+
+            {contentAssets && (
+              <section className="rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20">
+                <p className="text-[11px] font-black uppercase tracking-[0.20em] text-blue-300">
+                  Resultado gerado
+                </p>
+
+                <div className="mt-4 grid gap-4">
+                  <article className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-sm font-black text-white">Resumo devocional</h2>
+                      <CopyButton value={contentAssets.devotional_summary} />
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-slate-300">
+                      {contentAssets.devotional_summary}
+                    </p>
+                  </article>
+
+                  <article className="rounded-2xl border border-amber-300/15 bg-amber-500/10 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-sm font-black text-amber-50">Frases fortes</h2>
+                      <CopyButton value={contentAssets.strong_phrases.join('\n')} />
+                    </div>
+                    <div className="mt-3 grid gap-2">
+                      {contentAssets.strong_phrases.map((phrase, index) => (
+                        <p key={`${phrase}-${index}`} className="text-sm font-bold leading-6 text-amber-50/90">
+                          {phrase}
+                        </p>
+                      ))}
+                    </div>
+                  </article>
+
+                  <article className="rounded-2xl border border-emerald-300/15 bg-emerald-500/10 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-sm font-black text-emerald-50">Texto para WhatsApp</h2>
+                      <CopyButton value={contentAssets.whatsapp_text} />
+                    </div>
+                    <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-emerald-50/85">
+                      {contentAssets.whatsapp_text}
+                    </p>
+                  </article>
+
+                  <article className="rounded-2xl border border-purple-300/15 bg-purple-500/10 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-sm font-black text-purple-50">Legenda Instagram</h2>
+                      <CopyButton value={contentAssets.instagram_caption} />
+                    </div>
+                    <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-purple-50/85">
+                      {contentAssets.instagram_caption}
+                    </p>
+                  </article>
+
+                  <article className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                    <h2 className="text-sm font-black text-white">Hashtags</h2>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {contentAssets.hashtags.map((hashtag) => (
+                        <span key={hashtag} className="rounded-full border border-blue-300/20 bg-blue-500/10 px-3 py-1 text-xs font-black text-blue-100">
+                          {hashtag}
+                        </span>
+                      ))}
+                    </div>
+                  </article>
+
+                  <article className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                    <h2 className="text-sm font-black text-white">Ideias de Shorts</h2>
+                    <div className="mt-3 grid gap-3">
+                      {contentAssets.short_ideas.map((idea, index) => (
+                        <div key={`${idea.title}-${index}`} className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
+                          <p className="text-sm font-black text-blue-100">{idea.title}</p>
+                          <p className="mt-2 text-xs font-bold leading-5 text-slate-300">{idea.hook}</p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">{idea.angle}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+
+                  <article className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                    <h2 className="text-sm font-black text-white">Sugestões de cortes</h2>
+                    {contentAssets.cut_suggestions.length > 0 ? (
+                      <div className="mt-3 grid gap-3">
+                        {contentAssets.cut_suggestions.map((cut, index) => (
+                          <div key={`${cut.title}-${index}`} className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
+                            <p className="text-xs font-black text-blue-200">
+                              {formatSegmentTime(cut.start)} - {formatSegmentTime(cut.end)}
+                            </p>
+                            <p className="mt-1 text-sm font-black text-white">{cut.title}</p>
+                            <p className="mt-2 text-xs font-bold leading-5 text-slate-300">{cut.hook}</p>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">{cut.reason}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-sm font-bold leading-6 text-slate-500">
+                        Nenhum corte com timestamp foi sugerido.
+                      </p>
+                    )}
+                  </article>
+                </div>
+              </section>
+            )}
 
             <section className="rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20">
               <p className="text-[11px] font-black uppercase tracking-[0.20em] text-blue-300">
