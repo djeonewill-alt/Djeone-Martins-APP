@@ -34,6 +34,8 @@ type CutSuggestion = {
   hook: string
   source_excerpt?: string
   suggested_caption_lines?: string[]
+  strength_score?: number
+  strength_reason?: string
 }
 
 type StrongPhrase = {
@@ -711,6 +713,20 @@ export default function AdminContentStudioPage() {
                             )}
                             <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Motivo</p>
                             <p className="mt-1 text-xs leading-5 text-slate-500">{cut.reason}</p>
+                            {(cut.strength_score || cut.strength_reason) && (
+                              <div className="mt-3 rounded-xl border border-emerald-300/15 bg-emerald-500/10 p-3">
+                                {cut.strength_score && (
+                                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100">
+                                    Nota editorial {cut.strength_score}/10
+                                  </p>
+                                )}
+                                {cut.strength_reason && (
+                                  <p className="mt-2 text-xs leading-5 text-emerald-50/80">
+                                    {cut.strength_reason}
+                                  </p>
+                                )}
+                              </div>
+                            )}
                             {cut.suggested_caption_lines && cut.suggested_caption_lines.length > 0 && (
                               <>
                                 <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Linhas de legenda</p>

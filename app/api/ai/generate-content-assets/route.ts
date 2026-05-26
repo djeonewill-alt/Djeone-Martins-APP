@@ -25,6 +25,8 @@ type CutSuggestion = {
   hook: string
   source_excerpt?: string
   suggested_caption_lines?: string[]
+  strength_score?: number
+  strength_reason?: string
 }
 
 type StrongPhrase = {
@@ -164,6 +166,53 @@ function normalizeCaptionLines(input: unknown) {
     .slice(0, 5)
 }
 
+function normalizeForMatch(text: string) {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function hasAdministrativeLanguage(text: string) {
+  const patterns = [
+    /\bbom dia\b/i,
+    /\bboa tarde\b/i,
+    /\bboa noite\b/i,
+    /\bsauda[cç][aã]o\b/i,
+    /\baviso\b/i,
+    /\badministrativo\b/i,
+    /\bcompartilhar\b/i,
+    /\bcadastrar\b/i,
+    /\binscrev/i,
+    /\bprojeto\b/i,
+    /\bs[ée]rie\b/i,
+    /\bepis[oó]dio\b/i,
+  ]
+
+  return patterns.some((pattern) => pattern.test(text))
+}
+
+function hasEnoughSourceOverlap(text: string, sourceExcerpt: string) {
+  const sourceWords = new Set(
+    normalizeForMatch(sourceExcerpt)
+      .split(/\s+/)
+      .filter((word) => word.length >= 5)
+  )
+
+  if (sourceWords.size < 3) return false
+
+  const textWords = normalizeForMatch(text)
+    .split(/\s+/)
+    .filter((word) => word.length >= 5)
+
+  const overlapCount = textWords.filter((word) => sourceWords.has(word)).length
+
+  return overlapCount >= 1
+}
+
 function normalizeStrongPhrases(input: unknown): Array<string | StrongPhrase> {
   if (!Array.isArray(input)) return []
 
@@ -187,11 +236,22 @@ function normalizeStrongPhrases(input: unknown): Array<string | StrongPhrase> {
 
       if (!text) return ''
 
+      const sourceExcerpt = cleanText(String(value.source_excerpt || '')).slice(0, 260)
+      const whyItWorks = cleanText(String(value.why_it_works || value.reason || '')).slice(0, 260)
+
+      if (
+        sourceExcerpt &&
+        (hasAdministrativeLanguage(sourceExcerpt) ||
+          !hasEnoughSourceOverlap(text, `${sourceExcerpt} ${whyItWorks}`))
+      ) {
+        return ''
+      }
+
       return {
         text,
         use_case: cleanText(String(value.use_case || '')).slice(0, 40) || undefined,
-        source_excerpt: cleanText(String(value.source_excerpt || '')).slice(0, 260) || undefined,
-        why_it_works: cleanText(String(value.why_it_works || value.reason || '')).slice(0, 260) || undefined,
+        source_excerpt: sourceExcerpt || undefined,
+        why_it_works: whyItWorks || undefined,
         score: Number.isFinite(rawScore) ? Math.max(1, Math.min(10, Math.round(rawScore))) : undefined,
       }
     })
@@ -263,9 +323,60 @@ function looksLikeWeakCut(text: string) {
     /\bora[cç][aã]o final\b/i,
     /\bcompartilhar\b/i,
     /\bcadastrar\b/i,
+    /\bcontexto\b/i,
+    /\bcontextual\b/i,
+    /\bintrodu[cç][aã]o\b/i,
+    /\bexplica[cç][aã]o inicial\b/i,
+    /\bimport[aâ]ncia de\b/i,
+    /\bgeogr[aá]fic/i,
   ]
 
   return weakPatterns.some((pattern) => pattern.test(text))
+}
+
+function looksLikeWeakSourceExcerpt(text: string) {
+  const weakPatterns = [
+    /\bficava\b.*\bquil[oô]metros\b/i,
+    /\bdist[aâ]ncia\b/i,
+    /\bcidade\b.*\bperto\b/i,
+    /\bcontexto geogr[aá]fico\b/i,
+    /\bera uma aldeia\b/i,
+    /\bprojeto\b/i,
+    /\bs[ée]rie\b/i,
+    /\bepis[oó]dio\b/i,
+    /\bcompartilhar\b/i,
+    /\bcadastrar\b/i,
+  ]
+
+  return weakPatterns.some((pattern) => pattern.test(text))
+}
+
+function hasStrongEditorialSignal(cut: Pick<CutSuggestion, 'hook' | 'reason' | 'source_excerpt' | 'strength_reason'>) {
+  const combinedText = [
+    cut.hook,
+    cut.reason,
+    cut.source_excerpt || '',
+    cut.strength_reason || '',
+  ].join(' ')
+
+  const strongPatterns = [
+    /\bcontraste\b/i,
+    /\bafli[cç][aã]o\b/i,
+    /\bJesus chorou\b/i,
+    /\bBet[aâ]nia\b/i,
+    /\bL[aá]zaro\b/i,
+    /\bMarta\b/i,
+    /\bMaria\b/i,
+    /\btemplo\b/i,
+    /\bpresen[cç]a\b/i,
+    /\bressurrei[cç][aã]o\b/i,
+    /\btende bom [aâ]nimo\b/i,
+    /\bentra\b.*\bBet[aâ]nia\b/i,
+    /\bcasa da afli[cç][aã]o\b/i,
+    /\bmundo\b.*\bBet[aâ]nia\b/i,
+  ]
+
+  return strongPatterns.some((pattern) => pattern.test(combinedText))
 }
 
 function hasStrongShortCutSignal(cut: Pick<CutSuggestion, 'hook' | 'source_excerpt'>) {
@@ -302,7 +413,10 @@ function normalizeCutSuggestions(
         hook?: unknown
         source_excerpt?: unknown
         suggested_caption_lines?: unknown
+        strength_score?: unknown
+        strength_reason?: unknown
       }
+      const rawStrengthScore = Number(value.strength_score)
 
       return {
         title: cleanText(String(value.title || '')).slice(0, 120),
@@ -312,6 +426,10 @@ function normalizeCutSuggestions(
         hook: cleanText(String(value.hook || '')).slice(0, 220),
         source_excerpt: cleanText(String(value.source_excerpt || '')).slice(0, 260) || undefined,
         suggested_caption_lines: normalizeCaptionLines(value.suggested_caption_lines),
+        strength_score: Number.isFinite(rawStrengthScore)
+          ? Math.max(1, Math.min(10, Math.round(rawStrengthScore)))
+          : undefined,
+        strength_reason: cleanText(String(value.strength_reason || '')).slice(0, 260) || undefined,
       }
     })
     .filter((item) => {
@@ -330,9 +448,12 @@ function normalizeCutSuggestions(
         Number.isFinite(item.end) &&
         item.start >= 0 &&
         item.end > item.start &&
+        (item.strength_score === undefined || item.strength_score >= 8) &&
         hasUsefulShortDuration(item) &&
         isCutInsideKnownSegments(item, segments) &&
-        !looksLikeWeakCut(combinedText)
+        !looksLikeWeakCut(combinedText) &&
+        !looksLikeWeakSourceExcerpt(item.source_excerpt || '') &&
+        hasStrongEditorialSignal(item)
       )
     })
     .slice(0, 5)
@@ -432,7 +553,7 @@ function validateAssets(
     assets.cut_suggestions_note = !options.hasReliableSegments
       ? cutSuggestionsNote || MISSING_TIMESTAMPS_NOTE
       : cutSuggestions.length === 0
-        ? cutSuggestionsNote || 'Nenhum corte editorial com duracao util foi encontrado.'
+        ? cutSuggestionsNote || 'Nenhum corte forte passou pelos criterios editoriais. Tente gerar cortes novamente ou revise os timestamps.'
         : undefined
   }
 
@@ -590,7 +711,9 @@ Gere somente cut_suggestions e cut_suggestions_note.
         "hook": "gancho de abertura",
         "reason": "por que esse trecho funciona como short",
         "source_excerpt": "fala real da transcricao que justifica o corte",
-        "suggested_caption_lines": ["linha curta 1", "linha curta 2"]
+        "suggested_caption_lines": ["linha curta 1", "linha curta 2"],
+        "strength_score": 9,
+        "strength_reason": "por que esse trecho prende a atencao"
       }
     ],
     "cut_suggestions_note": "aviso somente se nao houver cortes possiveis"
@@ -626,7 +749,11 @@ function buildPrompt(params: {
 REGRAS PARA CORTES COM TIMESTAMP:
 - nao corte o audio mecanicamente;
 - nao fatie de 30 em 30 segundos;
-- primeiro leia a transcricao inteira e identifique momentos fortes;
+- ETAPA A: primeiro leia a transcricao inteira e identifique momentos fortes;
+- priorize contraste espiritual, frase biblica marcante, tensao emocional, aplicacao direta, explicacao teologica forte, frase que prende nos primeiros 3 segundos e trecho que funciona para quem nao ouviu o audio completo;
+- rebaixe ou ignore saudacao, introducao do projeto, explicacao de serie, contexto geografico sem aplicacao, trecho meramente informativo, oracao final longa e pedido final de compartilhar/cadastrar;
+- exemplos de momentos fortes neste tipo de episodio: "A presenca de Deus nao estava no templo, mas em Betania."; "Jesus chorou na casa da aflicao."; "Senhor, se Tu estivesses aqui, meu irmao nao teria morrido."; "Este mundo e uma Betania, mas Jesus disse: tende bom animo."; "Jesus entra na nossa Betania.";
+- ETAPA B: depois de encontrar os momentos fortes, crie cortes;
 - depois escolha inicio e fim naturais da ideia;
 - so entao ajuste para duracao ideal;
 - gere cut_suggestions somente usando tempos presentes nos segmentos informados;
@@ -641,6 +768,9 @@ REGRAS PARA CORTES COM TIMESTAMP:
 - agrupe segmentos vizinhos quando necessario para formar uma ideia completa;
 - cada corte precisa fazer sentido para quem nao ouviu o audio inteiro;
 - evite corte isolado de uma unica frase curta ou dependente de contexto anterior nao incluido;
+- nao escolha trecho so porque explica contexto;
+- cada corte deve funcionar como mini-mensagem;
+- retorne strength_score de 1 a 10 e strength_reason explicando por que prende a atencao;
 - ignore trechos sem frase forte nos primeiros 3 segundos;
 - priorize frase biblica marcante, interpretacao teologica forte, aplicacao direta, tensao espiritual, contraste, momento emocional e gancho que prende nos primeiros 3 segundos;
 - inclua suggested_caption_lines com linhas curtas de 3 a 7 palavras para legenda animada.
