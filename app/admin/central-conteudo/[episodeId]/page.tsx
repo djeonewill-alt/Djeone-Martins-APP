@@ -38,6 +38,43 @@ type CutSuggestion = {
   strength_reason?: string
 }
 
+type ShortScriptTimelineItem = {
+  start: number
+  end: number
+  purpose: string
+  narration_focus: string
+  on_screen_text: string
+  motion_direction: string
+  sound_design: string
+}
+
+type ShortScriptImagePrompt = {
+  moment: string
+  prompt: string
+  use_for_seconds: string
+}
+
+type ShortScript = {
+  title: string
+  platform_goal: 'shorts_reels_tiktok'
+  duration_seconds: number
+  main_hook: string
+  cliffhanger: string
+  spiritual_point: string
+  cta: string
+  timeline: ShortScriptTimelineItem[]
+  animated_caption_lines: string[]
+  image_prompts: ShortScriptImagePrompt[]
+  editing_notes: string[]
+  quality_check: {
+    has_strong_hook: boolean
+    has_clear_tension: boolean
+    has_spiritual_application: boolean
+    has_soft_cta: boolean
+    avoids_generic_language: boolean
+  }
+}
+
 type StrongPhrase = {
   text: string
   use_case?: string
@@ -55,6 +92,7 @@ type ContentAssets = {
   short_ideas: ShortIdea[]
   cut_suggestions: CutSuggestion[]
   cut_suggestions_note?: string
+  short_script?: ShortScript
 }
 
 type GenerationMode =
@@ -65,6 +103,7 @@ type GenerationMode =
   | 'instagram'
   | 'short_ideas'
   | 'cuts'
+  | 'short_script'
 
 const EMPTY_CONTENT_ASSETS: ContentAssets = {
   devotional_summary: '',
@@ -206,6 +245,31 @@ const generatingLabels: Record<GenerationMode, string> = {
   instagram: 'Gerando Instagram...',
   short_ideas: 'Gerando ideias...',
   cuts: 'Gerando cortes...',
+  short_script: 'Gerando roteiro...',
+}
+
+function formatShortScriptForCopy(script: ShortScript) {
+  return [
+    `Titulo: ${script.title}`,
+    `Hook: ${script.main_hook}`,
+    `Cliffhanger: ${script.cliffhanger}`,
+    `Ponto espiritual: ${script.spiritual_point}`,
+    `CTA: ${script.cta}`,
+    '',
+    'Timeline:',
+    ...script.timeline.map((item) => {
+      return `${item.start}-${item.end}s | ${item.purpose}\nFoco: ${item.narration_focus}\nTexto: ${item.on_screen_text}\nMotion: ${item.motion_direction}\nSom: ${item.sound_design}`
+    }),
+    '',
+    'Legendas animadas:',
+    ...script.animated_caption_lines,
+    '',
+    'Prompts de imagem:',
+    ...script.image_prompts.map((item) => `${item.moment} (${item.use_for_seconds})\n${item.prompt}`),
+    '',
+    'Notas de edicao:',
+    ...script.editing_notes,
+  ].join('\n')
 }
 
 export default function AdminContentStudioPage() {
@@ -218,6 +282,7 @@ export default function AdminContentStudioPage() {
   const [errorMessage, setErrorMessage] = useState('')
   const [contentAssets, setContentAssets] = useState<ContentAssets | null>(null)
   const [generatingMode, setGeneratingMode] = useState<GenerationMode | null>(null)
+  const [generatingShortScriptKey, setGeneratingShortScriptKey] = useState('')
   const [contentAssetsError, setContentAssetsError] = useState('')
   const [generatingWordTimestamps, setGeneratingWordTimestamps] = useState(false)
   const [wordTimestampsError, setWordTimestampsError] = useState('')
@@ -330,6 +395,59 @@ export default function AdminContentStudioPage() {
       )
     } finally {
       setGeneratingMode(null)
+    }
+  }
+
+  async function handleGenerateShortScript(cut: CutSuggestion, index: number) {
+    if (!episode?.transcription_text?.trim()) {
+      setContentAssetsError('Este episodio precisa de transcricao para gerar roteiro de Short.')
+      return
+    }
+
+    const loadingKey = `${cut.start}-${cut.end}-${index}`
+
+    try {
+      setGeneratingShortScriptKey(loadingKey)
+      setContentAssetsError('')
+
+      const response = await fetch('/api/ai/generate-content-assets', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          episodeId: episode.id,
+          title: episode.title,
+          bible_reference: episode.bible_reference,
+          description: episode.description,
+          transcription_text: episode.transcription_text,
+          transcription_segments: episode.transcription_segments,
+          daily_quote_suggestions: episode.daily_quote_suggestions,
+          mode: 'short_script',
+          selected_cut: cut,
+        }),
+      })
+      const payload = await response.json()
+
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error || 'Nao foi possivel gerar roteiro do Short.')
+      }
+
+      setContentAssets((current) => {
+        return {
+          ...(current || EMPTY_CONTENT_ASSETS),
+          ...(payload.assets as Partial<ContentAssets>),
+        }
+      })
+    } catch (error) {
+      console.error('Erro ao gerar roteiro do Short:', error)
+      setContentAssetsError(
+        error instanceof Error
+          ? error.message
+          : 'Nao foi possivel gerar roteiro do Short.'
+      )
+    } finally {
+      setGeneratingShortScriptKey('')
     }
   }
 
@@ -824,6 +942,112 @@ export default function AdminContentStudioPage() {
                   </article>
                   )}
 
+                  {contentAssets.short_script && (
+                  <article className="rounded-2xl border border-cyan-300/15 bg-cyan-500/10 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h2 className="text-sm font-black text-cyan-50">Roteiro do Short</h2>
+                        <p className="mt-1 text-xs font-bold text-cyan-100/70">
+                          {contentAssets.short_script.duration_seconds}s para Shorts/Reels/TikTok
+                        </p>
+                      </div>
+                      <CopyButton value={formatShortScriptForCopy(contentAssets.short_script)} label="Copiar roteiro" />
+                    </div>
+
+                    <div className="mt-4 grid gap-3">
+                      <div className="rounded-xl border border-cyan-200/10 bg-slate-950/50 p-3">
+                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100/70">Titulo</p>
+                        <p className="mt-1 text-sm font-black text-white">{contentAssets.short_script.title}</p>
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="rounded-xl border border-cyan-200/10 bg-slate-950/50 p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100/70">Hook</p>
+                            <CopyButton value={contentAssets.short_script.main_hook} />
+                          </div>
+                          <p className="mt-2 text-xs font-bold leading-5 text-cyan-50">{contentAssets.short_script.main_hook}</p>
+                        </div>
+                        <div className="rounded-xl border border-cyan-200/10 bg-slate-950/50 p-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100/70">Cliffhanger</p>
+                          <p className="mt-2 text-xs font-bold leading-5 text-cyan-50">{contentAssets.short_script.cliffhanger}</p>
+                        </div>
+                        <div className="rounded-xl border border-cyan-200/10 bg-slate-950/50 p-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100/70">Ponto espiritual</p>
+                          <p className="mt-2 text-xs leading-5 text-cyan-50/85">{contentAssets.short_script.spiritual_point}</p>
+                        </div>
+                        <div className="rounded-xl border border-cyan-200/10 bg-slate-950/50 p-3">
+                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100/70">CTA</p>
+                          <p className="mt-2 text-xs leading-5 text-cyan-50/85">{contentAssets.short_script.cta}</p>
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-cyan-200/10 bg-slate-950/50 p-3">
+                        <h3 className="text-xs font-black text-cyan-50">Timeline</h3>
+                        <div className="mt-3 grid gap-2">
+                          {contentAssets.short_script.timeline.map((item, index) => (
+                            <div key={`${item.start}-${item.end}-${index}`} className="rounded-lg border border-white/10 bg-white/[0.04] p-3">
+                              <p className="text-[11px] font-black text-cyan-200">{item.start}s - {item.end}s | {item.purpose}</p>
+                              <p className="mt-2 text-xs leading-5 text-cyan-50/85">{item.narration_focus}</p>
+                              <p className="mt-2 rounded-lg bg-cyan-500/10 p-2 text-xs font-black text-cyan-50">{item.on_screen_text}</p>
+                              <p className="mt-2 text-xs leading-5 text-slate-400">Motion: {item.motion_direction}</p>
+                              <p className="text-xs leading-5 text-slate-400">Som: {item.sound_design}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-cyan-200/10 bg-slate-950/50 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <h3 className="text-xs font-black text-cyan-50">Legendas animadas</h3>
+                          <CopyButton value={contentAssets.short_script.animated_caption_lines.join('\n')} />
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {contentAssets.short_script.animated_caption_lines.map((line, index) => (
+                            <span key={`${line}-${index}`} className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2 py-1 text-[11px] font-bold text-cyan-100">
+                              {line}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-cyan-200/10 bg-slate-950/50 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <h3 className="text-xs font-black text-cyan-50">Prompts de imagem</h3>
+                          <CopyButton value={contentAssets.short_script.image_prompts.map((item) => `${item.moment} (${item.use_for_seconds})\n${item.prompt}`).join('\n\n')} />
+                        </div>
+                        <div className="mt-3 grid gap-2">
+                          {contentAssets.short_script.image_prompts.map((item, index) => (
+                            <div key={`${item.moment}-${index}`} className="rounded-lg border border-white/10 bg-white/[0.04] p-3">
+                              <p className="text-[11px] font-black text-cyan-200">{item.moment} | {item.use_for_seconds}</p>
+                              <p className="mt-2 text-xs leading-5 text-slate-300">{item.prompt}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="rounded-xl border border-cyan-200/10 bg-slate-950/50 p-3">
+                          <h3 className="text-xs font-black text-cyan-50">Notas de edicao</h3>
+                          <ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-5 text-cyan-50/80">
+                            {contentAssets.short_script.editing_notes.map((note, index) => (
+                              <li key={`${note}-${index}`}>{note}</li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div className="rounded-xl border border-cyan-200/10 bg-slate-950/50 p-3">
+                          <h3 className="text-xs font-black text-cyan-50">Checklist de qualidade</h3>
+                          <div className="mt-2 grid gap-1 text-xs font-bold text-cyan-50/80">
+                            {Object.entries(contentAssets.short_script.quality_check).map(([key, value]) => (
+                              <p key={key}>{value ? 'OK' : 'Revisar'} - {key.replace(/_/g, ' ')}</p>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                  )}
+
                   {(contentAssets.cut_suggestions.length > 0 || contentAssets.cut_suggestions_note) && (
                   <article className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
                     <h2 className="text-sm font-black text-white">Sugestões de cortes editoriais</h2>
@@ -889,6 +1113,16 @@ export default function AdminContentStudioPage() {
                                 </div>
                               </>
                             )}
+                            <button
+                              type="button"
+                              onClick={() => handleGenerateShortScript(cut, index)}
+                              disabled={Boolean(generatingShortScriptKey)}
+                              className="mt-4 rounded-xl border border-cyan-300/20 bg-cyan-500/10 px-3 py-2 text-xs font-black text-cyan-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                            >
+                              {generatingShortScriptKey === `${cut.start}-${cut.end}-${index}`
+                                ? 'Gerando roteiro...'
+                                : 'Gerar roteiro do Short'}
+                            </button>
                           </div>
                         ))}
                       </div>

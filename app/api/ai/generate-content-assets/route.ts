@@ -29,6 +29,43 @@ type CutSuggestion = {
   strength_reason?: string
 }
 
+type ShortScriptTimelineItem = {
+  start: number
+  end: number
+  purpose: string
+  narration_focus: string
+  on_screen_text: string
+  motion_direction: string
+  sound_design: string
+}
+
+type ShortScriptImagePrompt = {
+  moment: string
+  prompt: string
+  use_for_seconds: string
+}
+
+type ShortScript = {
+  title: string
+  platform_goal: 'shorts_reels_tiktok'
+  duration_seconds: number
+  main_hook: string
+  cliffhanger: string
+  spiritual_point: string
+  cta: string
+  timeline: ShortScriptTimelineItem[]
+  animated_caption_lines: string[]
+  image_prompts: ShortScriptImagePrompt[]
+  editing_notes: string[]
+  quality_check: {
+    has_strong_hook: boolean
+    has_clear_tension: boolean
+    has_spiritual_application: boolean
+    has_soft_cta: boolean
+    avoids_generic_language: boolean
+  }
+}
+
 type StrongPhrase = {
   text: string
   use_case?: string
@@ -52,6 +89,7 @@ type ContentAssets = {
   short_ideas: ShortIdea[]
   cut_suggestions: CutSuggestion[]
   cut_suggestions_note?: string
+  short_script?: ShortScript
   metadata?: ContentAssetsMetadata
 }
 
@@ -63,6 +101,7 @@ type GenerationMode =
   | 'instagram'
   | 'short_ideas'
   | 'cuts'
+  | 'short_script'
 
 const MAX_TRANSCRIPTION_CHARS = 28000
 const MAX_SEGMENTS = 80
@@ -80,6 +119,7 @@ const GENERATION_MODES: GenerationMode[] = [
   'instagram',
   'short_ideas',
   'cuts',
+  'short_script',
 ]
 
 function cleanText(text: string) {
@@ -459,6 +499,137 @@ function normalizeCutSuggestions(
     .slice(0, 5)
 }
 
+function normalizeSelectedCut(input: unknown): CutSuggestion | null {
+  if (!input || typeof input !== 'object') return null
+
+  const value = input as {
+    title?: unknown
+    start?: unknown
+    end?: unknown
+    reason?: unknown
+    hook?: unknown
+    source_excerpt?: unknown
+    suggested_caption_lines?: unknown
+  }
+  const start = Number(value.start)
+  const end = Number(value.end)
+  const selectedCut = {
+    title: cleanText(String(value.title || '')).slice(0, 120),
+    start,
+    end,
+    reason: cleanText(String(value.reason || '')).slice(0, 240),
+    hook: cleanText(String(value.hook || '')).slice(0, 220),
+    source_excerpt: cleanText(String(value.source_excerpt || '')).slice(0, 500) || undefined,
+    suggested_caption_lines: normalizeCaptionLines(value.suggested_caption_lines),
+  }
+
+  if (
+    !selectedCut.title ||
+    !selectedCut.hook ||
+    !Number.isFinite(selectedCut.start) ||
+    !Number.isFinite(selectedCut.end) ||
+    selectedCut.end <= selectedCut.start
+  ) {
+    return null
+  }
+
+  return selectedCut
+}
+
+function normalizeShortScript(input: unknown): ShortScript | undefined {
+  if (!input || typeof input !== 'object') return undefined
+
+  const value = input as {
+    title?: unknown
+    platform_goal?: unknown
+    duration_seconds?: unknown
+    main_hook?: unknown
+    cliffhanger?: unknown
+    spiritual_point?: unknown
+    cta?: unknown
+    timeline?: unknown
+    animated_caption_lines?: unknown
+    image_prompts?: unknown
+    editing_notes?: unknown
+    quality_check?: unknown
+  }
+  const qualityCheck = (value.quality_check || {}) as Record<string, unknown>
+  const timeline = Array.isArray(value.timeline)
+    ? value.timeline
+        .map((item) => {
+          const timelineItem = item as Record<string, unknown>
+          return {
+            start: Number(timelineItem.start),
+            end: Number(timelineItem.end),
+            purpose: cleanText(String(timelineItem.purpose || '')).slice(0, 140),
+            narration_focus: cleanText(String(timelineItem.narration_focus || '')).slice(0, 220),
+            on_screen_text: cleanText(String(timelineItem.on_screen_text || '')).slice(0, 90),
+            motion_direction: cleanText(String(timelineItem.motion_direction || '')).slice(0, 180),
+            sound_design: cleanText(String(timelineItem.sound_design || '')).slice(0, 180),
+          }
+        })
+        .filter((item) => {
+          return (
+            Number.isFinite(item.start) &&
+            Number.isFinite(item.end) &&
+            item.end > item.start &&
+            item.purpose &&
+            item.narration_focus &&
+            item.on_screen_text
+          )
+        })
+        .slice(0, 8)
+    : []
+  const imagePrompts = Array.isArray(value.image_prompts)
+    ? value.image_prompts
+        .map((item) => {
+          const imagePrompt = item as Record<string, unknown>
+          return {
+            moment: cleanText(String(imagePrompt.moment || '')).slice(0, 120),
+            prompt: cleanText(String(imagePrompt.prompt || '')).slice(0, 700),
+            use_for_seconds: cleanText(String(imagePrompt.use_for_seconds || '')).slice(0, 40),
+          }
+        })
+        .filter((item) => item.moment && item.prompt && item.use_for_seconds)
+        .slice(0, 6)
+    : []
+  const script = {
+    title: cleanText(String(value.title || '')).slice(0, 140),
+    platform_goal: 'shorts_reels_tiktok' as const,
+    duration_seconds: Math.max(15, Math.min(90, Math.round(Number(value.duration_seconds) || 45))),
+    main_hook: cleanText(String(value.main_hook || '')).slice(0, 220),
+    cliffhanger: cleanText(String(value.cliffhanger || '')).slice(0, 220),
+    spiritual_point: cleanText(String(value.spiritual_point || '')).slice(0, 260),
+    cta: cleanText(String(value.cta || '')).slice(0, 180),
+    timeline,
+    animated_caption_lines: normalizeCaptionLines(value.animated_caption_lines),
+    image_prompts: imagePrompts,
+    editing_notes: normalizeStringArray(value.editing_notes, 8, 180),
+    quality_check: {
+      has_strong_hook: Boolean(qualityCheck.has_strong_hook),
+      has_clear_tension: Boolean(qualityCheck.has_clear_tension),
+      has_spiritual_application: Boolean(qualityCheck.has_spiritual_application),
+      has_soft_cta: Boolean(qualityCheck.has_soft_cta),
+      avoids_generic_language: Boolean(qualityCheck.avoids_generic_language),
+    },
+  }
+
+  if (
+    !script.title ||
+    !script.main_hook ||
+    !script.cliffhanger ||
+    !script.spiritual_point ||
+    !script.cta ||
+    script.timeline.length < 2 ||
+    script.animated_caption_lines.length < 2 ||
+    script.image_prompts.length < 1
+  ) {
+    return undefined
+  }
+
+  return script
+}
+
 function validateAssets(
   input: unknown,
   options: {
@@ -477,6 +648,7 @@ function validateAssets(
     short_ideas?: unknown
     cut_suggestions?: unknown
     cut_suggestions_note?: unknown
+    short_script?: unknown
     metadata?: unknown
   }
 
@@ -494,6 +666,7 @@ function validateAssets(
   const cutSuggestionsNote = cleanText(
     String(source.cut_suggestions_note || '')
   )
+  const shortScript = normalizeShortScript(source.short_script)
   const rawMetadata = (source.metadata || {}) as {
     main_scripture?: unknown
     key_themes?: unknown
@@ -523,6 +696,10 @@ function validateAssets(
 
   if ((options.mode === 'all' || options.mode === 'short_ideas') && shortIdeas.length < 1) {
     throw new Error('A IA não gerou ideias de Shorts.')
+  }
+
+  if (options.mode === 'short_script' && !shortScript) {
+    throw new Error('A IA nao gerou um roteiro de Short completo.')
   }
 
   const assets: Partial<ContentAssets> = {}
@@ -555,6 +732,10 @@ function validateAssets(
       : cutSuggestions.length === 0
         ? cutSuggestionsNote || 'Nenhum corte forte passou pelos criterios editoriais. Tente gerar cortes novamente ou revise os timestamps.'
         : undefined
+  }
+
+  if (options.mode === 'short_script') {
+    assets.short_script = shortScript
   }
 
   if (
@@ -721,6 +902,50 @@ Gere somente cut_suggestions e cut_suggestions_note.
 }
 Retorne ate 5 cortes editoriais.
 `.trim(),
+    short_script: `
+Gere somente short_script a partir do selected_cut informado.
+{
+  "assets": {
+    "short_script": {
+      "title": "titulo editorial do Short",
+      "platform_goal": "shorts_reels_tiktok",
+      "duration_seconds": 45,
+      "main_hook": "gancho forte para os primeiros 3 segundos",
+      "cliffhanger": "curiosidade espiritual que sustenta a retencao",
+      "spiritual_point": "aplicacao espiritual fiel ao trecho",
+      "cta": "chamada suave sem cara de propaganda",
+      "timeline": [
+        {
+          "start": 0,
+          "end": 3,
+          "purpose": "hook",
+          "narration_focus": "o que a fala precisa provocar neste momento",
+          "on_screen_text": "3 a 7 palavras",
+          "motion_direction": "zoom lento, pan leve ou entrada simples de texto",
+          "sound_design": "impacto suave, pausa ou ambiente leve"
+        }
+      ],
+      "animated_caption_lines": ["linha curta animavel", "3 a 7 palavras"],
+      "image_prompts": [
+        {
+          "moment": "momento visual",
+          "prompt": "prompt cinematografico vertical 9:16, fiel ao tema, sem exagero teatral",
+          "use_for_seconds": "0-5s"
+        }
+      ],
+      "editing_notes": ["nota pratica de edicao"],
+      "quality_check": {
+        "has_strong_hook": true,
+        "has_clear_tension": true,
+        "has_spiritual_application": true,
+        "has_soft_cta": true,
+        "avoids_generic_language": true
+      }
+    }
+  }
+}
+Retorne um roteiro completo, pronto para orientar edicao manual. Nao gere imagem, video ou assets externos.
+`.trim(),
   }
 
   return contracts[mode]
@@ -735,6 +960,7 @@ function buildPrompt(params: {
   dailyQuoteSuggestions: unknown
   hasReliableSegments: boolean
   mode: GenerationMode
+  selectedCut?: CutSuggestion | null
 }) {
   const segmentsText = params.transcriptionSegments.length
     ? params.transcriptionSegments
@@ -791,6 +1017,43 @@ REGRAS PARA CORTES SEM TIMESTAMP:
         .join('\n')
     : 'Sem sugestões anteriores.'
 
+  const selectedCutText = params.selectedCut
+    ? JSON.stringify(
+        {
+          title: params.selectedCut.title,
+          start: params.selectedCut.start,
+          end: params.selectedCut.end,
+          hook: params.selectedCut.hook,
+          reason: params.selectedCut.reason,
+          source_excerpt: params.selectedCut.source_excerpt || '',
+          suggested_caption_lines: params.selectedCut.suggested_caption_lines || [],
+        },
+        null,
+        2
+      )
+    : 'Nenhum corte selecionado.'
+  const shortScriptInstructions =
+    params.mode === 'short_script'
+      ? `
+REGRAS PARA ROTEIRO DE SHORT:
+- use exclusivamente o selected_cut como base editorial principal;
+- nao faca roteiro generico;
+- transforme o corte em mini-mensagem com comeco, tensao e fechamento;
+- o hook precisa prender nos primeiros 3 segundos;
+- o cliffhanger deve criar curiosidade espiritual sem manipular emocionalmente;
+- o CTA deve ser suave, pastoral e sem parecer propaganda;
+- legenda animada deve ser curta, com 3 a 7 palavras por linha;
+- on_screen_text tambem deve ter 3 a 7 palavras;
+- instrucoes de motion devem ser simples: zoom lento, leve pan, blur suave, entrada de texto, pausa dramatica;
+- sound design deve ser discreto: impacto suave, ambiente leve, riser curto, pausa, transicao;
+- prompts de imagem devem ser cinematograficos, verticais 9:16, prontos para uso manual em ferramentas externas;
+- nao gere imagem por API, nao mencione URL, nao crie video;
+- evite exageros teatrais, promessas absolutas e linguagem manipulativa;
+- mantenha fidelidade ao audio e ao trecho-base;
+- use os timestamps do selected_cut como referencia, mas a timeline do video deve comecar em 0.
+`.trim()
+      : ''
+
   return `
 Voce e especialista em transformar transcricoes de devocionais biblicos em conteudos para WhatsApp, Instagram, cards e Shorts/Reels/TikToks.
 
@@ -833,6 +1096,8 @@ FORMATOS GERAIS:
 
 ${cutInstructions}
 
+${shortScriptInstructions}
+
 TÍTULO:
 ${params.title || 'Não informado'}
 
@@ -844,6 +1109,9 @@ ${params.description || 'Não informada'}
 
 FRASES FORTES JÁ EXISTENTES:
 ${quoteSuggestions}
+
+CORTE SELECIONADO:
+${selectedCutText}
 
 SEGMENTOS COM TIMESTAMP:
 ${segmentsText}
@@ -869,6 +1137,7 @@ async function generateWithOpenAI(params: {
   dailyQuoteSuggestions: unknown
   hasReliableSegments: boolean
   mode: GenerationMode
+  selectedCut?: CutSuggestion | null
 }) {
   const apiKey = process.env.OPENAI_API_KEY
 
@@ -953,6 +1222,7 @@ export async function POST(request: NextRequest) {
     const transcriptionSegments = normalizeSegments(body.transcription_segments)
     const hasReliableSegments = transcriptionSegments.length > 0
     const mode = normalizeMode(body.mode)
+    const selectedCut = normalizeSelectedCut(body.selected_cut)
 
     if (!episodeId) {
       return NextResponse.json(
@@ -971,6 +1241,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (mode === 'short_script' && !selectedCut) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Envie um corte selecionado para gerar o roteiro do Short.',
+        },
+        { status: 400 }
+      )
+    }
+
     const result = await generateWithOpenAI({
       title,
       bibleReference,
@@ -980,6 +1260,7 @@ export async function POST(request: NextRequest) {
       dailyQuoteSuggestions: body.daily_quote_suggestions,
       hasReliableSegments,
       mode,
+      selectedCut,
     })
 
     return NextResponse.json({
