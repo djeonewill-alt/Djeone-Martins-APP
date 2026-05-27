@@ -707,56 +707,90 @@ function buildExpandedCut(
 
   if (!hookSegmentIndexes.length) return null
 
-  let startIndex = hookSegmentIndexes[0]
-  let endIndex = hookSegmentIndexes[hookSegmentIndexes.length - 1]
-  const earliestStart = Math.max(0, hookStart - 30)
-  const latestEnd = hookEnd + 30
+  const hookFirstIndex = hookSegmentIndexes[0]
+  const hookLastIndex = hookSegmentIndexes[hookSegmentIndexes.length - 1]
+  const hookDuration = hookEnd - hookStart
+  const candidates: Array<{ startIndex: number; endIndex: number; strategy: string; score: number }> = []
 
-  while (startIndex > 0 && sortedSegments[startIndex].start > hookStart - 15) {
-    startIndex -= 1
+  function addCandidate(startIndex: number, endIndex: number, strategy: string) {
+    const start = sortedSegments[startIndex]?.start
+    const end = sortedSegments[endIndex]?.end
+    const duration = end - start
+
+    if (
+      !Number.isFinite(start) ||
+      !Number.isFinite(end) ||
+      duration < SOFT_MIN_CUT_SECONDS ||
+      duration > MAX_CUT_SECONDS ||
+      (hookDuration < SOFT_MIN_CUT_SECONDS && start === hookStart && end === hookEnd)
+    ) {
+      return
+    }
+
+    const beforeSeconds = Math.max(0, hookStart - start)
+    const afterSeconds = Math.max(0, end - hookEnd)
+    const score =
+      100 -
+      Math.abs(duration - 45) -
+      Math.abs(beforeSeconds - afterSeconds) * 0.25 +
+      (beforeSeconds >= 5 ? 8 : 0) +
+      (afterSeconds >= 5 ? 8 : 0)
+
+    candidates.push({ startIndex, endIndex, strategy, score })
   }
 
-  while (startIndex > 0 && sortedSegments[startIndex - 1].end >= earliestStart) {
-    const candidateDuration = sortedSegments[endIndex].end - sortedSegments[startIndex - 1].start
-    if (candidateDuration > MAX_CUT_SECONDS) break
-    startIndex -= 1
+  function expandByTargets(beforeTarget: number, afterTarget: number, strategy: string) {
+    let startIndex = hookFirstIndex
+    let endIndex = hookLastIndex
+
+    while (
+      startIndex > 0 &&
+      sortedSegments[startIndex].start > hookStart - beforeTarget &&
+      sortedSegments[endIndex].end - sortedSegments[startIndex - 1].start <= MAX_CUT_SECONDS
+    ) {
+      startIndex -= 1
+    }
+
+    while (
+      endIndex < sortedSegments.length - 1 &&
+      sortedSegments[endIndex].end < hookEnd + afterTarget &&
+      sortedSegments[endIndex + 1].end - sortedSegments[startIndex].start <= MAX_CUT_SECONDS
+    ) {
+      endIndex += 1
+    }
+
+    addCandidate(startIndex, endIndex, strategy)
   }
 
-  while (endIndex < sortedSegments.length - 1 && sortedSegments[endIndex].end < hookEnd + 15) {
-    endIndex += 1
-  }
+  expandByTargets(30, 30, 'adicionou contexto antes e depois do gancho')
+  expandByTargets(10, 45, 'priorizou desenvolvimento e fechamento depois do gancho')
+  expandByTargets(45, 10, 'priorizou preparacao antes do gancho')
 
-  while (endIndex < sortedSegments.length - 1 && sortedSegments[endIndex + 1].start <= latestEnd) {
-    const candidateDuration = sortedSegments[endIndex + 1].end - sortedSegments[startIndex].start
-    if (candidateDuration > MAX_CUT_SECONDS) break
-    endIndex += 1
-  }
+  for (let startIndex = hookFirstIndex; startIndex >= 0; startIndex -= 1) {
+    for (let endIndex = hookLastIndex; endIndex < sortedSegments.length; endIndex += 1) {
+      const duration = sortedSegments[endIndex].end - sortedSegments[startIndex].start
 
-  let start = sortedSegments[startIndex].start
-  let end = sortedSegments[endIndex].end
-  let duration = Math.round(end - start)
-
-  if (duration < SOFT_MIN_CUT_SECONDS || duration > MAX_CUT_SECONDS) {
-    return null
-  }
-
-  if (duration > 60) {
-    while (startIndex < hookSegmentIndexes[0] && sortedSegments[endIndex].end - sortedSegments[startIndex + 1].start >= SOFT_MIN_CUT_SECONDS) {
-      startIndex += 1
-      start = sortedSegments[startIndex].start
-      duration = Math.round(end - start)
-      if (duration <= 60) break
+      if (duration > MAX_CUT_SECONDS) break
+      addCandidate(startIndex, endIndex, 'usou a melhor janela valida de segmentos vizinhos')
     }
   }
 
-  end = sortedSegments[endIndex].end
-  duration = Math.round(end - start)
+  const bestCandidate = candidates.sort((a, b) => b.score - a.score)[0]
+
+  if (!bestCandidate) return null
+
+  const { startIndex, endIndex, strategy } = bestCandidate
+  const start = sortedSegments[startIndex].start
+  const end = sortedSegments[endIndex].end
+  const duration = Math.round(end - start)
 
   const sourceExcerpt = sortedSegments
     .slice(startIndex, endIndex + 1)
     .map((segment) => segment.text)
     .join(' ')
     .slice(0, 700)
+
+  const expansionReason = `Expandido a partir do gancho ${hookStart.toFixed(1)}s-${hookEnd.toFixed(1)}s: ${strategy}. A janela foi ampliada para incluir contexto suficiente sem ultrapassar 75 segundos.`
 
   return {
     title: selectedCut.title,
@@ -769,11 +803,11 @@ function buildExpandedCut(
     suggested_caption_lines: selectedCut.suggested_caption_lines || [],
     original_hook_start: hookStart,
     original_hook_end: hookEnd,
-    expansion_reason: 'Janela expandida usando segmentos vizinhos para criar começo natural, desenvolvimento e fechamento espiritual sem inventar timestamps.',
     strength_score: selectedCut.strength_score,
     strength_reason: selectedCut.strength_reason,
     cut_type: 'full_cut',
     needs_expansion: false,
+    expansion_reason: expansionReason,
   }
 }
 
@@ -1437,7 +1471,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           {
             success: false,
-            error: 'Nao foi possivel expandir este gancho com os segmentos disponiveis.',
+            error: 'Nao foi possivel expandir este gancho com os segmentos disponiveis sem ultrapassar o limite de duracao.',
           },
           { status: 400 }
         )

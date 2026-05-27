@@ -285,6 +285,10 @@ function isHookCut(cut: CutSuggestion) {
   return cut.cut_type === 'hook' || cut.needs_expansion === true || getCutDuration(cut) < 25
 }
 
+function getCutKey(cut: Pick<CutSuggestion, 'start' | 'end'>, index: number) {
+  return `${cut.start}-${cut.end}-${index}`
+}
+
 export default function AdminContentStudioPage() {
   const params = useParams<{ episodeId: string }>()
   const router = useRouter()
@@ -297,6 +301,8 @@ export default function AdminContentStudioPage() {
   const [generatingMode, setGeneratingMode] = useState<GenerationMode | null>(null)
   const [generatingShortScriptKey, setGeneratingShortScriptKey] = useState('')
   const [generatingExpandedCutKey, setGeneratingExpandedCutKey] = useState('')
+  const [expandedCutSourceKey, setExpandedCutSourceKey] = useState('')
+  const [expandedCutErrorByKey, setExpandedCutErrorByKey] = useState<Record<string, string>>({})
   const [contentAssetsError, setContentAssetsError] = useState('')
   const [generatingWordTimestamps, setGeneratingWordTimestamps] = useState(false)
   const [wordTimestampsError, setWordTimestampsError] = useState('')
@@ -418,7 +424,7 @@ export default function AdminContentStudioPage() {
       return
     }
 
-    const loadingKey = `${cut.start}-${cut.end}-${index}`
+    const loadingKey = getCutKey(cut, index)
 
     try {
       setGeneratingShortScriptKey(loadingKey)
@@ -471,10 +477,12 @@ export default function AdminContentStudioPage() {
       return
     }
 
-    const loadingKey = `${cut.start}-${cut.end}-${index}`
+    const loadingKey = getCutKey(cut, index)
 
     try {
       setGeneratingExpandedCutKey(loadingKey)
+      setExpandedCutSourceKey(loadingKey)
+      setExpandedCutErrorByKey((current) => ({ ...current, [loadingKey]: '' }))
       setContentAssetsError('')
 
       const response = await fetch('/api/ai/generate-content-assets', {
@@ -500,6 +508,16 @@ export default function AdminContentStudioPage() {
         throw new Error(payload.error || 'Nao foi possivel expandir este gancho.')
       }
 
+      const expandedCut = payload.assets?.expanded_cut as CutSuggestion | undefined
+
+      if (
+        !expandedCut ||
+        (expandedCut.start === cut.start && expandedCut.end === cut.end) ||
+        getCutDuration(expandedCut) <= getCutDuration(cut)
+      ) {
+        throw new Error('Nao foi possivel ampliar este gancho. O resultado manteve a mesma duracao.')
+      }
+
       setContentAssets((current) => {
         return {
           ...(current || EMPTY_CONTENT_ASSETS),
@@ -508,11 +526,12 @@ export default function AdminContentStudioPage() {
       })
     } catch (error) {
       console.error('Erro ao expandir corte:', error)
-      setContentAssetsError(
+      const message =
         error instanceof Error
           ? error.message
           : 'Nao foi possivel expandir este gancho.'
-      )
+
+      setExpandedCutErrorByKey((current) => ({ ...current, [loadingKey]: message }))
     } finally {
       setGeneratingExpandedCutKey('')
     }
@@ -1237,7 +1256,7 @@ export default function AdminContentStudioPage() {
                                 disabled={Boolean(generatingExpandedCutKey)}
                                 className="mt-4 rounded-xl border border-amber-300/20 bg-amber-500/10 px-3 py-2 text-xs font-black text-amber-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
                               >
-                                {generatingExpandedCutKey === `${cut.start}-${cut.end}-${index}`
+                                {generatingExpandedCutKey === getCutKey(cut, index)
                                   ? 'Expandindo corte...'
                                   : 'Expandir para corte completo'}
                               </button>
@@ -1248,10 +1267,62 @@ export default function AdminContentStudioPage() {
                                 disabled={Boolean(generatingShortScriptKey)}
                                 className="mt-4 rounded-xl border border-cyan-300/20 bg-cyan-500/10 px-3 py-2 text-xs font-black text-cyan-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
                               >
-                                {generatingShortScriptKey === `${cut.start}-${cut.end}-${index}`
+                                {generatingShortScriptKey === getCutKey(cut, index)
                                   ? 'Gerando roteiro...'
                                   : 'Gerar roteiro do Short'}
                               </button>
+                            )}
+                            {expandedCutErrorByKey[getCutKey(cut, index)] && (
+                              <p className="mt-3 rounded-xl border border-rose-300/20 bg-rose-500/10 p-3 text-xs font-bold leading-5 text-rose-100">
+                                {expandedCutErrorByKey[getCutKey(cut, index)]}
+                              </p>
+                            )}
+                            {contentAssets.expanded_cut && expandedCutSourceKey === getCutKey(cut, index) && (
+                              <div className="mt-4 rounded-xl border border-emerald-300/20 bg-emerald-500/10 p-3">
+                                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100">
+                                  Corte expandido
+                                </p>
+                                <p className="mt-2 text-xs font-bold text-emerald-50">
+                                  Expandido a partir de: {formatSegmentTime(cut.start)} - {formatSegmentTime(cut.end)}
+                                </p>
+                                <p className="mt-1 text-xs font-bold text-emerald-50">
+                                  Novo corte: {formatSegmentTime(contentAssets.expanded_cut.start)} - {formatSegmentTime(contentAssets.expanded_cut.end)} | {formatDuration(getCutDuration(contentAssets.expanded_cut))}
+                                </p>
+                                <p className="mt-3 text-sm font-black text-white">{contentAssets.expanded_cut.title}</p>
+                                <p className="mt-2 text-xs font-bold leading-5 text-emerald-50">{contentAssets.expanded_cut.hook}</p>
+                                {contentAssets.expanded_cut.source_excerpt && (
+                                  <p className="mt-3 border-l-2 border-emerald-300/30 pl-3 text-xs leading-5 text-emerald-50/80">
+                                    {contentAssets.expanded_cut.source_excerpt}
+                                  </p>
+                                )}
+                                <p className="mt-3 text-xs leading-5 text-emerald-100/80">
+                                  {contentAssets.expanded_cut.reason}
+                                </p>
+                                {contentAssets.expanded_cut.expansion_reason && (
+                                  <p className="mt-2 text-xs leading-5 text-emerald-100/70">
+                                    {contentAssets.expanded_cut.expansion_reason}
+                                  </p>
+                                )}
+                                {contentAssets.expanded_cut.suggested_caption_lines && contentAssets.expanded_cut.suggested_caption_lines.length > 0 && (
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    {contentAssets.expanded_cut.suggested_caption_lines.map((line, lineIndex) => (
+                                      <span key={`${line}-${lineIndex}`} className="rounded-full border border-emerald-300/20 bg-slate-950/40 px-2 py-1 text-[11px] font-bold text-emerald-100">
+                                        {line}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleGenerateShortScript(contentAssets.expanded_cut as CutSuggestion, -1)}
+                                  disabled={Boolean(generatingShortScriptKey)}
+                                  className="mt-4 rounded-xl border border-emerald-300/20 bg-slate-950/50 px-3 py-2 text-xs font-black text-emerald-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                                >
+                                  {generatingShortScriptKey === getCutKey(contentAssets.expanded_cut, -1)
+                                    ? 'Gerando roteiro...'
+                                    : 'Gerar roteiro do Short'}
+                                </button>
+                              </div>
                             )}
                           </div>
                         ))}
