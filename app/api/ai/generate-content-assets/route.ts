@@ -116,7 +116,7 @@ type GenerationMode =
 const MAX_TRANSCRIPTION_CHARS = 28000
 const MAX_SEGMENTS = 160
 const MIN_CUT_SECONDS = 15
-const HOOK_MAX_SECONDS = 20
+const HOOK_MAX_SECONDS = 25
 const SOFT_MIN_CUT_SECONDS = 25
 const MAX_CUT_SECONDS = 75
 const MISSING_TIMESTAMPS_NOTE =
@@ -463,13 +463,42 @@ function getCutType(cut: Pick<CutSuggestion, 'start' | 'end' | 'strength_score'>
   return { cut_type: undefined, needs_expansion: undefined }
 }
 
+function getOverlapRatio(a: CutSuggestion, b: CutSuggestion) {
+  const overlap = Math.max(0, Math.min(a.end, b.end) - Math.max(a.start, b.start))
+  const shortest = Math.max(1, Math.min(a.end - a.start, b.end - b.start))
+
+  return overlap / shortest
+}
+
+function getCutRank(cut: CutSuggestion) {
+  const duration = cut.end - cut.start
+  const score = cut.strength_score || 8
+  const durationFit = cut.cut_type === 'full_cut'
+    ? 20 - Math.abs(duration - 45) * 0.4
+    : 12 - Math.abs(duration - 20) * 0.3
+
+  return score * 10 + durationFit
+}
+
+function dedupeOverlappingCuts(cuts: CutSuggestion[]) {
+  return [...cuts]
+    .sort((a, b) => getCutRank(b) - getCutRank(a))
+    .reduce<CutSuggestion[]>((selected, cut) => {
+      if (selected.some((existing) => getOverlapRatio(existing, cut) > 0.65)) {
+        return selected
+      }
+
+      return [...selected, cut]
+    }, [])
+}
+
 function normalizeCutSuggestions(
   input: unknown,
   segments: TranscriptionSegment[]
 ): CutSuggestion[] {
   if (!Array.isArray(input)) return []
 
-  return input
+  const normalized = input
     .map((item) => {
       const value = item as {
         title?: unknown
@@ -538,10 +567,14 @@ function normalizeCutSuggestions(
         isCutInsideKnownSegments(item, segments) &&
         !looksLikeWeakCut(combinedText) &&
         !looksLikeWeakSourceExcerpt(item.source_excerpt || '') &&
-        hasStrongEditorialSignal(item)
+        (item.cut_type === 'hook' || hasStrongEditorialSignal(item))
       )
     })
-    .slice(0, 5)
+  const deduped = dedupeOverlappingCuts(normalized)
+  const fullCuts = deduped.filter((cut) => cut.cut_type === 'full_cut').slice(0, 3)
+  const hooks = deduped.filter((cut) => cut.cut_type === 'hook').slice(0, 3)
+
+  return [...fullCuts, ...hooks].slice(0, 6)
 }
 
 function normalizeSelectedCut(input: unknown): CutSuggestion | null {
@@ -1128,13 +1161,21 @@ Gere somente cut_suggestions e cut_suggestions_note.
         "source_excerpt": "fala real da transcricao que justifica o corte",
         "suggested_caption_lines": ["linha curta 1", "linha curta 2"],
         "strength_score": 9,
-        "strength_reason": "por que esse trecho prende a atencao"
+        "strength_reason": "por que esse trecho prende a atencao",
+        "cut_type": "full_cut",
+        "needs_expansion": false
       }
     ],
     "cut_suggestions_note": "aviso somente se nao houver cortes possiveis"
   }
 }
-Retorne ate 5 cortes editoriais.
+Retorne ate 5 candidatos editoriais, sem forcar preenchimento se nao houver qualidade.
+Procure pelo menos 2 full_cut se houver material forte suficiente e ate 3 hook para expansao.
+Classifique mentalmente:
+- full_cut: 25s a 75s, ideal 30s a 60s, com comeco, desenvolvimento e fechamento.
+- hook: 15s a 25s, frase forte com retencao, mas precisa expansao; use needs_expansion true.
+- rejected: fraco, introdutorio, administrativo ou meramente informativo; nao retorne.
+Busque variedade: contraste teologico, aplicacao devocional, emocao/identificacao e frase memoravel.
 `.trim(),
     short_script: `
 Gere somente short_script a partir do selected_cut informado.
@@ -1255,6 +1296,10 @@ REGRAS PARA CORTES COM TIMESTAMP:
 - retorne strength_score de 1 a 10 e strength_reason explicando por que prende a atencao;
 - ignore trechos sem frase forte nos primeiros 3 segundos;
 - priorize frase biblica marcante, interpretacao teologica forte, aplicacao direta, tensao espiritual, contraste, momento emocional e gancho que prende nos primeiros 3 segundos;
+- retorne full_cut para cortes completos de 25 a 75 segundos, com needs_expansion false;
+- retorne hook para trechos curtos fortes de 15 a 25 segundos, com needs_expansion true;
+- tente variedade entre contraste teologico, aplicacao devocional, emocao/identificacao e frase memoravel;
+- nao retorne cortes meramente informativos;
 - inclua suggested_caption_lines com linhas curtas de 3 a 7 palavras para legenda animada.
 `.trim()
     : `

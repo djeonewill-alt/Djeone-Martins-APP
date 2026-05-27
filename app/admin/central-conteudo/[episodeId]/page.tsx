@@ -636,6 +636,9 @@ export default function AdminContentStudioPage() {
   const segments = episode.transcription_segments || []
   const suggestions = episode.daily_quote_suggestions || []
   const hasTranscription = Boolean(episode.transcription_text?.trim())
+  const fullCutSuggestions = contentAssets?.cut_suggestions.filter((cut) => !isHookCut(cut)) || []
+  const hookSuggestions = contentAssets?.cut_suggestions.filter((cut) => isHookCut(cut)) || []
+  const orderedCutSuggestions = [...fullCutSuggestions, ...hookSuggestions]
   const wordTimestampStatus =
     episode.transcription_words_status ||
     (episode.transcription_words_url ? 'ready' : 'missing')
@@ -1192,9 +1195,25 @@ export default function AdminContentStudioPage() {
                         {contentAssets.cut_suggestions_note}
                       </p>
                     )}
+                    {contentAssets.cut_suggestions.length === 1 && (
+                      <p className="mt-3 text-xs font-bold leading-5 text-slate-400">
+                        Somente 1 corte passou pelos criterios editoriais desta geracao.
+                      </p>
+                    )}
+                    {contentAssets.cut_suggestions.length > 0 && (
+                      <div className="mt-3 grid gap-2 text-xs font-bold text-slate-400">
+                        <p>Cortes completos: {fullCutSuggestions.length} · Ganchos para expandir: {hookSuggestions.length}</p>
+                      </div>
+                    )}
                     {contentAssets.cut_suggestions.length > 0 ? (
                       <div className="mt-3 grid gap-3">
-                        {contentAssets.cut_suggestions.map((cut, index) => (
+                        {orderedCutSuggestions.map((cut, index) => (
+                          <>
+                          {(index === 0 || isHookCut(orderedCutSuggestions[index - 1]) !== isHookCut(cut)) && (
+                            <h3 className="pt-2 text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                              {isHookCut(cut) ? 'Ganchos para expandir' : 'Cortes completos'}
+                            </h3>
+                          )}
                           <div key={`${cut.title}-${index}`} className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-xs font-black text-blue-200">
@@ -1337,6 +1356,7 @@ export default function AdminContentStudioPage() {
                               </div>
                             )}
                           </div>
+                          </>
                         ))}
                       </div>
                     ) : (
