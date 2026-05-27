@@ -42,6 +42,8 @@ type CutSuggestion = {
   original_hook_start?: number
   original_hook_end?: number
   expansion_reason?: string
+  needs_manual_trim?: boolean
+  trim_warning?: string
 }
 
 type ShortScriptTimelineItem = {
@@ -1173,6 +1175,11 @@ export default function AdminContentStudioPage() {
                           {contentAssets.expanded_cut.expansion_reason}
                         </p>
                       )}
+                      {contentAssets.expanded_cut.needs_manual_trim && (
+                        <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-500/10 p-3 text-xs font-bold leading-5 text-amber-50">
+                          {contentAssets.expanded_cut.trim_warning || 'Este corte pode precisar de ajuste manual no final.'}
+                        </p>
+                      )}
                     </div>
                   </article>
                   )}
@@ -1301,6 +1308,11 @@ export default function AdminContentStudioPage() {
                                 {contentAssets.expanded_cut.expansion_reason && (
                                   <p className="mt-2 text-xs leading-5 text-emerald-100/70">
                                     {contentAssets.expanded_cut.expansion_reason}
+                                  </p>
+                                )}
+                                {contentAssets.expanded_cut.needs_manual_trim && (
+                                  <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-500/10 p-3 text-xs font-bold leading-5 text-amber-50">
+                                    {contentAssets.expanded_cut.trim_warning || 'Este corte pode precisar de ajuste manual no final.'}
                                   </p>
                                 )}
                                 {contentAssets.expanded_cut.suggested_caption_lines && contentAssets.expanded_cut.suggested_caption_lines.length > 0 && (

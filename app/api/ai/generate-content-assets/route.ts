@@ -33,6 +33,8 @@ type CutSuggestion = {
   original_hook_start?: number
   original_hook_end?: number
   expansion_reason?: string
+  needs_manual_trim?: boolean
+  trim_warning?: string
 }
 
 type ShortScriptTimelineItem = {
@@ -712,6 +714,51 @@ function buildExpandedCut(
   const hookDuration = hookEnd - hookStart
   const candidates: Array<{ startIndex: number; endIndex: number; strategy: string; score: number }> = []
 
+  function getWindowText(startIndex: number, endIndex: number) {
+    return sortedSegments
+      .slice(startIndex, endIndex + 1)
+      .map((segment) => segment.text)
+      .join(' ')
+  }
+
+  function getEndingQuality(text: string) {
+    const normalized = cleanText(text)
+    const tail = normalized.slice(-240).toLowerCase()
+    let score = 0
+    let needsManualTrim = false
+
+    if (/[.!?…]$/.test(normalized)) score += 14
+    if (/[,:;]$/.test(normalized)) {
+      score -= 22
+      needsManualTrim = true
+    }
+
+    if (/\b(portanto|porque|que|para|mas|ent[aã]o)\s*[,.:;]?\s*$/i.test(normalized)) {
+      score -= 28
+      needsManualTrim = true
+    }
+
+    if (/(portanto,\s*)?(a b[ií]blia ensina).{0,80}\1?\2/i.test(tail)) {
+      score -= 24
+      needsManualTrim = true
+    }
+
+    if (/\b(deu vida|saia para fora|sai para fora|jesus entra|bom [aâ]nimo|vida para l[aá]zaro)\b/i.test(tail)) {
+      score += 26
+    }
+
+    if (/\b(am[eé]m|gl[oó]ria a deus|descansa|confia|ele chama|ele vem|ele entra)\b/i.test(tail)) {
+      score += 12
+    }
+
+    if (tail.split(/\s+/).length < 8) {
+      score -= 8
+      needsManualTrim = true
+    }
+
+    return { score, needsManualTrim }
+  }
+
   function addCandidate(startIndex: number, endIndex: number, strategy: string) {
     const start = sortedSegments[startIndex]?.start
     const end = sortedSegments[endIndex]?.end
@@ -729,12 +776,14 @@ function buildExpandedCut(
 
     const beforeSeconds = Math.max(0, hookStart - start)
     const afterSeconds = Math.max(0, end - hookEnd)
+    const endingQuality = getEndingQuality(getWindowText(startIndex, endIndex))
     const score =
       100 -
       Math.abs(duration - 45) -
       Math.abs(beforeSeconds - afterSeconds) * 0.25 +
       (beforeSeconds >= 5 ? 8 : 0) +
-      (afterSeconds >= 5 ? 8 : 0)
+      (afterSeconds >= 5 ? 8 : 0) +
+      endingQuality.score
 
     candidates.push({ startIndex, endIndex, strategy, score })
   }
@@ -789,6 +838,8 @@ function buildExpandedCut(
     .map((segment) => segment.text)
     .join(' ')
     .slice(0, 700)
+  const endingQuality = getEndingQuality(sourceExcerpt)
+  const trimWarning = 'O corte foi expandido, mas o final pode precisar de ajuste manual.'
 
   const expansionReason = `Expandido a partir do gancho ${hookStart.toFixed(1)}s-${hookEnd.toFixed(1)}s: ${strategy}. A janela foi ampliada para incluir contexto suficiente sem ultrapassar 75 segundos.`
 
@@ -808,6 +859,8 @@ function buildExpandedCut(
     cut_type: 'full_cut',
     needs_expansion: false,
     expansion_reason: expansionReason,
+    needs_manual_trim: endingQuality.needsManualTrim,
+    trim_warning: endingQuality.needsManualTrim ? trimWarning : undefined,
   }
 }
 
