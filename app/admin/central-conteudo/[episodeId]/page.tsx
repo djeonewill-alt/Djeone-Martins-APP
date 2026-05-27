@@ -75,6 +75,8 @@ type ShortScript = {
   animated_caption_lines: string[]
   image_prompts: ShortScriptImagePrompt[]
   editing_notes: string[]
+  auto_completed?: boolean
+  auto_completed_note?: string
   quality_check: {
     has_strong_hook: boolean
     has_clear_tension: boolean
@@ -1047,6 +1049,12 @@ export default function AdminContentStudioPage() {
                     </div>
 
                     <div className="mt-4 grid gap-3">
+                      {contentAssets.short_script.auto_completed && (
+                        <p className="rounded-xl border border-amber-300/20 bg-amber-500/10 p-3 text-xs font-bold leading-5 text-amber-50">
+                          {contentAssets.short_script.auto_completed_note || 'Alguns elementos foram completados automaticamente para facilitar a edicao.'}
+                        </p>
+                      )}
+
                       <div className="rounded-xl border border-cyan-200/10 bg-slate-950/50 p-3">
                         <p className="text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100/70">Titulo</p>
                         <p className="mt-1 text-sm font-black text-white">{contentAssets.short_script.title}</p>

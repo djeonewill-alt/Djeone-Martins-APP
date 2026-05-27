@@ -66,6 +66,8 @@ type ShortScript = {
   animated_caption_lines: string[]
   image_prompts: ShortScriptImagePrompt[]
   editing_notes: string[]
+  auto_completed?: boolean
+  auto_completed_note?: string
   quality_check: {
     has_strong_hook: boolean
     has_clear_tension: boolean
@@ -709,6 +711,8 @@ function normalizeShortScript(input: unknown): ShortScript | undefined {
     }),
     image_prompts: imagePrompts,
     editing_notes: normalizeStringArray(value.editing_notes, 8, 180),
+    auto_completed: false,
+    auto_completed_note: undefined,
     quality_check: {
       has_strong_hook: Boolean(qualityCheck.has_strong_hook),
       has_clear_tension: Boolean(qualityCheck.has_clear_tension),
@@ -730,6 +734,139 @@ function normalizeShortScript(input: unknown): ShortScript | undefined {
   ) {
     return undefined
   }
+
+  return script
+}
+
+function splitCaptionFallbackText(text: string) {
+  const words = cleanText(text)
+    .replace(/[.,;:!?]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+  const lines: string[] = []
+
+  for (let index = 0; index < words.length && lines.length < 12; index += 4) {
+    const line = words.slice(index, index + 4).join(' ')
+
+    if (countWords(line) >= 3 && countWords(line) <= 7) {
+      lines.push(line)
+    }
+  }
+
+  return lines
+}
+
+function buildCaptionFallbacks(selectedCut: CutSuggestion, minLines: number) {
+  const seedLines = [
+    ...(selectedCut.suggested_caption_lines || []),
+    ...splitCaptionFallbackText(selectedCut.hook),
+    ...splitCaptionFallbackText(selectedCut.source_excerpt || ''),
+  ]
+  const cleaned = seedLines
+    .map((line) => cleanText(line).slice(0, 80))
+    .filter((line, index, lines) => {
+      const wordCount = countWords(line)
+      return wordCount >= 3 && wordCount <= 7 && lines.indexOf(line) === index
+    })
+
+  if (/bet[aâ]nia/i.test(`${selectedCut.hook} ${selectedCut.source_excerpt || ''}`)) {
+    cleaned.push(
+      'A presenca de Deus',
+      'nao estava no templo',
+      'Estava em Betania',
+      'com o pobre',
+      'com o aflito',
+      'Jesus entra',
+      'na nossa Betania'
+    )
+  }
+
+  return cleaned.slice(0, Math.max(minLines, 7))
+}
+
+function buildImagePromptFallbacks(selectedCut: CutSuggestion): ShortScriptImagePrompt[] {
+  const baseTheme = cleanText(`${selectedCut.title}. ${selectedCut.hook}`)
+  const isBethany = /bet[aâ]nia|templo|l[aá]zaro|afli[cç][aã]o/i.test(`${baseTheme} ${selectedCut.source_excerpt || ''}`)
+
+  if (isBethany) {
+    return [
+      {
+        moment: 'Contraste entre templo e Betania',
+        use_for_seconds: '0-8s',
+        prompt: 'Vertical 9:16, cinematic biblical realism, first century Judea, distant Jerusalem temple glowing on the horizon contrasted with the humble road toward Bethany, warm late afternoon light, quiet spiritual tension, natural colors, realistic fabric, no text in image, not theatrical.',
+      },
+      {
+        moment: 'Casa simples em Betania',
+        use_for_seconds: '8-20s',
+        prompt: 'Vertical 9:16, realistic biblical village home in Bethany at sunset, simple stone walls, open doorway, soft golden light entering the house, atmosphere of sorrow and hope, intimate composition, cinematic depth of field, no text in image, restrained emotion.',
+      },
+      {
+        moment: 'Presenca de Jesus na aflicao',
+        use_for_seconds: '20-32s',
+        prompt: 'Vertical 9:16, humble biblical interior with grieving people in soft shadow, a gentle beam of warm light entering from the doorway symbolizing the presence of Jesus, reverent atmosphere, cinematic realism, natural textures, no text in image, no exaggerated drama.',
+      },
+    ]
+  }
+
+  return [
+    {
+      moment: 'Abertura espiritual',
+      use_for_seconds: '0-8s',
+      prompt: `Vertical 9:16, cinematic biblical realism inspired by "${baseTheme}", first century setting, intimate composition, warm natural light, contemplative spiritual atmosphere, realistic clothing and textures, no text in image, no theatrical exaggeration.`,
+    },
+    {
+      moment: 'Aplicacao devocional',
+      use_for_seconds: '8-24s',
+      prompt: `Vertical 9:16, realistic biblical environment connected to "${baseTheme}", soft directional light, quiet emotional tension, human scale composition, cinematic depth, reverent mood, no text in image, natural colors, restrained drama.`,
+    },
+  ]
+}
+
+function completeShortScriptFallbacks(script: ShortScript, selectedCut?: CutSuggestion | null) {
+  if (!selectedCut) return script
+
+  let autoCompleted = false
+  const minCaptionLines = script.duration_seconds <= 35 ? 7 : script.duration_seconds <= 45 ? 8 : 12
+
+  if (script.animated_caption_lines.length < minCaptionLines) {
+    const fallbackLines = buildCaptionFallbacks(selectedCut, minCaptionLines)
+    script.animated_caption_lines = [...script.animated_caption_lines, ...fallbackLines]
+      .filter((line, index, lines) => lines.indexOf(line) === index)
+      .slice(0, script.duration_seconds <= 35 ? 10 : script.duration_seconds <= 45 ? 14 : 18)
+    autoCompleted = true
+  }
+
+  if (
+    script.image_prompts.length < 2 ||
+    script.image_prompts.some((item) => countWords(item.prompt) < 25)
+  ) {
+    const fallbackPrompts = buildImagePromptFallbacks(selectedCut)
+    script.image_prompts = [...script.image_prompts.filter((item) => countWords(item.prompt) >= 25), ...fallbackPrompts]
+      .filter((item, index, prompts) => prompts.findIndex((prompt) => prompt.moment === item.moment) === index)
+      .slice(0, 4)
+    autoCompleted = true
+  }
+
+  if (
+    script.timeline.some((item) => {
+      return (
+        countWords(item.visual_direction) < 4 ||
+        countWords(item.motion_direction) < 3 ||
+        countWords(item.sound_design) < 2
+      )
+    })
+  ) {
+    script.editing_notes = [
+      ...script.editing_notes,
+      'Revisar timeline para edicao final, reforcando visual, motion e som nos blocos mais genericos.',
+    ].slice(0, 8)
+    autoCompleted = true
+  }
+
+  script.auto_completed = autoCompleted
+  script.auto_completed_note = autoCompleted
+    ? 'Alguns elementos foram completados automaticamente para facilitar a edicao.'
+    : undefined
 
   return script
 }
@@ -958,6 +1095,10 @@ function validateAssets(
           : Math.max(0, Math.min(selectedCutDuration, Math.round(item.end))),
       }
     }).filter((item) => item.end > item.start)
+  }
+
+  if (shortScript && options.mode === 'short_script') {
+    completeShortScriptFallbacks(shortScript, options.selectedCut)
   }
   const rawMetadata = (source.metadata || {}) as {
     main_scripture?: unknown
@@ -1378,7 +1519,10 @@ REGRAS PARA ROTEIRO DE SHORT:
 - o CTA deve ser suave, pastoral e sem parecer propaganda;
 - use CTA conectado ao app/devocional, como "Ouça o devocional completo no app" ou "Receba uma Palavra todos os dias";
 - legenda animada deve ser curta, com 3 a 7 palavras por linha;
-- animated_caption_lines deve ter 8 a 14 linhas para cortes de 30 a 45s e 12 a 18 linhas para cortes de 45 a 60s;
+- animated_caption_lines e obrigatorio e precisa ter quantidade suficiente;
+- para cortes de 25 a 35s, gere 7 a 10 linhas;
+- para cortes de 35 a 45s, gere 8 a 14 linhas;
+- para cortes de 45 a 60s, gere 12 a 18 linhas;
 - as legendas devem seguir o sentido do audio e priorizar frases fortes do selected_cut;
 - on_screen_text tambem deve ter 3 a 7 palavras;
 - cada item da timeline deve ter visual_direction concreto, com cenario, contraste visual ou acao visual;
@@ -1386,9 +1530,10 @@ REGRAS PARA ROTEIRO DE SHORT:
 - prefira instrucoes concretas: "Mostrar contraste entre templo e casa simples em Betania"; "Texto entra em duas etapas"; "Pausa dramatica antes de Betania";
 - instrucoes de motion devem ser simples: zoom lento, leve pan, blur suave, entrada de texto, pausa dramatica;
 - sound design deve ser discreto: impacto suave, ambiente leve, riser curto, pausa, transicao;
-- image_prompts deve ter 2 a 4 prompts;
+- image_prompts e obrigatorio e deve ter 2 a 4 prompts completos;
 - prompts de imagem devem ser cinematograficos, verticais 9:16, prontos para uso manual em ferramentas externas;
 - cada prompt deve incluir cenario biblico, epoca, composicao, luz, atmosfera, emocao, estilo visual, sem texto na imagem e sem aparencia teatral exagerada;
+- cada prompt precisa ter pelo menos 25 palavras e nao pode ser curto/generico;
 - para Betania, considere contraste entre Jerusalem/templo e casa simples, casa humilde ao entardecer, pessoas aflitas em ambiente simples e luz suave entrando na casa;
 - editing_notes deve indicar ritmo de cortes, zoom/pan, entrada de texto, pausa dramatica, sound design discreto, reforco do hook e onde inserir CTA;
 - nao gere imagem por API, nao mencione URL, nao crie video;
