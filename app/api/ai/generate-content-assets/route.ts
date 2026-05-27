@@ -21,12 +21,18 @@ type CutSuggestion = {
   title: string
   start: number
   end: number
+  duration?: number
   reason: string
   hook: string
   source_excerpt?: string
   suggested_caption_lines?: string[]
   strength_score?: number
   strength_reason?: string
+  cut_type?: 'hook' | 'full_cut'
+  needs_expansion?: boolean
+  original_hook_start?: number
+  original_hook_end?: number
+  expansion_reason?: string
 }
 
 type ShortScriptTimelineItem = {
@@ -89,6 +95,7 @@ type ContentAssets = {
   short_ideas: ShortIdea[]
   cut_suggestions: CutSuggestion[]
   cut_suggestions_note?: string
+  expanded_cut?: CutSuggestion
   short_script?: ShortScript
   metadata?: ContentAssetsMetadata
 }
@@ -102,10 +109,12 @@ type GenerationMode =
   | 'short_ideas'
   | 'cuts'
   | 'short_script'
+  | 'expand_cut'
 
 const MAX_TRANSCRIPTION_CHARS = 28000
-const MAX_SEGMENTS = 80
+const MAX_SEGMENTS = 160
 const MIN_CUT_SECONDS = 15
+const HOOK_MAX_SECONDS = 20
 const SOFT_MIN_CUT_SECONDS = 25
 const MAX_CUT_SECONDS = 75
 const MISSING_TIMESTAMPS_NOTE =
@@ -120,6 +129,7 @@ const GENERATION_MODES: GenerationMode[] = [
   'short_ideas',
   'cuts',
   'short_script',
+  'expand_cut',
 ]
 
 function cleanText(text: string) {
@@ -437,6 +447,20 @@ function hasUsefulShortDuration(cut: Pick<CutSuggestion, 'start' | 'end' | 'hook
   return true
 }
 
+function getCutType(cut: Pick<CutSuggestion, 'start' | 'end' | 'strength_score'>) {
+  const duration = cut.end - cut.start
+
+  if (duration >= MIN_CUT_SECONDS && duration <= HOOK_MAX_SECONDS && (cut.strength_score || 0) >= 8) {
+    return { cut_type: 'hook' as const, needs_expansion: true }
+  }
+
+  if (duration >= SOFT_MIN_CUT_SECONDS && duration <= MAX_CUT_SECONDS) {
+    return { cut_type: 'full_cut' as const, needs_expansion: false }
+  }
+
+  return { cut_type: undefined, needs_expansion: undefined }
+}
+
 function normalizeCutSuggestions(
   input: unknown,
   segments: TranscriptionSegment[]
@@ -455,21 +479,40 @@ function normalizeCutSuggestions(
         suggested_caption_lines?: unknown
         strength_score?: unknown
         strength_reason?: unknown
+        cut_type?: unknown
+        needs_expansion?: unknown
       }
       const rawStrengthScore = Number(value.strength_score)
+      const strengthScore = Number.isFinite(rawStrengthScore)
+        ? Math.max(1, Math.min(10, Math.round(rawStrengthScore)))
+        : undefined
+      const start = Number(value.start)
+      const end = Number(value.end)
+      const classifiedCut = getCutType({
+        start,
+        end,
+        strength_score: strengthScore,
+      })
 
       return {
         title: cleanText(String(value.title || '')).slice(0, 120),
-        start: Number(value.start),
-        end: Number(value.end),
+        start,
+        end,
         reason: cleanText(String(value.reason || '')).slice(0, 240),
         hook: cleanText(String(value.hook || '')).slice(0, 220),
         source_excerpt: cleanText(String(value.source_excerpt || '')).slice(0, 260) || undefined,
         suggested_caption_lines: normalizeCaptionLines(value.suggested_caption_lines),
-        strength_score: Number.isFinite(rawStrengthScore)
-          ? Math.max(1, Math.min(10, Math.round(rawStrengthScore)))
-          : undefined,
+        strength_score: strengthScore,
         strength_reason: cleanText(String(value.strength_reason || '')).slice(0, 260) || undefined,
+        cut_type: cleanText(String(value.cut_type || '')) === 'hook'
+          ? 'hook' as const
+          : cleanText(String(value.cut_type || '')) === 'full_cut'
+            ? 'full_cut' as const
+            : classifiedCut.cut_type,
+        needs_expansion:
+          typeof value.needs_expansion === 'boolean'
+            ? value.needs_expansion
+            : classifiedCut.needs_expansion,
       }
     })
     .filter((item) => {
@@ -510,9 +553,18 @@ function normalizeSelectedCut(input: unknown): CutSuggestion | null {
     hook?: unknown
     source_excerpt?: unknown
     suggested_caption_lines?: unknown
+    strength_score?: unknown
+    strength_reason?: unknown
+    cut_type?: unknown
+    needs_expansion?: unknown
   }
   const start = Number(value.start)
   const end = Number(value.end)
+  const rawStrengthScore = Number(value.strength_score)
+  const strengthScore = Number.isFinite(rawStrengthScore)
+    ? Math.max(1, Math.min(10, Math.round(rawStrengthScore)))
+    : undefined
+  const classifiedCut = getCutType({ start, end, strength_score: strengthScore })
   const selectedCut = {
     title: cleanText(String(value.title || '')).slice(0, 120),
     start,
@@ -521,6 +573,17 @@ function normalizeSelectedCut(input: unknown): CutSuggestion | null {
     hook: cleanText(String(value.hook || '')).slice(0, 220),
     source_excerpt: cleanText(String(value.source_excerpt || '')).slice(0, 500) || undefined,
     suggested_caption_lines: normalizeCaptionLines(value.suggested_caption_lines),
+    strength_score: strengthScore,
+    strength_reason: cleanText(String(value.strength_reason || '')).slice(0, 260) || undefined,
+    cut_type: cleanText(String(value.cut_type || '')) === 'hook'
+      ? 'hook' as const
+      : cleanText(String(value.cut_type || '')) === 'full_cut'
+        ? 'full_cut' as const
+        : classifiedCut.cut_type,
+    needs_expansion:
+      typeof value.needs_expansion === 'boolean'
+        ? value.needs_expansion
+        : classifiedCut.needs_expansion,
   }
 
   if (
@@ -628,6 +691,90 @@ function normalizeShortScript(input: unknown): ShortScript | undefined {
   }
 
   return script
+}
+
+function buildExpandedCut(
+  selectedCut: CutSuggestion,
+  segments: TranscriptionSegment[]
+): CutSuggestion | null {
+  const sortedSegments = [...segments].sort((a, b) => a.start - b.start)
+  const hookStart = selectedCut.start
+  const hookEnd = selectedCut.end
+  const hookSegmentIndexes = sortedSegments
+    .map((segment, index) => ({ segment, index }))
+    .filter(({ segment }) => segment.end >= hookStart && segment.start <= hookEnd)
+    .map(({ index }) => index)
+
+  if (!hookSegmentIndexes.length) return null
+
+  let startIndex = hookSegmentIndexes[0]
+  let endIndex = hookSegmentIndexes[hookSegmentIndexes.length - 1]
+  const earliestStart = Math.max(0, hookStart - 30)
+  const latestEnd = hookEnd + 30
+
+  while (startIndex > 0 && sortedSegments[startIndex].start > hookStart - 15) {
+    startIndex -= 1
+  }
+
+  while (startIndex > 0 && sortedSegments[startIndex - 1].end >= earliestStart) {
+    const candidateDuration = sortedSegments[endIndex].end - sortedSegments[startIndex - 1].start
+    if (candidateDuration > MAX_CUT_SECONDS) break
+    startIndex -= 1
+  }
+
+  while (endIndex < sortedSegments.length - 1 && sortedSegments[endIndex].end < hookEnd + 15) {
+    endIndex += 1
+  }
+
+  while (endIndex < sortedSegments.length - 1 && sortedSegments[endIndex + 1].start <= latestEnd) {
+    const candidateDuration = sortedSegments[endIndex + 1].end - sortedSegments[startIndex].start
+    if (candidateDuration > MAX_CUT_SECONDS) break
+    endIndex += 1
+  }
+
+  let start = sortedSegments[startIndex].start
+  let end = sortedSegments[endIndex].end
+  let duration = Math.round(end - start)
+
+  if (duration < SOFT_MIN_CUT_SECONDS || duration > MAX_CUT_SECONDS) {
+    return null
+  }
+
+  if (duration > 60) {
+    while (startIndex < hookSegmentIndexes[0] && sortedSegments[endIndex].end - sortedSegments[startIndex + 1].start >= SOFT_MIN_CUT_SECONDS) {
+      startIndex += 1
+      start = sortedSegments[startIndex].start
+      duration = Math.round(end - start)
+      if (duration <= 60) break
+    }
+  }
+
+  end = sortedSegments[endIndex].end
+  duration = Math.round(end - start)
+
+  const sourceExcerpt = sortedSegments
+    .slice(startIndex, endIndex + 1)
+    .map((segment) => segment.text)
+    .join(' ')
+    .slice(0, 700)
+
+  return {
+    title: selectedCut.title,
+    start,
+    end,
+    duration,
+    reason: selectedCut.reason || 'Corte expandido a partir de um gancho forte com contexto antes e depois.',
+    hook: selectedCut.hook,
+    source_excerpt: sourceExcerpt,
+    suggested_caption_lines: selectedCut.suggested_caption_lines || [],
+    original_hook_start: hookStart,
+    original_hook_end: hookEnd,
+    expansion_reason: 'Janela expandida usando segmentos vizinhos para criar começo natural, desenvolvimento e fechamento espiritual sem inventar timestamps.',
+    strength_score: selectedCut.strength_score,
+    strength_reason: selectedCut.strength_reason,
+    cut_type: 'full_cut',
+    needs_expansion: false,
+  }
 }
 
 function validateAssets(
@@ -946,6 +1093,28 @@ Gere somente short_script a partir do selected_cut informado.
 }
 Retorne um roteiro completo, pronto para orientar edicao manual. Nao gere imagem, video ou assets externos.
 `.trim(),
+    expand_cut: `
+Gere somente expanded_cut a partir do selected_cut informado e dos segmentos proximos.
+{
+  "assets": {
+    "expanded_cut": {
+      "title": "titulo do corte expandido",
+      "start": 380,
+      "end": 430,
+      "duration": 50,
+      "hook": "gancho forte original",
+      "reason": "por que funciona como corte completo",
+      "source_excerpt": "trecho real expandido",
+      "suggested_caption_lines": ["linha curta 1", "linha curta 2"],
+      "original_hook_start": 400,
+      "original_hook_end": 415,
+      "expansion_reason": "como o contexto antes/depois fortalece o corte",
+      "strength_score": 9,
+      "strength_reason": "por que prende atencao"
+    }
+  }
+}
+`.trim(),
   }
 
   return contracts[mode]
@@ -1249,6 +1418,40 @@ export async function POST(request: NextRequest) {
         },
         { status: 400 }
       )
+    }
+
+    if (mode === 'expand_cut') {
+      if (!selectedCut) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Envie um gancho selecionado para expandir o corte.',
+          },
+          { status: 400 }
+        )
+      }
+
+      const expandedCut = buildExpandedCut(selectedCut, transcriptionSegments)
+
+      if (!expandedCut) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Nao foi possivel expandir este gancho com os segmentos disponiveis.',
+          },
+          { status: 400 }
+        )
+      }
+
+      return NextResponse.json({
+        success: true,
+        provider: 'local',
+        model: 'segment-window',
+        mode,
+        assets: {
+          expanded_cut: expandedCut,
+        },
+      })
     }
 
     const result = await generateWithOpenAI({

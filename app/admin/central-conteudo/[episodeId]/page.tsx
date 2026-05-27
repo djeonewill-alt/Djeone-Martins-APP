@@ -30,12 +30,18 @@ type CutSuggestion = {
   title: string
   start: number
   end: number
+  duration?: number
   reason: string
   hook: string
   source_excerpt?: string
   suggested_caption_lines?: string[]
   strength_score?: number
   strength_reason?: string
+  cut_type?: 'hook' | 'full_cut'
+  needs_expansion?: boolean
+  original_hook_start?: number
+  original_hook_end?: number
+  expansion_reason?: string
 }
 
 type ShortScriptTimelineItem = {
@@ -92,6 +98,7 @@ type ContentAssets = {
   short_ideas: ShortIdea[]
   cut_suggestions: CutSuggestion[]
   cut_suggestions_note?: string
+  expanded_cut?: CutSuggestion
   short_script?: ShortScript
 }
 
@@ -104,6 +111,7 @@ type GenerationMode =
   | 'short_ideas'
   | 'cuts'
   | 'short_script'
+  | 'expand_cut'
 
 const EMPTY_CONTENT_ASSETS: ContentAssets = {
   devotional_summary: '',
@@ -246,6 +254,7 @@ const generatingLabels: Record<GenerationMode, string> = {
   short_ideas: 'Gerando ideias...',
   cuts: 'Gerando cortes...',
   short_script: 'Gerando roteiro...',
+  expand_cut: 'Expandindo corte...',
 }
 
 function formatShortScriptForCopy(script: ShortScript) {
@@ -272,6 +281,10 @@ function formatShortScriptForCopy(script: ShortScript) {
   ].join('\n')
 }
 
+function isHookCut(cut: CutSuggestion) {
+  return cut.cut_type === 'hook' || cut.needs_expansion === true || getCutDuration(cut) < 25
+}
+
 export default function AdminContentStudioPage() {
   const params = useParams<{ episodeId: string }>()
   const router = useRouter()
@@ -283,6 +296,7 @@ export default function AdminContentStudioPage() {
   const [contentAssets, setContentAssets] = useState<ContentAssets | null>(null)
   const [generatingMode, setGeneratingMode] = useState<GenerationMode | null>(null)
   const [generatingShortScriptKey, setGeneratingShortScriptKey] = useState('')
+  const [generatingExpandedCutKey, setGeneratingExpandedCutKey] = useState('')
   const [contentAssetsError, setContentAssetsError] = useState('')
   const [generatingWordTimestamps, setGeneratingWordTimestamps] = useState(false)
   const [wordTimestampsError, setWordTimestampsError] = useState('')
@@ -448,6 +462,59 @@ export default function AdminContentStudioPage() {
       )
     } finally {
       setGeneratingShortScriptKey('')
+    }
+  }
+
+  async function handleExpandCut(cut: CutSuggestion, index: number) {
+    if (!episode?.transcription_text?.trim()) {
+      setContentAssetsError('Este episodio precisa de transcricao para expandir cortes.')
+      return
+    }
+
+    const loadingKey = `${cut.start}-${cut.end}-${index}`
+
+    try {
+      setGeneratingExpandedCutKey(loadingKey)
+      setContentAssetsError('')
+
+      const response = await fetch('/api/ai/generate-content-assets', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          episodeId: episode.id,
+          title: episode.title,
+          bible_reference: episode.bible_reference,
+          description: episode.description,
+          transcription_text: episode.transcription_text,
+          transcription_segments: episode.transcription_segments,
+          daily_quote_suggestions: episode.daily_quote_suggestions,
+          mode: 'expand_cut',
+          selected_cut: cut,
+        }),
+      })
+      const payload = await response.json()
+
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error || 'Nao foi possivel expandir este gancho.')
+      }
+
+      setContentAssets((current) => {
+        return {
+          ...(current || EMPTY_CONTENT_ASSETS),
+          ...(payload.assets as Partial<ContentAssets>),
+        }
+      })
+    } catch (error) {
+      console.error('Erro ao expandir corte:', error)
+      setContentAssetsError(
+        error instanceof Error
+          ? error.message
+          : 'Nao foi possivel expandir este gancho.'
+      )
+    } finally {
+      setGeneratingExpandedCutKey('')
     }
   }
 
@@ -1048,6 +1115,49 @@ export default function AdminContentStudioPage() {
                   </article>
                   )}
 
+                  {contentAssets.expanded_cut && (
+                  <article className="rounded-2xl border border-emerald-300/15 bg-emerald-500/10 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h2 className="text-sm font-black text-emerald-50">Corte expandido</h2>
+                        <p className="mt-1 text-xs font-bold text-emerald-100/70">
+                          {formatSegmentTime(contentAssets.expanded_cut.start)} - {formatSegmentTime(contentAssets.expanded_cut.end)} | {formatDuration(getCutDuration(contentAssets.expanded_cut))}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleGenerateShortScript(contentAssets.expanded_cut as CutSuggestion, -1)}
+                        disabled={Boolean(generatingShortScriptKey)}
+                        className="rounded-xl border border-emerald-300/20 bg-slate-950/50 px-3 py-2 text-xs font-black text-emerald-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                      >
+                        {generatingShortScriptKey === `${contentAssets.expanded_cut.start}-${contentAssets.expanded_cut.end}--1`
+                          ? 'Gerando roteiro...'
+                          : 'Gerar roteiro do Short'}
+                      </button>
+                    </div>
+
+                    <div className="mt-3 rounded-xl border border-emerald-200/10 bg-slate-950/40 p-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100/70">Titulo</p>
+                      <p className="mt-1 text-sm font-black text-white">{contentAssets.expanded_cut.title}</p>
+                      <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100/70">Gancho original</p>
+                      <p className="mt-1 text-xs font-bold leading-5 text-emerald-50">{contentAssets.expanded_cut.hook}</p>
+                      {contentAssets.expanded_cut.source_excerpt && (
+                        <>
+                          <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100/70">Trecho expandido</p>
+                          <p className="mt-1 border-l-2 border-emerald-300/30 pl-3 text-xs leading-5 text-emerald-50/80">
+                            {contentAssets.expanded_cut.source_excerpt}
+                          </p>
+                        </>
+                      )}
+                      {contentAssets.expanded_cut.expansion_reason && (
+                        <p className="mt-3 text-xs leading-5 text-emerald-100/75">
+                          {contentAssets.expanded_cut.expansion_reason}
+                        </p>
+                      )}
+                    </div>
+                  </article>
+                  )}
+
                   {(contentAssets.cut_suggestions.length > 0 || contentAssets.cut_suggestions_note) && (
                   <article className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
                     <h2 className="text-sm font-black text-white">Sugestões de cortes editoriais</h2>
@@ -1072,6 +1182,13 @@ export default function AdminContentStudioPage() {
                                   Trecho curto / usar como gancho
                                 </span>
                               )}
+                              <span className={`rounded-full border px-2 py-1 text-[11px] font-black ${
+                                isHookCut(cut)
+                                  ? 'border-amber-300/20 bg-amber-500/10 text-amber-100'
+                                  : 'border-emerald-300/20 bg-emerald-500/10 text-emerald-100'
+                              }`}>
+                                {isHookCut(cut) ? 'Gancho forte / precisa expandir' : 'Corte completo'}
+                              </span>
                             </div>
                             <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Titulo</p>
                             <p className="mt-1 text-sm font-black text-white">{cut.title}</p>
@@ -1113,16 +1230,29 @@ export default function AdminContentStudioPage() {
                                 </div>
                               </>
                             )}
-                            <button
-                              type="button"
-                              onClick={() => handleGenerateShortScript(cut, index)}
-                              disabled={Boolean(generatingShortScriptKey)}
-                              className="mt-4 rounded-xl border border-cyan-300/20 bg-cyan-500/10 px-3 py-2 text-xs font-black text-cyan-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
-                            >
-                              {generatingShortScriptKey === `${cut.start}-${cut.end}-${index}`
-                                ? 'Gerando roteiro...'
-                                : 'Gerar roteiro do Short'}
-                            </button>
+                            {isHookCut(cut) ? (
+                              <button
+                                type="button"
+                                onClick={() => handleExpandCut(cut, index)}
+                                disabled={Boolean(generatingExpandedCutKey)}
+                                className="mt-4 rounded-xl border border-amber-300/20 bg-amber-500/10 px-3 py-2 text-xs font-black text-amber-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                              >
+                                {generatingExpandedCutKey === `${cut.start}-${cut.end}-${index}`
+                                  ? 'Expandindo corte...'
+                                  : 'Expandir para corte completo'}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleGenerateShortScript(cut, index)}
+                                disabled={Boolean(generatingShortScriptKey)}
+                                className="mt-4 rounded-xl border border-cyan-300/20 bg-cyan-500/10 px-3 py-2 text-xs font-black text-cyan-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                              >
+                                {generatingShortScriptKey === `${cut.start}-${cut.end}-${index}`
+                                  ? 'Gerando roteiro...'
+                                  : 'Gerar roteiro do Short'}
+                              </button>
+                            )}
                           </div>
                         ))}
                       </div>
