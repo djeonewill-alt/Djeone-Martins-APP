@@ -48,6 +48,7 @@ type CardOption = {
 
 type AudioUploadResponse = {
   url?: string
+  key?: string
   type?: string
   contentType?: string
   extension?: string
@@ -68,6 +69,16 @@ type PresignedUploadResponse = {
   compatibleAudioUrl?: string | null
   compatibleAudioType?: string | null
   isAudioCompatible?: boolean
+  error?: string
+}
+
+type ConvertToMp3Response = {
+  success?: boolean
+  compatibleUrl?: string
+  compatibleKey?: string
+  compatibleType?: 'audio/mpeg'
+  sizeBytes?: number
+  bitrate?: string
   error?: string
 }
 
@@ -196,6 +207,7 @@ export default function NovoEpisodio() {
   const [audioDuration, setAudioDuration] = useState(0)
   const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null)
   const [audioOriginalUrl, setAudioOriginalUrl] = useState('')
+  const [audioOriginalKey, setAudioOriginalKey] = useState('')
   const [audioOriginalType, setAudioOriginalType] = useState('')
   const [uploadedAudioContentType, setUploadedAudioContentType] = useState('')
   const [audioUrlCompatible, setAudioUrlCompatible] = useState('')
@@ -324,6 +336,7 @@ export default function NovoEpisodio() {
 
     return {
       url: presignData.publicUrl,
+      key: presignData.key,
       type: presignData.contentType,
       contentType: presignData.contentType,
       extension: presignData.extension,
@@ -359,6 +372,7 @@ export default function NovoEpisodio() {
         setRecordingBlob(blob)
         setAudioUrl(data.url)
         setAudioOriginalUrl(data.url)
+        setAudioOriginalKey(data.key || '')
         setAudioOriginalType(data.contentType || data.type || 'audio/webm')
         setAudioCompatibleSizeBytes(0)
         setAudioDuration(Math.round(duration))
@@ -387,6 +401,48 @@ export default function NovoEpisodio() {
     setIsGeneratingCompatibleAudio(true)
 
     try {
+      const sourceUrl = audioOriginalUrl || audioUrl
+      let serverErrorMessage = ''
+
+      if (sourceUrl) {
+        try {
+          const response = await fetch('/api/admin/audio/convert-to-mp3', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              sourceUrl,
+              sourceKey: audioOriginalKey || null,
+            }),
+          })
+          const data = (await response.json()) as ConvertToMp3Response
+
+          if (!response.ok || !data.success || !data.compatibleUrl) {
+            throw new Error(data.error || 'Nao foi possivel converter o audio no servidor.')
+          }
+
+          setAudioUrl(data.compatibleUrl)
+          setAudioUrlCompatible(data.compatibleUrl)
+          setAudioCompatibleType(data.compatibleType || 'audio/mpeg')
+          setAudioCompatibleSizeBytes(data.sizeBytes || 0)
+          setUploadedAudioContentType(data.compatibleType || 'audio/mpeg')
+          setIsAudioCompatible(true)
+          setAudioCompatibilityWarning('')
+          resetAutomationData()
+
+          alert('MP3 compativel gerado no servidor com sucesso. Agora este audio pode ser publicado no iPhone, Android e computador.')
+          return
+        } catch (serverError) {
+          serverErrorMessage = getErrorMessage(serverError)
+          console.error('Erro ao gerar MP3 compatÃ­vel no servidor:', serverError)
+        }
+      }
+
+      if (serverErrorMessage) {
+        console.warn('Server-side MP3 conversion failed; trying client fallback:', serverErrorMessage)
+      }
+
       const mp3Audio = await convertRecordingToMp3(recordingBlob)
       const uploadData = await uploadAudioDirectToR2(
         mp3Audio.blob,
@@ -411,7 +467,7 @@ export default function NovoEpisodio() {
       alert('MP3 compatível gerado com sucesso. Agora este áudio pode ser publicado no iPhone, Android e computador.')
     } catch (error) {
       console.error('Erro ao gerar MP3 compatível:', error)
-      alert('Não foi possível gerar o MP3 neste aparelho. A gravação original continua disponível para baixar.')
+      alert(`Nao foi possivel gerar o MP3 compativel. ${getErrorMessage(error)} A gravacao original continua disponivel para baixar.`)
     } finally {
       setIsGeneratingCompatibleAudio(false)
     }
@@ -440,6 +496,7 @@ export default function NovoEpisodio() {
         setRecordingBlob(null)
         setAudioUrl(data.url)
         setAudioOriginalUrl('')
+        setAudioOriginalKey('')
         setAudioOriginalType('')
         setAudioCompatibleSizeBytes(data.sizeBytes || file.size)
         applyAudioUploadMetadata(data)
@@ -1353,7 +1410,7 @@ export default function NovoEpisodio() {
 
             {isGeneratingCompatibleAudio && (
               <p className="text-sm text-white/80 mt-3">
-                Gerando MP3 compatível...
+                Convertendo MP3 no servidor...
               </p>
             )}
 
@@ -1382,7 +1439,7 @@ export default function NovoEpisodio() {
                   className="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
                 >
                   {isGeneratingCompatibleAudio
-                    ? 'Gerando MP3 compatível...'
+                    ? 'Convertendo MP3 no servidor...'
                     : 'Gerar MP3 compatível para publicação'}
                 </button>
 

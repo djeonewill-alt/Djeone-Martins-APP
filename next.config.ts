@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  outputFileTracingIncludes: {
+    '/api/admin/audio/convert-to-mp3': ['./node_modules/ffmpeg-static/**/*'],
+  },
 };
 
 export default nextConfig;
