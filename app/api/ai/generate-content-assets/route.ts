@@ -843,6 +843,48 @@ function splitCaptionFallbackText(text: string) {
   return lines
 }
 
+function splitEditorialCaptionLines(text: string) {
+  const fragments = cleanText(text)
+    .split(/[.!?;:]+/)
+    .map((fragment) => fragment.trim())
+    .filter(Boolean)
+  const lines: string[] = []
+
+  for (const fragment of fragments) {
+    const wordCount = countWords(fragment)
+
+    if (wordCount >= 3 && wordCount <= 7) {
+      lines.push(fragment)
+      continue
+    }
+
+    const words = fragment.split(/\s+/).filter(Boolean)
+    for (let index = 0; index < words.length; index += 4) {
+      const line = words.slice(index, index + 4).join(' ')
+      const lineWordCount = countWords(line)
+
+      if (lineWordCount >= 3 && lineWordCount <= 7) {
+        lines.push(line)
+      }
+    }
+  }
+
+  return lines
+}
+
+function cleanEditorialCaptionLine(line: string) {
+  return cleanText(line)
+    .replace(/\bmas\s+n[oó]s\s+vemos\s+que\b/gi, '')
+    .replace(/\bn[oó]s\s+vemos\s+que\b/gi, '')
+    .replace(/\bn[oó]s\s+vemos\b/gi, '')
+    .replace(/\bJesus\s+ele\b/gi, 'Jesus')
+    .replace(/\bportanto\b[,\s]*/gi, '')
+    .replace(/\b(Chequen[aá]|Shekinah)\s+de\s+Deus\b/gi, 'a gloria de Deus')
+    .replace(/\b(Chequen[aá]|Shekinah)\b/gi, 'a gloria de Deus')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 function buildCaptionFallbacks(selectedCut: CutSuggestion, minLines: number) {
   const seedLines = [
     ...(selectedCut.suggested_caption_lines || []),
@@ -860,6 +902,8 @@ function buildCaptionFallbacks(selectedCut: CutSuggestion, minLines: number) {
     cleaned.push(
       'A presenca de Deus',
       'nao estava no templo',
+      'Jerusalem tinha o templo',
+      'Jesus dormia em Betania',
       'Estava em Betania',
       'com o pobre',
       'com o aflito',
@@ -928,6 +972,11 @@ function completeShortScriptFallbacks(script: ShortScript, selectedCut?: CutSugg
     script.suggested_opening_line = script.hook_improved || script.main_hook
   }
 
+  if (/preferia\s+bet[aâ]nia\s+ao\s+templo/i.test(script.suggested_opening_line || '')) {
+    script.suggested_opening_line = script.hook_improved || 'Voce sabe onde Jesus repousava quando ia a Jerusalem?'
+    autoCompleted = true
+  }
+
   if (script.animated_caption_lines.length < minCaptionLines) {
     const fallbackLines = buildCaptionFallbacks(selectedCut, minCaptionLines)
     script.animated_caption_lines = [...script.animated_caption_lines, ...fallbackLines]
@@ -936,21 +985,26 @@ function completeShortScriptFallbacks(script: ShortScript, selectedCut?: CutSugg
     autoCompleted = true
   }
 
-  if (!script.caption_lines_improved || script.caption_lines_improved.length < minCaptionLines) {
-    const fallbackLines = buildCaptionFallbacks(selectedCut, minCaptionLines)
-    const improvedSeed = [
-      ...splitCaptionFallbackText(script.hook_original || originalHook),
-      ...splitCaptionFallbackText(script.hook_improved || script.main_hook),
-      ...fallbackLines,
-    ]
+  const fallbackLines = buildCaptionFallbacks(selectedCut, minCaptionLines)
+  const improvedSeed = [
+    ...splitEditorialCaptionLines(script.hook_improved || script.main_hook),
+    ...splitEditorialCaptionLines(script.hook_original || originalHook),
+    ...(script.caption_lines_improved || []),
+    ...fallbackLines,
+  ]
+  const normalizedImprovedLines = improvedSeed
+    .map((line) => cleanEditorialCaptionLine(line).slice(0, 80))
+    .filter((line, index, lines) => {
+      const wordCount = countWords(line)
+      return wordCount >= 3 && wordCount <= 7 && lines.indexOf(line) === index
+    })
+    .slice(0, script.duration_seconds <= 35 ? 10 : script.duration_seconds <= 45 ? 14 : 18)
 
-    script.caption_lines_improved = improvedSeed
-      .map((line) => cleanText(line).slice(0, 80))
-      .filter((line, index, lines) => {
-        const wordCount = countWords(line)
-        return wordCount >= 3 && wordCount <= 7 && lines.indexOf(line) === index
-      })
-      .slice(0, script.duration_seconds <= 35 ? 10 : script.duration_seconds <= 45 ? 14 : 18)
+  if (
+    normalizedImprovedLines.length !== (script.caption_lines_improved || []).length ||
+    normalizedImprovedLines.some((line, index) => line !== script.caption_lines_improved?.[index])
+  ) {
+    script.caption_lines_improved = normalizedImprovedLines
     autoCompleted = true
   }
 
@@ -962,6 +1016,14 @@ function completeShortScriptFallbacks(script: ShortScript, selectedCut?: CutSugg
     script.image_prompts = [...script.image_prompts.filter((item) => countWords(item.prompt) >= 25), ...fallbackPrompts]
       .filter((item, index, prompts) => prompts.findIndex((prompt) => prompt.moment === item.moment) === index)
       .slice(0, 4)
+    autoCompleted = true
+  }
+
+  if (script.duration_seconds > 30 && script.timeline.length < 3) {
+    script.editing_notes = [
+      ...script.editing_notes,
+      'Revisar timeline: a IA retornou poucos blocos para a duracao do corte.',
+    ].slice(0, 8)
     autoCompleted = true
   }
 
@@ -1666,6 +1728,9 @@ REGRAS PARA ROTEIRO DE SHORT:
 - exemplo de melhoria fiel: hook_original "A presenca de Deus nao estava no templo."; hook_improved "Jerusalem tinha o templo. Jesus dormia em Betania.";
 - em why_hook_improved, explique por que ficou mais concreto, visual, memoravel e com contraste imediato;
 - gere suggested_opening_line como frase conversacional para os primeiros segundos, por exemplo "Voce sabe onde Jesus dormia quando ia a Jerusalem?", "E se a presenca de Deus estivesse mais perto dos aflitos do que do templo?" ou "Jerusalem tinha o templo, mas Jesus escolheu repousar em Betania.";
+- suggested_opening_line deve ser forte, mas nao pode exagerar nem distorcer o audio;
+- evite "Jesus preferia Betania ao templo" se o audio afirma que Jesus ia ao templo, mas repousava ou dormia em Betania;
+- prefira formulacoes fieis como "Jerusalem tinha o templo, mas Jesus repousava em Betania", "Voce sabe onde Jesus repousava quando ia a Jerusalem?" ou "Jesus ia ao templo, mas encontrava repouso em Betania";
 - gere why_opening_works explicando se a abertura cria curiosidade, abre tensao, traz contraste e faz a pessoa querer ouvir a continuacao;
 - o cliffhanger deve criar curiosidade espiritual sem manipular emocionalmente;
 - evite cliffhanger generico como "O que isso significa?" ou "Descubra agora";
@@ -1680,12 +1745,18 @@ REGRAS PARA ROTEIRO DE SHORT:
 - para cortes de 45 a 60s, gere 12 a 18 linhas;
 - as legendas devem seguir o sentido do audio e priorizar frases fortes do selected_cut;
 - gere caption_lines_improved alem de animated_caption_lines;
+- caption_lines_improved deve ser editorial, limpa e forte, sem copiar pedacos crus da transcricao;
 - caption_lines_improved deve comecar com o hook ou hook_improved, preservar o contraste principal do corte, usar frases de 3 a 7 palavras e ritmo de video curto;
+- evite muletas de fala como "nos vemos que", "Jesus ele", "portanto" e "mas nos vemos";
+- evite termos que confundem o publico quando nao forem explicados, como "Chequena" ou "Shekinah"; se necessario, use "a gloria de Deus";
 - nao substitua o hook forte por frases genericas como "Jesus e nosso consolo", "A presenca de Deus esta aqui" ou "Jesus transforma nossa dor" quando a frase central do corte for mais forte;
 - para Betania/templo, priorize linhas como "Jerusalem tinha o templo", "Mas Jesus dormia em Betania", "Com o pobre", "Com o aflito", "Na casa da aflicao";
 - gere retention_score de 1 a 10 e score_breakdown honesto de 1 a 10 para hook_strength, biblical_specificity, visual_concreteness, emotional_tension, share_potential e fidelity_to_audio;
 - nao de 10 para tudo automaticamente;
 - on_screen_text tambem deve ter 3 a 7 palavras;
+- para cortes entre 35s e 50s, a timeline deve ter 4 a 6 blocos;
+- evite bloco unico longo como 3s-42s; divida em momentos de edicao claros;
+- use funcoes concretas por bloco: 0-3s hook, 3-10s contraste visual, 10-20s desenvolvimento biblico, 20-32s aplicacao espiritual, 32-42s fechamento/CTA, ajustando ao tempo real do corte;
 - cada item da timeline deve ter visual_direction concreto, com cenario, contraste visual ou acao visual;
 - evite frases genericas como "Explorar a relacao", "Aplicar a mensagem" ou "Encerrar com convite";
 - prefira instrucoes concretas: "Mostrar contraste entre templo e casa simples em Betania"; "Texto entra em duas etapas"; "Pausa dramatica antes de Betania";
