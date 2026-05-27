@@ -43,6 +43,7 @@ type ShortScriptTimelineItem = {
   purpose: string
   narration_focus: string
   on_screen_text: string
+  visual_direction: string
   motion_direction: string
   sound_design: string
 }
@@ -662,6 +663,7 @@ function normalizeShortScript(input: unknown): ShortScript | undefined {
             purpose: cleanText(String(timelineItem.purpose || '')).slice(0, 140),
             narration_focus: cleanText(String(timelineItem.narration_focus || '')).slice(0, 220),
             on_screen_text: cleanText(String(timelineItem.on_screen_text || '')).slice(0, 90),
+            visual_direction: cleanText(String(timelineItem.visual_direction || '')).slice(0, 240),
             motion_direction: cleanText(String(timelineItem.motion_direction || '')).slice(0, 180),
             sound_design: cleanText(String(timelineItem.sound_design || '')).slice(0, 180),
           }
@@ -673,7 +675,8 @@ function normalizeShortScript(input: unknown): ShortScript | undefined {
             item.end > item.start &&
             item.purpose &&
             item.narration_focus &&
-            item.on_screen_text
+            item.on_screen_text &&
+            item.visual_direction
           )
         })
         .slice(0, 8)
@@ -700,7 +703,10 @@ function normalizeShortScript(input: unknown): ShortScript | undefined {
     spiritual_point: cleanText(String(value.spiritual_point || '')).slice(0, 260),
     cta: cleanText(String(value.cta || '')).slice(0, 180),
     timeline,
-    animated_caption_lines: normalizeCaptionLines(value.animated_caption_lines),
+    animated_caption_lines: normalizeStringArray(value.animated_caption_lines, 20, 80).filter((line) => {
+      const wordCount = countWords(line)
+      return wordCount >= 3 && wordCount <= 7
+    }),
     image_prompts: imagePrompts,
     editing_notes: normalizeStringArray(value.editing_notes, 8, 180),
     quality_check: {
@@ -903,6 +909,7 @@ function validateAssets(
     mode: GenerationMode
     hasReliableSegments: boolean
     transcriptionSegments: TranscriptionSegment[]
+    selectedCut?: CutSuggestion | null
   }
 ): Partial<ContentAssets> {
   const parsed = input as {
@@ -934,6 +941,24 @@ function validateAssets(
     String(source.cut_suggestions_note || '')
   )
   const shortScript = normalizeShortScript(source.short_script)
+  const selectedCutDuration = options.selectedCut
+    ? Math.max(1, Math.round(options.selectedCut.end - options.selectedCut.start))
+    : 0
+
+  if (shortScript && options.mode === 'short_script' && selectedCutDuration > 0) {
+    shortScript.duration_seconds = selectedCutDuration
+    shortScript.timeline = shortScript.timeline.map((item, index, timeline) => {
+      const isLast = index === timeline.length - 1
+
+      return {
+        ...item,
+        start: Math.max(0, Math.min(selectedCutDuration, Math.round(item.start))),
+        end: isLast
+          ? selectedCutDuration
+          : Math.max(0, Math.min(selectedCutDuration, Math.round(item.end))),
+      }
+    }).filter((item) => item.end > item.start)
+  }
   const rawMetadata = (source.metadata || {}) as {
     main_scripture?: unknown
     key_themes?: unknown
@@ -1196,6 +1221,7 @@ Gere somente short_script a partir do selected_cut informado.
           "purpose": "hook",
           "narration_focus": "o que a fala precisa provocar neste momento",
           "on_screen_text": "3 a 7 palavras",
+          "visual_direction": "imagem concreta para este trecho",
           "motion_direction": "zoom lento, pan leve ou entrada simples de texto",
           "sound_design": "impacto suave, pausa ou ambiente leve"
         }
@@ -1333,21 +1359,38 @@ REGRAS PARA CORTES SEM TIMESTAMP:
         2
       )
     : 'Nenhum corte selecionado.'
+  const selectedCutDuration = params.selectedCut
+    ? Math.max(1, Math.round(params.selectedCut.end - params.selectedCut.start))
+    : 0
   const shortScriptInstructions =
     params.mode === 'short_script'
       ? `
 REGRAS PARA ROTEIRO DE SHORT:
 - use exclusivamente o selected_cut como base editorial principal;
+- duracao real do corte: ${selectedCutDuration}s;
+- short_script.duration_seconds deve ser exatamente ${selectedCutDuration};
+- a timeline deve comecar em 0 e terminar exatamente em ${selectedCutDuration}s;
+- nao use 45s, 60s ou duracao padrao se o corte tiver outra duracao;
 - nao faca roteiro generico;
 - transforme o corte em mini-mensagem com comeco, tensao e fechamento;
 - o hook precisa prender nos primeiros 3 segundos;
 - o cliffhanger deve criar curiosidade espiritual sem manipular emocionalmente;
 - o CTA deve ser suave, pastoral e sem parecer propaganda;
+- use CTA conectado ao app/devocional, como "Ouça o devocional completo no app" ou "Receba uma Palavra todos os dias";
 - legenda animada deve ser curta, com 3 a 7 palavras por linha;
+- animated_caption_lines deve ter 8 a 14 linhas para cortes de 30 a 45s e 12 a 18 linhas para cortes de 45 a 60s;
+- as legendas devem seguir o sentido do audio e priorizar frases fortes do selected_cut;
 - on_screen_text tambem deve ter 3 a 7 palavras;
+- cada item da timeline deve ter visual_direction concreto, com cenario, contraste visual ou acao visual;
+- evite frases genericas como "Explorar a relacao", "Aplicar a mensagem" ou "Encerrar com convite";
+- prefira instrucoes concretas: "Mostrar contraste entre templo e casa simples em Betania"; "Texto entra em duas etapas"; "Pausa dramatica antes de Betania";
 - instrucoes de motion devem ser simples: zoom lento, leve pan, blur suave, entrada de texto, pausa dramatica;
 - sound design deve ser discreto: impacto suave, ambiente leve, riser curto, pausa, transicao;
+- image_prompts deve ter 2 a 4 prompts;
 - prompts de imagem devem ser cinematograficos, verticais 9:16, prontos para uso manual em ferramentas externas;
+- cada prompt deve incluir cenario biblico, epoca, composicao, luz, atmosfera, emocao, estilo visual, sem texto na imagem e sem aparencia teatral exagerada;
+- para Betania, considere contraste entre Jerusalem/templo e casa simples, casa humilde ao entardecer, pessoas aflitas em ambiente simples e luz suave entrando na casa;
+- editing_notes deve indicar ritmo de cortes, zoom/pan, entrada de texto, pausa dramatica, sound design discreto, reforco do hook e onde inserir CTA;
 - nao gere imagem por API, nao mencione URL, nao crie video;
 - evite exageros teatrais, promessas absolutas e linguagem manipulativa;
 - mantenha fidelidade ao audio e ao trecho-base;
@@ -1499,6 +1542,7 @@ async function generateWithOpenAI(params: {
       mode: params.mode,
       hasReliableSegments: params.hasReliableSegments,
       transcriptionSegments: params.transcriptionSegments,
+      selectedCut: params.selectedCut,
     }),
   }
 }

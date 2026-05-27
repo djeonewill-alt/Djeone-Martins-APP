@@ -52,6 +52,7 @@ type ShortScriptTimelineItem = {
   purpose: string
   narration_focus: string
   on_screen_text: string
+  visual_direction: string
   motion_direction: string
   sound_design: string
 }
@@ -269,7 +270,7 @@ function formatShortScriptForCopy(script: ShortScript) {
     '',
     'Timeline:',
     ...script.timeline.map((item) => {
-      return `${item.start}-${item.end}s | ${item.purpose}\nFoco: ${item.narration_focus}\nTexto: ${item.on_screen_text}\nMotion: ${item.motion_direction}\nSom: ${item.sound_design}`
+      return `${item.start}-${item.end}s | ${item.purpose}\nFoco: ${item.narration_focus}\nTexto na tela: ${item.on_screen_text}\nDirecao visual: ${item.visual_direction}\nMotion: ${item.motion_direction}\nSom: ${item.sound_design}`
     }),
     '',
     'Legendas animadas:',
@@ -1081,7 +1082,8 @@ export default function AdminContentStudioPage() {
                               <p className="text-[11px] font-black text-cyan-200">{item.start}s - {item.end}s | {item.purpose}</p>
                               <p className="mt-2 text-xs leading-5 text-cyan-50/85">{item.narration_focus}</p>
                               <p className="mt-2 rounded-lg bg-cyan-500/10 p-2 text-xs font-black text-cyan-50">{item.on_screen_text}</p>
-                              <p className="mt-2 text-xs leading-5 text-slate-400">Motion: {item.motion_direction}</p>
+                              <p className="mt-2 text-xs leading-5 text-slate-400">Direcao visual: {item.visual_direction}</p>
+                              <p className="text-xs leading-5 text-slate-400">Motion: {item.motion_direction}</p>
                               <p className="text-xs leading-5 text-slate-400">Som: {item.sound_design}</p>
                             </div>
                           ))}
