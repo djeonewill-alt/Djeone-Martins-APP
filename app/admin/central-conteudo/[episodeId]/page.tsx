@@ -68,12 +68,35 @@ type ShortScript = {
   platform_goal: 'shorts_reels_tiktok'
   duration_seconds: number
   main_hook: string
+  hook_original?: string
+  hook_improved?: string
+  why_hook_improved?: string
+  suggested_opening_line?: string
+  why_opening_works?: string
   cliffhanger: string
   spiritual_point: string
   cta: string
+  retention_score?: number
+  score_breakdown?: {
+    hook_strength?: number
+    biblical_specificity?: number
+    visual_concreteness?: number
+    emotional_tension?: number
+    share_potential?: number
+    fidelity_to_audio?: number
+  }
   timeline: ShortScriptTimelineItem[]
   animated_caption_lines: string[]
+  caption_lines_improved?: string[]
   image_prompts: ShortScriptImagePrompt[]
+  visual_suggestions?: Array<{
+    start: number
+    end: number
+    visual_goal: string
+    scene_description: string
+    motion: string
+    sound_design: string
+  }>
   editing_notes: string[]
   auto_completed?: boolean
   auto_completed_note?: string
@@ -263,12 +286,25 @@ const generatingLabels: Record<GenerationMode, string> = {
 }
 
 function formatShortScriptForCopy(script: ShortScript) {
+  const scoreBreakdown = script.score_breakdown
+    ? Object.entries(script.score_breakdown)
+        .filter(([, value]) => typeof value === 'number')
+        .map(([key, value]) => `${key.replace(/_/g, ' ')}: ${value}/10`)
+    : []
+
   return [
     `Titulo: ${script.title}`,
     `Hook: ${script.main_hook}`,
+    script.hook_original ? `Hook original: ${script.hook_original}` : '',
+    script.hook_improved ? `Hook aprimorado: ${script.hook_improved}` : '',
+    script.why_hook_improved ? `Por que melhorou: ${script.why_hook_improved}` : '',
+    script.suggested_opening_line ? `Abertura sugerida: ${script.suggested_opening_line}` : '',
+    script.why_opening_works ? `Por que a abertura funciona: ${script.why_opening_works}` : '',
     `Cliffhanger: ${script.cliffhanger}`,
     `Ponto espiritual: ${script.spiritual_point}`,
     `CTA: ${script.cta}`,
+    typeof script.retention_score === 'number' ? `Nota de retencao: ${script.retention_score}/10` : '',
+    scoreBreakdown.length ? `Breakdown editorial:\n${scoreBreakdown.join('\n')}` : '',
     '',
     'Timeline:',
     ...script.timeline.map((item) => {
@@ -278,12 +314,20 @@ function formatShortScriptForCopy(script: ShortScript) {
     'Legendas animadas:',
     ...script.animated_caption_lines,
     '',
+    'Legendas aprimoradas:',
+    ...(script.caption_lines_improved || []),
+    '',
     'Prompts de imagem:',
     ...script.image_prompts.map((item) => `${item.moment} (${item.use_for_seconds})\n${item.prompt}`),
     '',
+    'Sugestoes visuais:',
+    ...(script.visual_suggestions || []).map((item) => {
+      return `${item.start}-${item.end}s | ${item.visual_goal}\nCena: ${item.scene_description}\nMotion: ${item.motion}\nSom: ${item.sound_design}`
+    }),
+    '',
     'Notas de edicao:',
     ...script.editing_notes,
-  ].join('\n')
+  ].filter(Boolean).join('\n')
 }
 
 function isHookCut(cut: CutSuggestion) {
@@ -1060,6 +1104,70 @@ export default function AdminContentStudioPage() {
                         <p className="mt-1 text-sm font-black text-white">{contentAssets.short_script.title}</p>
                       </div>
 
+                      {(contentAssets.short_script.hook_original ||
+                        contentAssets.short_script.hook_improved ||
+                        contentAssets.short_script.suggested_opening_line ||
+                        typeof contentAssets.short_script.retention_score === 'number') && (
+                        <div className="rounded-xl border border-cyan-200/10 bg-slate-950/50 p-3">
+                          <h3 className="text-xs font-black text-cyan-50">Camada editorial de retencao</h3>
+                          <div className="mt-3 grid gap-3 md:grid-cols-2">
+                            {contentAssets.short_script.hook_original && (
+                              <div className="rounded-lg border border-white/10 bg-white/[0.04] p-3">
+                                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100/70">Hook original</p>
+                                <p className="mt-2 text-xs font-bold leading-5 text-cyan-50">{contentAssets.short_script.hook_original}</p>
+                              </div>
+                            )}
+                            {contentAssets.short_script.hook_improved && (
+                              <div className="rounded-lg border border-white/10 bg-white/[0.04] p-3">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100/70">Hook aprimorado</p>
+                                  <CopyButton value={contentAssets.short_script.hook_improved} />
+                                </div>
+                                <p className="mt-2 text-xs font-bold leading-5 text-cyan-50">{contentAssets.short_script.hook_improved}</p>
+                              </div>
+                            )}
+                            {contentAssets.short_script.suggested_opening_line && (
+                              <div className="rounded-lg border border-white/10 bg-white/[0.04] p-3">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100/70">Abertura sugerida</p>
+                                  <CopyButton value={contentAssets.short_script.suggested_opening_line} />
+                                </div>
+                                <p className="mt-2 text-xs font-bold leading-5 text-cyan-50">{contentAssets.short_script.suggested_opening_line}</p>
+                              </div>
+                            )}
+                            {typeof contentAssets.short_script.retention_score === 'number' && (
+                              <div className="rounded-lg border border-white/10 bg-white/[0.04] p-3">
+                                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100/70">Nota de retencao</p>
+                                <p className="mt-2 text-xl font-black text-cyan-50">{contentAssets.short_script.retention_score}/10</p>
+                              </div>
+                            )}
+                          </div>
+                          {contentAssets.short_script.why_hook_improved && (
+                            <p className="mt-3 text-xs leading-5 text-cyan-50/80">
+                              <span className="font-black text-cyan-100">Por que o hook melhorou: </span>
+                              {contentAssets.short_script.why_hook_improved}
+                            </p>
+                          )}
+                          {contentAssets.short_script.why_opening_works && (
+                            <p className="mt-2 text-xs leading-5 text-cyan-50/80">
+                              <span className="font-black text-cyan-100">Por que a abertura funciona: </span>
+                              {contentAssets.short_script.why_opening_works}
+                            </p>
+                          )}
+                          {contentAssets.short_script.score_breakdown && (
+                            <div className="mt-3 grid gap-2 text-xs font-bold text-cyan-50/80 sm:grid-cols-2 lg:grid-cols-3">
+                              {Object.entries(contentAssets.short_script.score_breakdown).map(([key, value]) => (
+                                typeof value === 'number' ? (
+                                  <p key={key} className="rounded-lg bg-cyan-500/10 p-2">
+                                    {key.replace(/_/g, ' ')}: {value}/10
+                                  </p>
+                                ) : null
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       <div className="grid gap-3 md:grid-cols-2">
                         <div className="rounded-xl border border-cyan-200/10 bg-slate-950/50 p-3">
                           <div className="flex items-center justify-between gap-2">
@@ -1112,6 +1220,22 @@ export default function AdminContentStudioPage() {
                         </div>
                       </div>
 
+                      {contentAssets.short_script.caption_lines_improved && contentAssets.short_script.caption_lines_improved.length > 0 && (
+                        <div className="rounded-xl border border-cyan-200/10 bg-slate-950/50 p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <h3 className="text-xs font-black text-cyan-50">Legendas aprimoradas</h3>
+                            <CopyButton value={contentAssets.short_script.caption_lines_improved.join('\n')} />
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {contentAssets.short_script.caption_lines_improved.map((line, index) => (
+                              <span key={`${line}-${index}`} className="rounded-full border border-emerald-300/20 bg-emerald-500/10 px-2 py-1 text-[11px] font-bold text-emerald-100">
+                                {line}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       <div className="rounded-xl border border-cyan-200/10 bg-slate-950/50 p-3">
                         <div className="flex items-center justify-between gap-2">
                           <h3 className="text-xs font-black text-cyan-50">Prompts de imagem</h3>
@@ -1126,6 +1250,22 @@ export default function AdminContentStudioPage() {
                           ))}
                         </div>
                       </div>
+
+                      {contentAssets.short_script.visual_suggestions && contentAssets.short_script.visual_suggestions.length > 0 && (
+                        <div className="rounded-xl border border-cyan-200/10 bg-slate-950/50 p-3">
+                          <h3 className="text-xs font-black text-cyan-50">Sugestoes visuais</h3>
+                          <div className="mt-3 grid gap-2">
+                            {contentAssets.short_script.visual_suggestions.map((item, index) => (
+                              <div key={`${item.start}-${item.end}-${index}`} className="rounded-lg border border-white/10 bg-white/[0.04] p-3">
+                                <p className="text-[11px] font-black text-cyan-200">{item.start}s - {item.end}s | {item.visual_goal}</p>
+                                <p className="mt-2 text-xs leading-5 text-slate-300">{item.scene_description}</p>
+                                <p className="mt-2 text-xs leading-5 text-slate-400">Motion: {item.motion}</p>
+                                <p className="text-xs leading-5 text-slate-400">Som: {item.sound_design}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       <div className="grid gap-3 md:grid-cols-2">
                         <div className="rounded-xl border border-cyan-200/10 bg-slate-950/50 p-3">

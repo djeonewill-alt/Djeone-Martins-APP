@@ -59,12 +59,35 @@ type ShortScript = {
   platform_goal: 'shorts_reels_tiktok'
   duration_seconds: number
   main_hook: string
+  hook_original?: string
+  hook_improved?: string
+  why_hook_improved?: string
+  suggested_opening_line?: string
+  why_opening_works?: string
   cliffhanger: string
   spiritual_point: string
   cta: string
+  retention_score?: number
+  score_breakdown?: {
+    hook_strength?: number
+    biblical_specificity?: number
+    visual_concreteness?: number
+    emotional_tension?: number
+    share_potential?: number
+    fidelity_to_audio?: number
+  }
   timeline: ShortScriptTimelineItem[]
   animated_caption_lines: string[]
+  caption_lines_improved?: string[]
   image_prompts: ShortScriptImagePrompt[]
+  visual_suggestions?: Array<{
+    start: number
+    end: number
+    visual_goal: string
+    scene_description: string
+    motion: string
+    sound_design: string
+  }>
   editing_notes: string[]
   auto_completed?: boolean
   auto_completed_note?: string
@@ -645,16 +668,32 @@ function normalizeShortScript(input: unknown): ShortScript | undefined {
     platform_goal?: unknown
     duration_seconds?: unknown
     main_hook?: unknown
+    hook_original?: unknown
+    hook_improved?: unknown
+    why_hook_improved?: unknown
+    suggested_opening_line?: unknown
+    why_opening_works?: unknown
     cliffhanger?: unknown
     spiritual_point?: unknown
     cta?: unknown
+    retention_score?: unknown
+    score_breakdown?: unknown
     timeline?: unknown
     animated_caption_lines?: unknown
+    caption_lines_improved?: unknown
     image_prompts?: unknown
+    visual_suggestions?: unknown
     editing_notes?: unknown
     quality_check?: unknown
   }
   const qualityCheck = (value.quality_check || {}) as Record<string, unknown>
+  const scoreBreakdown = (value.score_breakdown || {}) as Record<string, unknown>
+  const normalizeScore = (score: unknown) => {
+    const numericScore = Number(score)
+    return Number.isFinite(numericScore)
+      ? Math.max(1, Math.min(10, Math.round(numericScore)))
+      : undefined
+  }
   const timeline = Array.isArray(value.timeline)
     ? value.timeline
         .map((item) => {
@@ -696,20 +735,68 @@ function normalizeShortScript(input: unknown): ShortScript | undefined {
         .filter((item) => item.moment && item.prompt && item.use_for_seconds)
         .slice(0, 6)
     : []
+  const captionLinesImproved = normalizeStringArray(value.caption_lines_improved, 20, 80).filter((line) => {
+    const wordCount = countWords(line)
+    return wordCount >= 3 && wordCount <= 7
+  })
+  const visualSuggestions = Array.isArray(value.visual_suggestions)
+    ? value.visual_suggestions
+        .map((item) => {
+          const visualSuggestion = item as Record<string, unknown>
+          return {
+            start: Number(visualSuggestion.start),
+            end: Number(visualSuggestion.end),
+            visual_goal: cleanText(String(visualSuggestion.visual_goal || '')).slice(0, 140),
+            scene_description: cleanText(String(visualSuggestion.scene_description || '')).slice(0, 260),
+            motion: cleanText(String(visualSuggestion.motion || '')).slice(0, 160),
+            sound_design: cleanText(String(visualSuggestion.sound_design || '')).slice(0, 160),
+          }
+        })
+        .filter((item) => {
+          return (
+            Number.isFinite(item.start) &&
+            Number.isFinite(item.end) &&
+            item.end > item.start &&
+            item.visual_goal &&
+            item.scene_description &&
+            item.motion &&
+            item.sound_design
+          )
+        })
+        .slice(0, 8)
+    : []
+  const normalizedScoreBreakdown = {
+    hook_strength: normalizeScore(scoreBreakdown.hook_strength),
+    biblical_specificity: normalizeScore(scoreBreakdown.biblical_specificity),
+    visual_concreteness: normalizeScore(scoreBreakdown.visual_concreteness),
+    emotional_tension: normalizeScore(scoreBreakdown.emotional_tension),
+    share_potential: normalizeScore(scoreBreakdown.share_potential),
+    fidelity_to_audio: normalizeScore(scoreBreakdown.fidelity_to_audio),
+  }
+  const hasScoreBreakdown = Object.values(normalizedScoreBreakdown).some((score) => typeof score === 'number')
   const script = {
     title: cleanText(String(value.title || '')).slice(0, 140),
     platform_goal: 'shorts_reels_tiktok' as const,
     duration_seconds: Math.max(15, Math.min(90, Math.round(Number(value.duration_seconds) || 45))),
     main_hook: cleanText(String(value.main_hook || '')).slice(0, 220),
+    hook_original: cleanText(String(value.hook_original || '')).slice(0, 220) || undefined,
+    hook_improved: cleanText(String(value.hook_improved || '')).slice(0, 220) || undefined,
+    why_hook_improved: cleanText(String(value.why_hook_improved || '')).slice(0, 320) || undefined,
+    suggested_opening_line: cleanText(String(value.suggested_opening_line || '')).slice(0, 220) || undefined,
+    why_opening_works: cleanText(String(value.why_opening_works || '')).slice(0, 320) || undefined,
     cliffhanger: cleanText(String(value.cliffhanger || '')).slice(0, 220),
     spiritual_point: cleanText(String(value.spiritual_point || '')).slice(0, 260),
     cta: cleanText(String(value.cta || '')).slice(0, 180),
+    retention_score: normalizeScore(value.retention_score),
+    score_breakdown: hasScoreBreakdown ? normalizedScoreBreakdown : undefined,
     timeline,
     animated_caption_lines: normalizeStringArray(value.animated_caption_lines, 20, 80).filter((line) => {
       const wordCount = countWords(line)
       return wordCount >= 3 && wordCount <= 7
     }),
+    caption_lines_improved: captionLinesImproved,
     image_prompts: imagePrompts,
+    visual_suggestions: visualSuggestions,
     editing_notes: normalizeStringArray(value.editing_notes, 8, 180),
     auto_completed: false,
     auto_completed_note: undefined,
@@ -827,11 +914,42 @@ function completeShortScriptFallbacks(script: ShortScript, selectedCut?: CutSugg
 
   let autoCompleted = false
   const minCaptionLines = script.duration_seconds <= 35 ? 7 : script.duration_seconds <= 45 ? 8 : 12
+  const originalHook = cleanText(selectedCut.hook || script.main_hook)
+
+  if (!script.hook_original) {
+    script.hook_original = originalHook || script.main_hook
+  }
+
+  if (!script.hook_improved) {
+    script.hook_improved = script.main_hook
+  }
+
+  if (!script.suggested_opening_line) {
+    script.suggested_opening_line = script.hook_improved || script.main_hook
+  }
 
   if (script.animated_caption_lines.length < minCaptionLines) {
     const fallbackLines = buildCaptionFallbacks(selectedCut, minCaptionLines)
     script.animated_caption_lines = [...script.animated_caption_lines, ...fallbackLines]
       .filter((line, index, lines) => lines.indexOf(line) === index)
+      .slice(0, script.duration_seconds <= 35 ? 10 : script.duration_seconds <= 45 ? 14 : 18)
+    autoCompleted = true
+  }
+
+  if (!script.caption_lines_improved || script.caption_lines_improved.length < minCaptionLines) {
+    const fallbackLines = buildCaptionFallbacks(selectedCut, minCaptionLines)
+    const improvedSeed = [
+      ...splitCaptionFallbackText(script.hook_original || originalHook),
+      ...splitCaptionFallbackText(script.hook_improved || script.main_hook),
+      ...fallbackLines,
+    ]
+
+    script.caption_lines_improved = improvedSeed
+      .map((line) => cleanText(line).slice(0, 80))
+      .filter((line, index, lines) => {
+        const wordCount = countWords(line)
+        return wordCount >= 3 && wordCount <= 7 && lines.indexOf(line) === index
+      })
       .slice(0, script.duration_seconds <= 35 ? 10 : script.duration_seconds <= 45 ? 14 : 18)
     autoCompleted = true
   }
@@ -1352,9 +1470,23 @@ Gere somente short_script a partir do selected_cut informado.
       "platform_goal": "shorts_reels_tiktok",
       "duration_seconds": 45,
       "main_hook": "gancho forte para os primeiros 3 segundos",
+      "hook_original": "ideia real do gancho no corte",
+      "hook_improved": "versao mais concreta, visual e fiel ao audio",
+      "why_hook_improved": "por que a versao aprimorada prende mais atencao",
+      "suggested_opening_line": "frase conversacional para abrir o Short",
+      "why_opening_works": "por que a abertura gera curiosidade e tensao",
       "cliffhanger": "curiosidade espiritual que sustenta a retencao",
       "spiritual_point": "aplicacao espiritual fiel ao trecho",
       "cta": "chamada suave sem cara de propaganda",
+      "retention_score": 8,
+      "score_breakdown": {
+        "hook_strength": 8,
+        "biblical_specificity": 8,
+        "visual_concreteness": 8,
+        "emotional_tension": 7,
+        "share_potential": 7,
+        "fidelity_to_audio": 9
+      },
       "timeline": [
         {
           "start": 0,
@@ -1368,11 +1500,22 @@ Gere somente short_script a partir do selected_cut informado.
         }
       ],
       "animated_caption_lines": ["linha curta animavel", "3 a 7 palavras"],
+      "caption_lines_improved": ["linha curta recomendada", "3 a 7 palavras"],
       "image_prompts": [
         {
           "moment": "momento visual",
           "prompt": "prompt cinematografico vertical 9:16, fiel ao tema, sem exagero teatral",
           "use_for_seconds": "0-5s"
+        }
+      ],
+      "visual_suggestions": [
+        {
+          "start": 0,
+          "end": 5,
+          "visual_goal": "objetivo visual do bloco",
+          "scene_description": "cena concreta e fiel ao trecho",
+          "motion": "zoom lento ou pan leve",
+          "sound_design": "impacto suave ou pausa discreta"
         }
       ],
       "editing_notes": ["nota pratica de edicao"],
@@ -1507,6 +1650,7 @@ REGRAS PARA CORTES SEM TIMESTAMP:
     params.mode === 'short_script'
       ? `
 REGRAS PARA ROTEIRO DE SHORT:
+- aja como editor de retencao para Shorts/Reels/TikTok, roteirista biblico-devocional, editor pastoral fiel ao audio e estrategista de conteudo curto;
 - use exclusivamente o selected_cut como base editorial principal;
 - duracao real do corte: ${selectedCutDuration}s;
 - short_script.duration_seconds deve ser exatamente ${selectedCutDuration};
@@ -1515,8 +1659,19 @@ REGRAS PARA ROTEIRO DE SHORT:
 - nao faca roteiro generico;
 - transforme o corte em mini-mensagem com comeco, tensao e fechamento;
 - o hook precisa prender nos primeiros 3 segundos;
+- gere hook_original preservando a ideia real do selected_cut;
+- gere hook_improved melhorando a forma do gancho sem inventar doutrina, fato ou cena fora do audio;
+- hook_improved deve ser mais visual, concreto, biblico, memoravel, com contraste e facil de entender nos primeiros 3 segundos;
+- hook_improved pode reorganizar palavras, mas precisa nascer do selected_cut ou source_excerpt;
+- exemplo de melhoria fiel: hook_original "A presenca de Deus nao estava no templo."; hook_improved "Jerusalem tinha o templo. Jesus dormia em Betania.";
+- em why_hook_improved, explique por que ficou mais concreto, visual, memoravel e com contraste imediato;
+- gere suggested_opening_line como frase conversacional para os primeiros segundos, por exemplo "Voce sabe onde Jesus dormia quando ia a Jerusalem?", "E se a presenca de Deus estivesse mais perto dos aflitos do que do templo?" ou "Jerusalem tinha o templo, mas Jesus escolheu repousar em Betania.";
+- gere why_opening_works explicando se a abertura cria curiosidade, abre tensao, traz contraste e faz a pessoa querer ouvir a continuacao;
 - o cliffhanger deve criar curiosidade espiritual sem manipular emocionalmente;
+- evite cliffhanger generico como "O que isso significa?" ou "Descubra agora";
+- prefira cliffhanger com tensao espiritual real, como "Mas por que o Deus encarnado escolheria a casa da aflicao?" ou "O que havia em Betania que atraia tanto o coracao de Jesus?";
 - o CTA deve ser suave, pastoral e sem parecer propaganda;
+- evite exigir imagem do aplicativo; prefira CTA em texto na tela;
 - use CTA conectado ao app/devocional, como "Ouça o devocional completo no app" ou "Receba uma Palavra todos os dias";
 - legenda animada deve ser curta, com 3 a 7 palavras por linha;
 - animated_caption_lines e obrigatorio e precisa ter quantidade suficiente;
@@ -1524,10 +1679,17 @@ REGRAS PARA ROTEIRO DE SHORT:
 - para cortes de 35 a 45s, gere 8 a 14 linhas;
 - para cortes de 45 a 60s, gere 12 a 18 linhas;
 - as legendas devem seguir o sentido do audio e priorizar frases fortes do selected_cut;
+- gere caption_lines_improved alem de animated_caption_lines;
+- caption_lines_improved deve comecar com o hook ou hook_improved, preservar o contraste principal do corte, usar frases de 3 a 7 palavras e ritmo de video curto;
+- nao substitua o hook forte por frases genericas como "Jesus e nosso consolo", "A presenca de Deus esta aqui" ou "Jesus transforma nossa dor" quando a frase central do corte for mais forte;
+- para Betania/templo, priorize linhas como "Jerusalem tinha o templo", "Mas Jesus dormia em Betania", "Com o pobre", "Com o aflito", "Na casa da aflicao";
+- gere retention_score de 1 a 10 e score_breakdown honesto de 1 a 10 para hook_strength, biblical_specificity, visual_concreteness, emotional_tension, share_potential e fidelity_to_audio;
+- nao de 10 para tudo automaticamente;
 - on_screen_text tambem deve ter 3 a 7 palavras;
 - cada item da timeline deve ter visual_direction concreto, com cenario, contraste visual ou acao visual;
 - evite frases genericas como "Explorar a relacao", "Aplicar a mensagem" ou "Encerrar com convite";
 - prefira instrucoes concretas: "Mostrar contraste entre templo e casa simples em Betania"; "Texto entra em duas etapas"; "Pausa dramatica antes de Betania";
+- gere visual_suggestions por blocos do video, com start, end, visual_goal, scene_description, motion e sound_design;
 - instrucoes de motion devem ser simples: zoom lento, leve pan, blur suave, entrada de texto, pausa dramatica;
 - sound design deve ser discreto: impacto suave, ambiente leve, riser curto, pausa, transicao;
 - image_prompts e obrigatorio e deve ter 2 a 4 prompts completos;
