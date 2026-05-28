@@ -169,7 +169,7 @@ export async function POST(request: NextRequest) {
 
     if (!audioUrl) {
       return NextResponse.json(
-        { error: 'Envie a URL do áudio para transcrever.' },
+        { error: 'URL de áudio não informada para transcrição.' },
         { status: 400 }
       )
     }

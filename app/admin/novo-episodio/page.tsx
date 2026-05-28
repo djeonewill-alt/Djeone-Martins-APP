@@ -130,6 +130,8 @@ function getRoundedFutureDateTime(minutesAhead: number) {
 }
 
 const MAX_COMPATIBLE_AUDIO_BYTES = 4.5 * 1024 * 1024
+const TRANSCRIPTION_COMPATIBLE_AUDIO_WARNING =
+  'Antes de transcrever, gere o MP3 compativel. Isso garante que a legenda fique sincronizada com o audio publicado.'
 
 function isSmallMp3Audio(data: AudioUploadResponse, fallbackSizeBytes = 0) {
   const contentType = (data.contentType || data.type || '').toLowerCase()
@@ -327,6 +329,18 @@ export default function NovoEpisodio() {
     setSelectedDailyQuote('')
     setCorrectionNote('')
     resetCardData()
+  }
+
+  const getTranscriptionAudioUrl = () => {
+    if (audioUrlCompatible) {
+      return audioUrlCompatible
+    }
+
+    if (audioUrl && audioCompatibleType.toLowerCase() === 'audio/mpeg') {
+      return audioUrl
+    }
+
+    return ''
   }
 
   const applyAudioUploadMetadata = (data: AudioUploadResponse) => {
@@ -716,6 +730,13 @@ export default function NovoEpisodio() {
       return
     }
 
+    const transcriptionAudioUrl = getTranscriptionAudioUrl()
+
+    if (!transcriptionAudioUrl) {
+      alert(TRANSCRIPTION_COMPATIBLE_AUDIO_WARNING)
+      return
+    }
+
     setTranscribing(true)
 
     try {
@@ -725,7 +746,7 @@ export default function NovoEpisodio() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          audioUrl,
+          audioUrl: transcriptionAudioUrl,
         }),
       })
 
@@ -858,6 +879,13 @@ export default function NovoEpisodio() {
       return
     }
 
+    const transcriptionAudioUrl = getTranscriptionAudioUrl()
+
+    if (!transcriptionAudioUrl) {
+      alert(TRANSCRIPTION_COMPATIBLE_AUDIO_WARNING)
+      return
+    }
+
     setTranscribing(true)
     setGeneratingQuote(true)
 
@@ -868,7 +896,7 @@ export default function NovoEpisodio() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          audioUrl,
+          audioUrl: transcriptionAudioUrl,
         }),
       })
 
