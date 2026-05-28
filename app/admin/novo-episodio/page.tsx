@@ -119,6 +119,33 @@ type PersistTranscriptionWordsResponse = {
   error?: string
 }
 
+type PremiumImagePromptResponse = {
+  success?: boolean
+  model?: string
+  title?: string
+  visual_theme?: {
+    scene?: string
+    central_focus?: string
+    atmosphere?: string
+    background?: string
+    lighting?: string
+    color_palette?: string
+    theological_meaning?: string
+  }
+  background_prompt?: string
+  full_prompt_with_text?: string
+  text_overlay?: {
+    top?: string
+    main_title?: string
+    subtitle?: string
+    bottom_quote?: string
+  }
+  negative_prompt?: string
+  keywords?: string[]
+  warning?: string
+  error?: string
+}
+
 function getLocalDateString() {
   const now = new Date()
   const year = now.getFullYear()
@@ -378,6 +405,8 @@ export default function NovoEpisodio() {
 
   const [cardOptions, setCardOptions] = useState<CardOption[]>([])
   const [selectedCardIndex, setSelectedCardIndex] = useState<number | null>(null)
+  const [generatingPremiumImagePrompt, setGeneratingPremiumImagePrompt] = useState(false)
+  const [premiumImagePrompt, setPremiumImagePrompt] = useState<PremiumImagePromptResponse | null>(null)
 
   const [formData, setFormData] = useState({
     series_id: '',
@@ -900,6 +929,92 @@ export default function NovoEpisodio() {
     setSelectedEpisodeThumbnailIndex(index)
     setEpisodeImageUrl(image.url)
     setUseSeriesImage(false)
+  }
+
+  const copyPromptText = async (label: string, text: string) => {
+    const value = text.trim()
+
+    if (!value) {
+      alert('Nada para copiar ainda.')
+      return
+    }
+
+    try {
+      await navigator.clipboard.writeText(value)
+      alert(`${label} copiado.`)
+    } catch (error) {
+      console.error('Erro ao copiar prompt:', error)
+      alert('Nao foi possivel copiar automaticamente. Selecione o texto manualmente.')
+    }
+  }
+
+  const getSelectedQuotePromptContext = () => {
+    const selectedSuggestion =
+      selectedSuggestionIndex !== null
+        ? quoteSuggestions[selectedSuggestionIndex]
+        : null
+    const display = selectedSuggestion
+      ? getSuggestionDisplayData(selectedSuggestion)
+      : null
+
+    return {
+      selectedQuote: selectedDailyQuote.trim() || display?.quoteText || '',
+      sourceExcerpt: display?.sourceExcerpt || '',
+      reason: display?.reason || '',
+      specificityReason: display?.specificityReason || '',
+    }
+  }
+
+  const handleGeneratePremiumImagePrompt = async () => {
+    const quoteContext = getSelectedQuotePromptContext()
+    const hasContext =
+      formData.title.trim().length > 0 ||
+      formData.description.trim().length > 0 ||
+      formData.bible_reference.trim().length > 0 ||
+      quoteContext.selectedQuote.length > 0 ||
+      transcriptionText.trim().length > 100
+
+    if (!hasContext) {
+      alert('Preencha titulo, referencia, frase escolhida ou transcricao antes de gerar o prompt premium.')
+      return
+    }
+
+    setGeneratingPremiumImagePrompt(true)
+
+    try {
+      const response = await fetch('/api/ai/generate-image-prompt', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: formData.title,
+          bibleReference: formData.bible_reference,
+          description: formData.description,
+          selectedQuote: quoteContext.selectedQuote,
+          sourceExcerpt: quoteContext.sourceExcerpt,
+          reason: quoteContext.reason,
+          specificityReason: quoteContext.specificityReason,
+          transcriptionText,
+          format: 'episode_cover',
+          includeTextOverlay: true,
+        }),
+      })
+
+      const data = (await response.json()) as PremiumImagePromptResponse
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Erro ao gerar prompt premium.')
+      }
+
+      setPremiumImagePrompt(data)
+      alert('Prompt premium gerado. Nenhuma imagem foi criada.')
+    } catch (error) {
+      console.error('Erro ao gerar prompt premium:', error)
+      alert(`Erro ao gerar prompt premium: ${getErrorMessage(error)}`)
+    } finally {
+      setGeneratingPremiumImagePrompt(false)
+    }
   }
 
   const handleTranscribeAudio = async () => {
@@ -2318,6 +2433,174 @@ export default function NovoEpisodio() {
                         </div>
                       </button>
                     ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h5 className="text-sm font-bold text-white">
+                      Prompt premium de imagem
+                    </h5>
+
+                    <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                      Gera apenas o texto do prompt cinematografico. Nenhuma imagem sera criada aqui.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleGeneratePremiumImagePrompt}
+                  disabled={generatingPremiumImagePrompt}
+                  className="mt-4 w-full rounded-lg bg-indigo-600 py-3 text-sm font-bold text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {generatingPremiumImagePrompt
+                    ? 'Gerando prompt premium...'
+                    : 'Gerar prompt premium'}
+                </button>
+
+                {premiumImagePrompt && (
+                  <div className="mt-4 space-y-4">
+                    <div className="rounded-lg border border-indigo-500/20 bg-indigo-500/10 p-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-indigo-200">
+                        Titulo visual sugerido
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-white">
+                        {premiumImagePrompt.title || 'Capa premium do episodio'}
+                      </p>
+                      {premiumImagePrompt.warning && (
+                        <p className="mt-2 text-xs leading-relaxed text-indigo-100">
+                          {premiumImagePrompt.warning}
+                        </p>
+                      )}
+                    </div>
+
+                    {premiumImagePrompt.visual_theme && (
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        {[
+                          ['Cena', premiumImagePrompt.visual_theme.scene],
+                          ['Foco central', premiumImagePrompt.visual_theme.central_focus],
+                          ['Atmosfera', premiumImagePrompt.visual_theme.atmosphere],
+                          ['Iluminacao', premiumImagePrompt.visual_theme.lighting],
+                          ['Paleta', premiumImagePrompt.visual_theme.color_palette],
+                          ['Significado teologico', premiumImagePrompt.visual_theme.theological_meaning],
+                        ].map(([label, value]) => (
+                          value ? (
+                            <div key={label} className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                {label}
+                              </p>
+                              <p className="mt-1 text-xs leading-relaxed text-slate-300">
+                                {value}
+                              </p>
+                            </div>
+                          ) : null
+                        ))}
+                      </div>
+                    )}
+
+                    <div>
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <p className="text-xs font-semibold text-slate-300">
+                          Prompt recomendado para gerar fundo sem texto
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => copyPromptText('Prompt sem texto', premiumImagePrompt.background_prompt || '')}
+                          className="rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1 text-xs font-semibold text-indigo-100 hover:bg-indigo-500/20"
+                        >
+                          Copiar prompt sem texto
+                        </button>
+                      </div>
+                      <textarea
+                        readOnly
+                        value={premiumImagePrompt.background_prompt || ''}
+                        className="h-44 w-full rounded-lg border border-slate-700 bg-slate-900 p-3 text-xs leading-relaxed text-slate-200 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <p className="text-xs font-semibold text-slate-300">
+                          Prompt completo com texto integrado
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => copyPromptText('Prompt com texto', premiumImagePrompt.full_prompt_with_text || '')}
+                          className="rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1 text-xs font-semibold text-indigo-100 hover:bg-indigo-500/20"
+                        >
+                          Copiar prompt com texto
+                        </button>
+                      </div>
+                      <textarea
+                        readOnly
+                        value={premiumImagePrompt.full_prompt_with_text || ''}
+                        className="h-44 w-full rounded-lg border border-slate-700 bg-slate-900 p-3 text-xs leading-relaxed text-slate-200 outline-none"
+                      />
+                    </div>
+
+                    {premiumImagePrompt.text_overlay && (
+                      <div>
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <p className="text-xs font-semibold text-slate-300">
+                            Text overlay sugerido
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => copyPromptText('Overlay', JSON.stringify(premiumImagePrompt.text_overlay, null, 2))}
+                            className="rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1 text-xs font-semibold text-indigo-100 hover:bg-indigo-500/20"
+                          >
+                            Copiar overlay
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          {[
+                            ['Topo', premiumImagePrompt.text_overlay.top],
+                            ['Titulo', premiumImagePrompt.text_overlay.main_title],
+                            ['Subtitulo', premiumImagePrompt.text_overlay.subtitle],
+                            ['Frase inferior', premiumImagePrompt.text_overlay.bottom_quote],
+                          ].map(([label, value]) => (
+                            <div key={label} className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                {label}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-300">
+                                {value || '-'}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <p className="text-xs font-semibold text-slate-300">
+                        Negative prompt
+                      </p>
+                      <p className="mt-1 rounded-lg border border-slate-800 bg-slate-900/70 p-3 text-xs leading-relaxed text-slate-300">
+                        {premiumImagePrompt.negative_prompt || '-'}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-semibold text-slate-300">
+                        Keywords
+                      </p>
+                      <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                        {(premiumImagePrompt.keywords || []).join(', ') || '-'}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => copyPromptText('Prompt completo', JSON.stringify(premiumImagePrompt, null, 2))}
+                      className="w-full rounded-lg border border-indigo-400/30 bg-indigo-500/10 py-2 text-xs font-bold text-indigo-100 hover:bg-indigo-500/20"
+                    >
+                      Copiar tudo
+                    </button>
                   </div>
                 )}
               </div>
