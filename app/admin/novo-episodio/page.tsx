@@ -5,7 +5,6 @@ import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import AudioRecorder from '@/components/recorder/AudioRecorder'
-import { convertRecordingToMp3 } from '@/lib/audio/convertRecordingToMp3'
 import type { DailyQuoteSuggestion } from '@/lib/supabase'
 import { CARD_TEMPLATES, dataUrlToBlob, formatQuoteTextForDisplay, generateCardDataUrl, type CardTemplate } from '@/lib/daily-quote-card-generator'
 
@@ -78,7 +77,16 @@ type ConvertToMp3Response = {
   compatibleKey?: string
   compatibleType?: 'audio/mpeg'
   sizeBytes?: number
+  sizeMb?: number
   bitrate?: string
+  maxSizeBytes?: number
+  withinLimit?: boolean
+  attempts?: Array<{
+    bitrate: string
+    sizeBytes?: number
+    withinLimit: boolean
+    error?: string
+  }>
   error?: string
 }
 
@@ -391,8 +399,10 @@ export default function NovoEpisodio() {
   }
 
   const handleGenerateCompatibleAudio = async () => {
-    if (!recordingBlob) {
-      alert('Não encontrei a gravação original neste navegador. Grave novamente ou envie um MP3/M4A.')
+    const sourceUrl = audioOriginalUrl || audioUrl
+
+    if (!sourceUrl) {
+      alert('Nenhum audio original foi encontrado para converter.')
       return
     }
 
@@ -401,73 +411,46 @@ export default function NovoEpisodio() {
     setIsGeneratingCompatibleAudio(true)
 
     try {
-      const sourceUrl = audioOriginalUrl || audioUrl
-      let serverErrorMessage = ''
+      const response = await fetch('/api/admin/audio/convert-to-mp3', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sourceUrl,
+          sourceKey: audioOriginalKey || null,
+        }),
+      })
+      const data = (await response.json()) as ConvertToMp3Response
 
-      if (sourceUrl) {
-        try {
-          const response = await fetch('/api/admin/audio/convert-to-mp3', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              sourceUrl,
-              sourceKey: audioOriginalKey || null,
-            }),
-          })
-          const data = (await response.json()) as ConvertToMp3Response
-
-          if (!response.ok || !data.success || !data.compatibleUrl) {
-            throw new Error(data.error || 'Nao foi possivel converter o audio no servidor.')
-          }
-
-          setAudioUrl(data.compatibleUrl)
-          setAudioUrlCompatible(data.compatibleUrl)
-          setAudioCompatibleType(data.compatibleType || 'audio/mpeg')
-          setAudioCompatibleSizeBytes(data.sizeBytes || 0)
-          setUploadedAudioContentType(data.compatibleType || 'audio/mpeg')
-          setIsAudioCompatible(true)
-          setAudioCompatibilityWarning('')
-          resetAutomationData()
-
-          alert('MP3 compativel gerado no servidor com sucesso. Agora este audio pode ser publicado no iPhone, Android e computador.')
-          return
-        } catch (serverError) {
-          serverErrorMessage = getErrorMessage(serverError)
-          console.error('Erro ao gerar MP3 compatÃ­vel no servidor:', serverError)
-        }
+      if (!response.ok || !data.success || !data.compatibleUrl) {
+        throw new Error(data.error || 'Nao foi possivel converter o audio no servidor.')
       }
 
-      if (serverErrorMessage) {
-        console.warn('Server-side MP3 conversion failed; trying client fallback:', serverErrorMessage)
-      }
-
-      const mp3Audio = await convertRecordingToMp3(recordingBlob)
-      const uploadData = await uploadAudioDirectToR2(
-        mp3Audio.blob,
-        `recording-compatible-${Date.now()}.mp3`,
-        'audio'
-      )
-
-      if (!uploadData.url) {
-        throw new Error(uploadData.error || 'Erro ao enviar MP3 compatível.')
-      }
-
-      setAudioUrl(uploadData.url)
-      setAudioUrlCompatible(uploadData.compatibleAudioUrl || uploadData.url)
-      setAudioCompatibleType(uploadData.compatibleAudioType || mp3Audio.mimeType)
-      setAudioCompatibleSizeBytes(mp3Audio.sizeBytes)
-      setUploadedAudioContentType(mp3Audio.mimeType)
+      setAudioUrl(data.compatibleUrl)
+      setAudioUrlCompatible(data.compatibleUrl)
+      setAudioCompatibleType(data.compatibleType || 'audio/mpeg')
+      setAudioCompatibleSizeBytes(data.sizeBytes || 0)
+      setUploadedAudioContentType(data.compatibleType || 'audio/mpeg')
       setIsAudioCompatible(true)
       setAudioCompatibilityWarning('')
-      setAudioDuration(Math.round(mp3Audio.durationSeconds || audioDuration))
       resetAutomationData()
 
-      alert('MP3 compatível gerado com sucesso. Agora este áudio pode ser publicado no iPhone, Android e computador.')
+      const sizeMb = typeof data.sizeMb === 'number'
+        ? data.sizeMb.toFixed(2)
+        : ((data.sizeBytes || 0) / 1024 / 1024).toFixed(2)
+      const bitrate = data.bitrate || '64k'
+      const aboveLimitAttempts = (data.attempts || [])
+        .filter((attempt) => attempt.sizeBytes && !attempt.withinLimit)
+        .map((attempt) => attempt.bitrate)
+      const attemptSummary = aboveLimitAttempts.length
+        ? ` ${aboveLimitAttempts.join(', ')} ficou acima do limite; usamos ${bitrate}.`
+        : ''
+
+      alert(`MP3 compativel gerado. Qualidade: ${bitrate}. Tamanho: ${sizeMb} MB. Dentro do limite de 4,5 MB.${attemptSummary}`)
     } catch (error) {
-      console.error('Erro ao gerar MP3 compatível:', error)
-      alert(`Nao foi possivel gerar o MP3 compativel. ${getErrorMessage(error)} A gravacao original continua disponivel para baixar.`)
+      console.error('Erro ao gerar MP3 compativel:', error)
+      alert(`A conversao no servidor falhou: ${getErrorMessage(error)} A gravacao original continua disponivel.`)
     } finally {
       setIsGeneratingCompatibleAudio(false)
     }
