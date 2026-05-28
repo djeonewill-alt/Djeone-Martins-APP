@@ -1049,9 +1049,10 @@ export default function NovoEpisodio() {
         transcriptionText: generatedTranscription,
       })
 
-      if (autoGenerateEpisodeMetadata) {
-        await handleGenerateEpisodeMetadataFromTranscription(generatedTranscription)
-      }
+      const generatedMetadata = autoGenerateEpisodeMetadata
+        ? await handleGenerateEpisodeMetadataFromTranscription(generatedTranscription)
+        : null
+      const quoteTitle = generatedMetadata?.title || formData.title
 
       const quoteResponse = await fetch('/api/ai/generate-daily-quote', {
         method: 'POST',
@@ -1060,7 +1061,7 @@ export default function NovoEpisodio() {
         },
         body: JSON.stringify({
           transcriptionText: generatedTranscription,
-          title: formData.title,
+          title: quoteTitle,
           bibleReference: formData.bible_reference,
         }),
       })

@@ -14,6 +14,14 @@ type GenerateResult = {
   provider: 'cloudflare' | 'openai'
 }
 
+const ALLOWED_USE_CASES = new Set([
+  'card',
+  'whatsapp',
+  'instagram',
+  'short',
+  'devotional',
+])
+
 function cleanText(text: string) {
   return text
     .replace(/\s+/g, ' ')
@@ -164,6 +172,96 @@ function hasOverusedDevotionalVocabulary(text: string) {
   return hits.length >= 3
 }
 
+function normalizeForMatch(text: string) {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function hasAdministrativeLanguage(text: string) {
+  const patterns = [
+    /\bbom dia\b/i,
+    /\bboa tarde\b/i,
+    /\bboa noite\b/i,
+    /\baviso\b/i,
+    /\badministrativo\b/i,
+    /\btranscri[cç][aã]o\b/i,
+    /\b[aá]udio\b/i,
+    /\bmensagem\b/i,
+    /\bepis[oó]dio\b/i,
+    /\bestudo\b/i,
+    /\bcompartilhar\b/i,
+    /\bcadastrar\b/i,
+    /\binscrev/i,
+  ]
+
+  return patterns.some((pattern) => pattern.test(text))
+}
+
+function hasEnoughSourceOverlap(quoteText: string, sourceExcerpt: string, reason: string) {
+  const sourceWords = new Set(
+    normalizeForMatch(`${sourceExcerpt} ${reason}`)
+      .split(/\s+/)
+      .filter((word) => word.length >= 5)
+  )
+
+  if (sourceWords.size < 3) return false
+
+  const quoteWords = normalizeForMatch(quoteText)
+    .split(/\s+/)
+    .filter((word) => word.length >= 5)
+
+  const overlapCount = quoteWords.filter((word) => sourceWords.has(word)).length
+
+  return overlapCount >= 1
+}
+
+function hasConcreteEpisodeSignal(text: string) {
+  const normalized = normalizeForMatch(text)
+  const concretePatterns = [
+    /\bjesus\b/,
+    /\bcristo\b/,
+    /\bdeus\b/,
+    /\bsenhor\b/,
+    /\bespirito\b/,
+    /\btemplo\b/,
+    /\bjerusalem\b/,
+    /\bbetania\b/,
+    /\blazaro\b/,
+    /\bmarta\b/,
+    /\bmaria\b/,
+    /\bpaulo\b/,
+    /\bpedro\b/,
+    /\bdavi\b/,
+    /\bmoises\b/,
+    /\babraa?o\b/,
+    /\bisrael\b/,
+    /\bcruz\b/,
+    /\btumulo\b/,
+    /\bcasa\b/,
+    /\bmesa\b/,
+    /\bdeserto\b/,
+    /\bvale\b/,
+    /\bporta\b/,
+    /\bcontraste\b/,
+    /\benquanto\b/,
+    /\bantes\b.*\bdepois\b/,
+    /\bnao\b.*\bmas\b/,
+  ]
+
+  return concretePatterns.some((pattern) => pattern.test(normalized))
+}
+
+function normalizeUseCase(value: string) {
+  const normalized = normalizeForMatch(value)
+
+  return ALLOWED_USE_CASES.has(normalized) ? normalized : 'card'
+}
+
 function looksBrokenOrUnclear(text: string) {
   const brokenPatterns = [
     /\boposto do\b/i,
@@ -241,6 +339,23 @@ Use personagens, lugares, ações, contrastes, imagens bíblicas ou aplicações
 Prefira frases específicas, como "Jerusalém tinha o templo, mas Jesus repousava em Betânia", em vez de frases genéricas como "Jesus transforma dor em esperança".
 Se não houver apoio claro na transcrição, descarte a candidata.
 
+REGRA EDITORIAL DA CENTRAL DE CONTEUDO:
+Cada sugestao deve ter um trecho-base real da transcricao em source_excerpt.
+O source_excerpt deve ser curto, literal ou quase literal, e nao pode ser uma parafrase inventada.
+A frase precisa ter conexao rastreavel com esse trecho-base.
+Prefira frases com contraste biblico, imagem concreta, lugar, personagem, acao, objeto, tensao espiritual ou aplicacao devocional especifica.
+Evite frases que poderiam servir para qualquer devocional, como:
+- "Jesus esta com voce"
+- "Deus transforma sua dor"
+- "Confie no Senhor"
+Essas frases so podem aparecer se a formulacao concreta do episodio sustentar algo muito especifico.
+Nao de nota 10 para tudo. Use 10 apenas para frase excepcional.
+
+EXEMPLOS DE ESTILO, NAO DE TEMA FIXO:
+- "Jerusalem tinha o templo. Jesus dormia em Betania."
+- "A presenca de Deus estava com o pobre e com o aflito."
+- "Jesus entra na nossa Betania antes de chamar vida para fora."
+
 REGRA TEOLÓGICA:
 Quando houver personagens, lugares, objetos ou símbolos bíblicos, use-os com sabedoria pastoral.
 Não confunda Deus com um personagem humano.
@@ -296,12 +411,20 @@ Responda SOMENTE em JSON válido, exatamente neste formato:
       "quote_text": "frase forte aqui",
       "reason": "explique em uma frase curta por que essa frase tem força devocional",
       "score": 9,
-      "source_excerpt": "trecho curto da transcrição que sustenta a frase",
+      "source_excerpt": "trecho curto e real da transcricao que sustenta a frase",
       "use_case": "card",
       "specificity_reason": "por que a frase é específica deste episódio"
     }
   ]
 }
+
+Campos obrigatorios em cada sugestao:
+- quote_text
+- source_excerpt
+- reason
+- score
+- use_case: use somente card, whatsapp, instagram, short ou devotional
+- specificity_reason
 
 Retorne exatamente 5 sugestões.
 `.trim()
@@ -314,7 +437,7 @@ function validateSuggestions(input: unknown): DailyQuoteSuggestion[] {
     throw new Error('A IA não retornou uma lista de sugestões.')
   }
 
-  const suggestions = parsed.suggestions
+  const normalizedSuggestions = parsed.suggestions
     .map((item) => {
       const value = item as {
         quote_text?: unknown
@@ -330,20 +453,37 @@ function validateSuggestions(input: unknown): DailyQuoteSuggestion[] {
         String(value.reason || 'Frase com força devocional.')
       )
       const sourceExcerpt = cleanText(String(value.source_excerpt || '')).slice(0, 220)
-      const useCase = cleanText(String(value.use_case || '')).slice(0, 40)
+      const useCase = normalizeUseCase(String(value.use_case || 'card'))
       const specificityReason = cleanText(String(value.specificity_reason || '')).slice(0, 220)
       const rawScore = Number(value.score)
-      const score = Number.isFinite(rawScore) ? rawScore : 8
+      let score = Number.isFinite(rawScore) ? rawScore : 8
+      const hasSourceExcerpt = sourceExcerpt.length >= 20
+      const hasSourceOverlap = hasSourceExcerpt
+        ? hasEnoughSourceOverlap(quoteText, sourceExcerpt, reason)
+        : false
+      const hasConcreteSignal = hasConcreteEpisodeSignal(
+        `${quoteText} ${sourceExcerpt} ${reason} ${specificityReason}`
+      )
+
+      if (!hasSourceExcerpt) score -= 2
+      if (!hasSourceOverlap) score -= 1
+      if (!hasConcreteSignal) score -= 1
+
       const wordCount = countWords(quoteText)
 
       return {
         quote_text: quoteText,
-        reason,
+        reason: hasSourceExcerpt
+          ? reason
+          : `${reason} Baixa confianca: sem trecho-base suficiente na transcricao.`,
         score: Math.max(1, Math.min(10, Math.round(score))),
         source_excerpt: sourceExcerpt || undefined,
         use_case: useCase || undefined,
         specificity_reason: specificityReason || undefined,
         wordCount,
+        hasSourceExcerpt,
+        hasSourceOverlap,
+        hasConcreteSignal,
       }
     })
     .filter((item) => {
@@ -358,11 +498,42 @@ function validateSuggestions(input: unknown): DailyQuoteSuggestion[] {
         !hasWeakGenericLanguage(item.quote_text) &&
         !hasOverusedDevotionalVocabulary(item.quote_text) &&
         !looksBrokenOrUnclear(item.quote_text) &&
-        !hasExcessiveRepetition(item.quote_text)
+        !hasExcessiveRepetition(item.quote_text) &&
+        !hasAdministrativeLanguage(item.source_excerpt || '') &&
+        (item.hasSourceExcerpt || item.hasConcreteSignal) &&
+        (item.hasSourceOverlap || item.hasConcreteSignal)
       )
     })
+
+  const groundedSuggestions = normalizedSuggestions.filter((item) => item.hasSourceExcerpt)
+  const suggestionsPool = groundedSuggestions.length >= 3
+    ? groundedSuggestions
+    : normalizedSuggestions
+
+  const seen = new Set<string>()
+  const suggestions = suggestionsPool
     .sort((a, b) => b.score - a.score)
-    .map(({ wordCount, ...item }) => item)
+    .filter((item) => {
+      const key = normalizeForMatch(item.quote_text)
+        .split(/\s+/)
+        .filter((word) => word.length >= 5)
+        .slice(0, 7)
+        .join(' ')
+
+      if (!key || seen.has(key)) {
+        return false
+      }
+
+      seen.add(key)
+      return true
+    })
+    .map(({
+      wordCount,
+      hasSourceExcerpt,
+      hasSourceOverlap,
+      hasConcreteSignal,
+      ...item
+    }) => item)
 
   if (suggestions.length < 3) {
     throw new Error(
@@ -416,7 +587,7 @@ async function generateWithCloudflare(params: {
             content: prompt,
           },
         ],
-        temperature: 0.85,
+        temperature: 0.45,
         max_tokens: 1200,
       }),
     }
@@ -479,7 +650,7 @@ async function generateWithOpenAI(params: {
     },
     body: JSON.stringify({
       model,
-      temperature: 0.75,
+      temperature: 0.45,
       messages: [
         {
           role: 'system',
