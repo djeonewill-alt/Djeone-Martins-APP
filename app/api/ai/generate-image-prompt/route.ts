@@ -8,6 +8,15 @@ type ImagePromptFormat = 'episode_cover' | 'daily_quote_card' | 'series_cover'
 
 type ImagePromptResponse = {
   title: string
+  scene_diagnosis: {
+    dominant_scene_type: string
+    biblical_setting: string
+    main_characters: string[]
+    visual_anchors: string[]
+    allowed_visual_elements: string[]
+    forbidden_visual_elements: string[]
+    why_this_scene_matches: string
+  }
   visual_theme: {
     scene: string
     central_focus: string
@@ -65,13 +74,49 @@ function getStringArray(value: unknown) {
     : []
 }
 
+function hasExplicitMarineScene(text: string) {
+  const normalized = text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+
+  const marinePatterns = [
+    /\batos\s*27\b/,
+    /\bpaulo\b.*\b(viagem|navio|naufragio|mar)\b/,
+    /\bcenturiao\b/,
+    /\bsoldados?\b.*\bprisioneiros?\b/,
+    /\bmar\b/,
+    /\bbarco\b/,
+    /\bnavio\b/,
+    /\bnaufragio\b/,
+    /\baguas?\b/,
+    /\bondas?\b/,
+    /\btempestade\b/,
+    /\bnadar\b/,
+    /\bnadando\b/,
+    /\bterra firme\b/,
+  ]
+
+  return marinePatterns.some((pattern) => pattern.test(normalized))
+}
+
 function normalizePromptResponse(input: unknown): ImagePromptResponse {
   const value = input as Partial<ImagePromptResponse>
+  const sceneDiagnosis = (value.scene_diagnosis || {}) as NonNullable<ImagePromptResponse['scene_diagnosis']>
   const visualTheme = (value.visual_theme || {}) as NonNullable<ImagePromptResponse['visual_theme']>
   const textOverlay = (value.text_overlay || {}) as NonNullable<ImagePromptResponse['text_overlay']>
 
   const response: ImagePromptResponse = {
     title: cleanText(String(value.title || 'Capa premium do episodio'), 120),
+    scene_diagnosis: {
+      dominant_scene_type: cleanText(String(sceneDiagnosis.dominant_scene_type || ''), 120),
+      biblical_setting: cleanText(String(sceneDiagnosis.biblical_setting || ''), 220),
+      main_characters: getStringArray(sceneDiagnosis.main_characters),
+      visual_anchors: getStringArray(sceneDiagnosis.visual_anchors),
+      allowed_visual_elements: getStringArray(sceneDiagnosis.allowed_visual_elements),
+      forbidden_visual_elements: getStringArray(sceneDiagnosis.forbidden_visual_elements),
+      why_this_scene_matches: cleanText(String(sceneDiagnosis.why_this_scene_matches || ''), 700),
+    },
     visual_theme: {
       scene: cleanText(String(visualTheme.scene || ''), 700),
       central_focus: cleanText(String(visualTheme.central_focus || ''), 700),
@@ -135,6 +180,7 @@ function buildPrompt(params: {
   transcriptionText: string
   format: ImagePromptFormat
   includeTextOverlay: boolean
+  hasExplicitMarineScene: boolean
 }) {
   return `
 You are a premium cinematic biblical art director for a Christian devotional audio app.
@@ -151,24 +197,75 @@ Base the visual concept on the real episode content:
 - Specificity reason: ${params.specificityReason || 'Not provided'}
 - Format: ${params.format}
 - Include text overlay version: ${params.includeTextOverlay ? 'yes' : 'no'}
+- Explicit marine/shipwreck scene detected by pre-check: ${params.hasExplicitMarineScene ? 'yes' : 'no'}
 
 Transcription excerpt:
 ${params.transcriptionText || 'Not provided'}
+
+Mandatory scene diagnosis before writing prompts:
+Before writing any visual prompt, read the content and identify:
+1. the dominant biblical scene;
+2. the correct geographic environment;
+3. the main characters;
+4. concrete objects and actions;
+5. the spiritual/devotional tension;
+6. allowed visual elements;
+7. forbidden visual elements.
+Then write the prompt using that specific scene.
+
+Scene fidelity is more important than generic beauty. If there is a conflict between a beautiful generic image and a specific image from the transcription, choose the specific image from the transcription.
 
 Editorial rules:
 1. Create a concrete visual concept from the episode, not a generic "beautiful spiritual landscape".
 2. Prioritize concrete elements: object, gesture, place, biblical character, contrast, atmosphere, theological symbol.
 3. Avoid sea, ocean, boat, water, waves, rain, storm, or tempest unless the episode explicitly talks about them.
-4. For biblical narratives, prefer ancient house, stone road, biblical village, dawn light, simple table, open door, symbolic object, Judean landscape, reverent atmosphere.
+4. Do not use generic biblical settings such as ancient house, door, stone road, village, desert, field, or sunrise if the transcription points to another explicit setting.
+5. For biblical narratives with no explicit setting, prefer ancient house, stone road, biblical village, dawn light, simple table, open door, symbolic object, Judean landscape, reverent atmosphere.
 5. If the content mentions Mary, nard, perfume, or alabaster, prioritize alabaster jar, perfume oil, house in Bethany, warm light, subtle visible fragrance, sacrificial worship.
 6. If it mentions Bethany or Lazarus, prioritize simple house, stone village, open door, grief and hope, path out of the tomb, life breaking darkness.
 7. If it mentions a donkey or entry into Jerusalem, prioritize ancient road, young donkey, branches, city in background, humility of the King, contrast with a war horse.
 8. If it mentions grain of wheat, prioritize grain falling into soil, open earth, sprout emerging, golden light, death and fruitfulness.
 9. Prefer a background without text for app production. Text can be applied later by the app.
 
+Marine and shipwreck rule:
+If the title, description, selected quote, source excerpt, or transcription explicitly mentions sea, boat, ship, shipwreck, water, waves, storm, swimming, dry land, soldiers/prisoners in Acts 27, centurion, or Paul on a sea journey, then allow and prefer sea, broken ship, Roman ship, waves, shoreline, beach, broken wood, survivors, soldiers, centurion, prisoners, Paul, and dry land.
+In that case, do not replace the scene with an ancient house, Bethany, open doorway, peaceful village road, wheat field, temple, or generic Judean village.
+Build the visual prompt around shipwreck, survival, deliverance, providence, and reaching dry land.
+If these marine elements are not explicit, keep ocean, sea, boat, ship, waves, storm, water, and shipwreck in the negative prompt.
+
+Visual mapping examples:
+1. Acts 27 / shipwreck / centurion / dry land:
+Correct scene: Mediterranean shoreline after a shipwreck, broken Roman ship, survivors swimming, pieces of wood, a centurion protecting prisoners, Paul preserved, golden light breaking through storm clouds, dry land in the distance.
+Do not use: Bethany house, open door, generic stone village, wheat field, temple.
+
+2. Mary / nard / alabaster / Bethany:
+Correct scene: humble interior in Bethany, alabaster jar, perfume oil, warm light, sacrificial worship, reverent atmosphere.
+Do not use: shipwreck, sea, soldiers, temple.
+
+3. Donkey / triumphal entry into Jerusalem:
+Correct scene: ancient road, young donkey, branches, Jerusalem in background, humility of the King.
+Do not use: war horse as the main focus, ocean, closed house.
+
+4. Grain of wheat / dying to bear fruit:
+Correct scene: grain falling into the earth, soil, sprout, golden light, wheat field.
+Do not use: Bethany house, boat, soldiers.
+
+Dynamic negative prompt rule:
+- If the episode is not about sea/shipwreck, the negative_prompt must include: ocean, sea, boat, ship, waves, storm, water, shipwreck.
+- If the episode is about sea/shipwreck, the negative_prompt must NOT include those marine terms. Instead include: generic ancient house, unrelated stone doorway, peaceful village road, random desert, modern clothing, fantasy armor, theatrical drama, fake text, unreadable letters.
+
 Return valid JSON only, exactly with this shape:
 {
   "title": "suggested visual title",
+  "scene_diagnosis": {
+    "dominant_scene_type": "shipwreck_survival | bethany_home_worship | triumphal_entry | wheat_seed_death_and_fruit | temple_vs_bethany | desert_testing | healing_encounter | prayer_and_solitude | other_specific_scene",
+    "biblical_setting": "correct visual environment",
+    "main_characters": ["character names"],
+    "visual_anchors": ["objects, actions, places"],
+    "allowed_visual_elements": ["elements explicitly allowed by the episode"],
+    "forbidden_visual_elements": ["elements that would be generic or unfaithful"],
+    "why_this_scene_matches": "short explanation of why this scene represents the transcription"
+  },
   "visual_theme": {
     "scene": "...",
     "central_focus": "...",
@@ -216,6 +313,17 @@ export async function POST(request: NextRequest) {
     const includeTextOverlay = typeof body.includeTextOverlay === 'boolean'
       ? body.includeTextOverlay
       : false
+    const combinedContext = [
+      title,
+      bibleReference,
+      description,
+      selectedQuote,
+      sourceExcerpt,
+      reason,
+      specificityReason,
+      transcriptionText,
+    ].join(' ')
+    const explicitMarineScene = hasExplicitMarineScene(combinedContext)
 
     const hasEnoughContext = [
       title,
@@ -276,6 +384,7 @@ export async function POST(request: NextRequest) {
               transcriptionText,
               format,
               includeTextOverlay,
+              hasExplicitMarineScene: explicitMarineScene,
             }),
           },
         ],

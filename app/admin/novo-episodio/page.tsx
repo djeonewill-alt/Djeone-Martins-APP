@@ -123,6 +123,15 @@ type PremiumImagePromptResponse = {
   success?: boolean
   model?: string
   title?: string
+  scene_diagnosis?: {
+    dominant_scene_type?: string
+    biblical_setting?: string
+    main_characters?: string[]
+    visual_anchors?: string[]
+    allowed_visual_elements?: string[]
+    forbidden_visual_elements?: string[]
+    why_this_scene_matches?: string
+  }
   visual_theme?: {
     scene?: string
     central_focus?: string
@@ -2476,6 +2485,47 @@ export default function NovoEpisodio() {
                         </p>
                       )}
                     </div>
+
+                    {premiumImagePrompt.scene_diagnosis && (
+                      <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                          Diagnostico da cena
+                        </p>
+
+                        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          {[
+                            ['Tipo de cena', premiumImagePrompt.scene_diagnosis.dominant_scene_type],
+                            ['Ambiente biblico', premiumImagePrompt.scene_diagnosis.biblical_setting],
+                            ['Personagens', (premiumImagePrompt.scene_diagnosis.main_characters || []).join(', ')],
+                            ['Elementos visuais', (premiumImagePrompt.scene_diagnosis.visual_anchors || []).join(', ')],
+                            ['Elementos permitidos', (premiumImagePrompt.scene_diagnosis.allowed_visual_elements || []).join(', ')],
+                            ['Elementos proibidos', (premiumImagePrompt.scene_diagnosis.forbidden_visual_elements || []).join(', ')],
+                          ].map(([label, value]) => (
+                            value ? (
+                              <div key={label}>
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                  {label}
+                                </p>
+                                <p className="mt-1 text-xs leading-relaxed text-slate-300">
+                                  {value}
+                                </p>
+                              </div>
+                            ) : null
+                          ))}
+                        </div>
+
+                        {premiumImagePrompt.scene_diagnosis.why_this_scene_matches && (
+                          <div className="mt-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                              Por que combina com o episodio
+                            </p>
+                            <p className="mt-1 text-xs leading-relaxed text-slate-300">
+                              {premiumImagePrompt.scene_diagnosis.why_this_scene_matches}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {premiumImagePrompt.visual_theme && (
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
