@@ -214,6 +214,57 @@ function getErrorMessage(error: unknown) {
   }
 }
 
+function getSuggestionUseCaseLabel(useCase?: string) {
+  const normalized = String(useCase || '').trim().toLowerCase()
+  const labels: Record<string, string> = {
+    card: 'card',
+    whatsapp: 'WhatsApp',
+    instagram: 'Instagram',
+    short: 'short',
+    devotional: 'devocional',
+  }
+
+  return labels[normalized] || ''
+}
+
+function getSuggestionDisplayData(suggestion: DailyQuoteSuggestion | string) {
+  if (typeof suggestion === 'string') {
+    return {
+      suggestion: {
+        quote_text: suggestion,
+        reason: '',
+        score: 0,
+      } as DailyQuoteSuggestion,
+      quoteText: suggestion,
+      reason: '',
+      score: null as number | null,
+      sourceExcerpt: '',
+      useCaseLabel: '',
+      specificityReason: '',
+    }
+  }
+
+  const value = suggestion as DailyQuoteSuggestion & {
+    quote_text?: unknown
+    reason?: unknown
+    score?: unknown
+    source_excerpt?: unknown
+    use_case?: unknown
+    specificity_reason?: unknown
+  }
+  const rawScore = Number(value.score)
+
+  return {
+    suggestion,
+    quoteText: String(value.quote_text || '').trim(),
+    reason: String(value.reason || '').trim(),
+    score: Number.isFinite(rawScore) ? rawScore : null,
+    sourceExcerpt: String(value.source_excerpt || '').trim(),
+    useCaseLabel: getSuggestionUseCaseLabel(String(value.use_case || '')),
+    specificityReason: String(value.specificity_reason || '').trim(),
+  }
+}
+
 function hasFallbackImage(data: { provider?: string; images?: BackgroundImage[] }) {
   return (
     data.provider === 'fallback' ||
@@ -1979,17 +2030,20 @@ export default function NovoEpisodio() {
                     </label>
 
                     <div className="space-y-3">
-                      {quoteSuggestions.map((suggestion, index) => (
-                        <button
-                          key={`${suggestion.quote_text}-${index}`}
-                          type="button"
-                          onClick={() => handleSelectSuggestion(suggestion, index)}
-                          className={`w-full text-left rounded-xl p-4 border transition-colors ${
-                            selectedSuggestionIndex === index
-                              ? 'bg-blue-600/20 border-blue-500'
-                              : 'bg-slate-800 border-slate-700 hover:border-slate-500'
-                          }`}
-                        >
+                      {quoteSuggestions.map((suggestion, index) => {
+                        const display = getSuggestionDisplayData(suggestion)
+
+                        return (
+                          <button
+                            key={`${display.quoteText}-${index}`}
+                            type="button"
+                            onClick={() => handleSelectSuggestion(display.suggestion, index)}
+                            className={`w-full text-left rounded-xl p-4 border transition-colors ${
+                              selectedSuggestionIndex === index
+                                ? 'bg-blue-600/20 border-blue-500'
+                                : 'bg-slate-800 border-slate-700 hover:border-slate-500'
+                            }`}
+                          >
                           <div className="flex items-start gap-3">
                             <div className={`mt-1 w-5 h-5 rounded-full border flex items-center justify-center ${
                               selectedSuggestionIndex === index
@@ -2001,26 +2055,60 @@ export default function NovoEpisodio() {
                               )}
                             </div>
 
-                            <div className="flex-1">
-                              <p className="text-white font-medium leading-relaxed">
-                                {formatQuoteTextForDisplay(suggestion.quote_text)}
+                            <div className="flex-1 space-y-3">
+                              <p className="text-white font-semibold leading-relaxed">
+                                {formatQuoteTextForDisplay(display.quoteText)}
                               </p>
 
-                              {suggestion.reason && (
-                                <p className="text-xs text-slate-400 mt-2">
-                                  {suggestion.reason}
-                                </p>
+                              <div className="flex flex-wrap gap-2">
+                                {display.useCaseLabel && (
+                                  <span className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-semibold text-cyan-100">
+                                    Uso sugerido: {display.useCaseLabel}
+                                  </span>
+                                )}
+
+                                {display.score !== null && (
+                                  <span className="rounded-full border border-blue-400/30 bg-blue-500/10 px-2.5 py-1 text-[11px] font-semibold text-blue-100">
+                                    Forca devocional: {display.score}/10
+                                  </span>
+                                )}
+                              </div>
+
+                              {display.reason && (
+                                <div>
+                                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                    Por que funciona
+                                  </p>
+                                  <p className="mt-1 text-xs leading-relaxed text-slate-300">
+                                    {display.reason}
+                                  </p>
+                                </div>
                               )}
 
-                              {typeof suggestion.score === 'number' && (
-                                <p className="text-xs text-blue-300 mt-2">
-                                  Força devocional: {suggestion.score}/10
+                              <div className="rounded-lg border border-slate-700/80 bg-slate-950/45 p-3">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                  Trecho-base
                                 </p>
+                                <p className="mt-1 text-xs leading-relaxed text-slate-300">
+                                  {display.sourceExcerpt || 'Trecho-base nao informado.'}
+                                </p>
+                              </div>
+
+                              {display.specificityReason && (
+                                <div>
+                                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                    Ligacao com o episodio
+                                  </p>
+                                  <p className="mt-1 text-xs leading-relaxed text-slate-300">
+                                    {display.specificityReason}
+                                  </p>
+                                </div>
                               )}
                             </div>
                           </div>
-                        </button>
-                      ))}
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
                 )}
