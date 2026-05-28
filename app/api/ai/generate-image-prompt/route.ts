@@ -8,6 +8,8 @@ type ImagePromptFormat = 'episode_cover' | 'daily_quote_card' | 'series_cover'
 
 type ImagePromptResponse = {
   title: string
+  official_episode_title: string
+  suggested_cover_title: string
   scene_diagnosis: {
     dominant_scene_type: string
     biblical_setting: string
@@ -31,6 +33,7 @@ type ImagePromptResponse = {
   text_overlay: {
     top: string
     main_title: string
+    suggested_short_title: string
     subtitle: string
     bottom_quote: string
   }
@@ -108,6 +111,8 @@ function normalizePromptResponse(input: unknown): ImagePromptResponse {
 
   const response: ImagePromptResponse = {
     title: cleanText(String(value.title || 'Capa premium do episodio'), 120),
+    official_episode_title: cleanText(String(value.official_episode_title || ''), 180),
+    suggested_cover_title: cleanText(String(value.suggested_cover_title || ''), 120),
     scene_diagnosis: {
       dominant_scene_type: cleanText(String(sceneDiagnosis.dominant_scene_type || ''), 120),
       biblical_setting: cleanText(String(sceneDiagnosis.biblical_setting || ''), 220),
@@ -131,6 +136,7 @@ function normalizePromptResponse(input: unknown): ImagePromptResponse {
     text_overlay: {
       top: cleanText(String(textOverlay.top || ''), 120),
       main_title: cleanText(String(textOverlay.main_title || ''), 120),
+      suggested_short_title: cleanText(String(textOverlay.suggested_short_title || ''), 120),
       subtitle: cleanText(String(textOverlay.subtitle || 'Meditacao Devocional'), 120),
       bottom_quote: cleanText(String(textOverlay.bottom_quote || ''), 220),
     },
@@ -146,6 +152,26 @@ function normalizePromptResponse(input: unknown): ImagePromptResponse {
   }
 
   return response
+}
+
+function enforceOfficialTitle(
+  response: ImagePromptResponse,
+  officialTitle: string
+) {
+  const cleanOfficialTitle = cleanText(officialTitle, 180)
+
+  if (!cleanOfficialTitle) {
+    return response
+  }
+
+  return {
+    ...response,
+    official_episode_title: cleanOfficialTitle,
+    text_overlay: {
+      ...response.text_overlay,
+      main_title: cleanOfficialTitle,
+    },
+  }
 }
 
 async function requireAdminUser() {
@@ -215,6 +241,21 @@ Then write the prompt using that specific scene.
 
 Scene fidelity is more important than generic beauty. If there is a conflict between a beautiful generic image and a specific image from the transcription, choose the specific image from the transcription.
 
+Official title rules:
+The official episode title is: "${params.title || ''}".
+The official episode title is the primary source for the central cover text.
+Do not replace or contradict the official episode title with a new title.
+If you want a shorter, more impactful design option, put it only in suggested_cover_title and text_overlay.suggested_short_title.
+text_overlay.main_title must preserve the official episode title when one was provided.
+Only create text_overlay.main_title from scratch if the official title is empty.
+
+Correct example:
+Official title: "A Protecao de Deus em Tempos de Crise"
+official_episode_title: "A Protecao de Deus em Tempos de Crise"
+suggested_cover_title: "Protegidos na Crise"
+text_overlay.main_title: "A Protecao de Deus em Tempos de Crise"
+text_overlay.suggested_short_title: "Protegidos na Crise"
+
 Editorial rules:
 1. Create a concrete visual concept from the episode, not a generic "beautiful spiritual landscape".
 2. Prioritize concrete elements: object, gesture, place, biblical character, contrast, atmosphere, theological symbol.
@@ -232,6 +273,21 @@ If the title, description, selected quote, source excerpt, or transcription expl
 In that case, do not replace the scene with an ancient house, Bethany, open doorway, peaceful village road, wheat field, temple, or generic Judean village.
 Build the visual prompt around shipwreck, survival, deliverance, providence, and reaching dry land.
 If these marine elements are not explicit, keep ocean, sea, boat, ship, waves, storm, water, and shipwreck in the negative prompt.
+
+Composition clarity rule:
+Avoid ambiguous or dominating visual phrases such as "standing over Paul", "hovering over Paul", "dominating Paul", or "standing above the prisoners".
+Prefer clear protective composition:
+- the centurion between soldiers and prisoners;
+- the centurion near Paul in a protective posture;
+- Paul preserved among survivors;
+- soldiers restrained or prevented from violence;
+- survivors moving toward dry land;
+- dry land as the visual symbol of deliverance.
+
+For Acts 27 / shipwreck, use language like:
+"The Roman centurion stands near Paul, positioned between the soldiers and the prisoners, acting as a protective authority."
+or:
+"The centurion stands at the shoreline, restraining violence and preserving Paul and the prisoners."
 
 Visual mapping examples:
 1. Acts 27 / shipwreck / centurion / dry land:
@@ -257,6 +313,8 @@ Dynamic negative prompt rule:
 Return valid JSON only, exactly with this shape:
 {
   "title": "suggested visual title",
+  "official_episode_title": "${params.title || 'official title received from the episode'}",
+  "suggested_cover_title": "optional short cover title, never replacing the official title",
   "scene_diagnosis": {
     "dominant_scene_type": "shipwreck_survival | bethany_home_worship | triumphal_entry | wheat_seed_death_and_fruit | temple_vs_bethany | desert_testing | healing_encounter | prayer_and_solitude | other_specific_scene",
     "biblical_setting": "correct visual environment",
@@ -279,13 +337,18 @@ Return valid JSON only, exactly with this shape:
   "full_prompt_with_text": "Create an epic cinematic 16:9 horizontal podcast episode cover in premium Netflix style, 1920x1080 resolution.\\n\\nScene:\\n...\\n\\nCentral focus:\\n...\\n\\nAtmosphere:\\n...\\n\\nBackground:\\n...\\n\\nLighting:\\n...\\n\\nColor palette:\\n...\\n\\nText overlay integrated into image - ALL CENTERED:\\nTop area:\\n'...'\\n\\nCenter:\\n'...'\\n\\nSubtitle:\\n'...'\\n\\nBottom:\\n'...'\\n\\nStyle:\\n...\\n\\nThe image should capture the essence of:\\n...",
   "text_overlay": {
     "top": "${params.bibleReference || ''}",
-    "main_title": "short title for cover",
+    "main_title": "${params.title || 'official episode title, or generated only if empty'}",
+    "suggested_short_title": "optional shorter title for cover design",
     "subtitle": "Meditacao Devocional",
     "bottom_quote": "short selected quote or biblical phrase"
   },
   "negative_prompt": "no illegible text, no fake letters, no distorted hands or faces, no kitsch religious symbols, no exaggerated fantasy, no theatrical excess, no sea/ocean/boat/water/waves/storm unless explicitly present in episode...",
   "keywords": ["visual", "keywords"]
 }
+
+The full_prompt_with_text must use text_overlay.main_title as the main title.
+Append this note at the end of full_prompt_with_text, outside the image instructions:
+"Note: AI-generated text inside images can contain spelling errors. For production, prefer the background_prompt and apply typography in the app."
 `.trim()
 }
 
@@ -404,7 +467,10 @@ export async function POST(request: NextRequest) {
     }
 
     const parsed = extractJsonFromText(content)
-    const promptData = normalizePromptResponse(parsed)
+    const promptData = enforceOfficialTitle(
+      normalizePromptResponse(parsed),
+      title
+    )
 
     return NextResponse.json({
       success: true,

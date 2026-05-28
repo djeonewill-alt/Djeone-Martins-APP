@@ -123,6 +123,8 @@ type PremiumImagePromptResponse = {
   success?: boolean
   model?: string
   title?: string
+  official_episode_title?: string
+  suggested_cover_title?: string
   scene_diagnosis?: {
     dominant_scene_type?: string
     biblical_setting?: string
@@ -146,6 +148,7 @@ type PremiumImagePromptResponse = {
   text_overlay?: {
     top?: string
     main_title?: string
+    suggested_short_title?: string
     subtitle?: string
     bottom_quote?: string
   }
@@ -299,6 +302,22 @@ function getSuggestionDisplayData(suggestion: DailyQuoteSuggestion | string) {
     useCaseLabel: getSuggestionUseCaseLabel(String(value.use_case || '')),
     specificityReason: String(value.specificity_reason || '').trim(),
   }
+}
+
+function getPremiumOverlayCopy(prompt: PremiumImagePromptResponse) {
+  return JSON.stringify(
+    {
+      official_episode_title: prompt.official_episode_title || '',
+      suggested_cover_title: prompt.suggested_cover_title || '',
+      top: prompt.text_overlay?.top || '',
+      main_title: prompt.text_overlay?.main_title || '',
+      suggested_short_title: prompt.text_overlay?.suggested_short_title || '',
+      subtitle: prompt.text_overlay?.subtitle || '',
+      bottom_quote: prompt.text_overlay?.bottom_quote || '',
+    },
+    null,
+    2
+  )
 }
 
 function hasFallbackImage(data: { provider?: string; images?: BackgroundImage[] }) {
@@ -2486,6 +2505,26 @@ export default function NovoEpisodio() {
                       )}
                     </div>
 
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                          Titulo oficial do episodio
+                        </p>
+                        <p className="mt-1 text-xs leading-relaxed text-slate-300">
+                          {premiumImagePrompt.official_episode_title || formData.title || '-'}
+                        </p>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                          Titulo curto sugerido para capa
+                        </p>
+                        <p className="mt-1 text-xs leading-relaxed text-slate-300">
+                          {premiumImagePrompt.suggested_cover_title || 'Nao sugerido'}
+                        </p>
+                      </div>
+                    </div>
+
                     {premiumImagePrompt.scene_diagnosis && (
                       <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
                         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
@@ -2599,7 +2638,7 @@ export default function NovoEpisodio() {
                           </p>
                           <button
                             type="button"
-                            onClick={() => copyPromptText('Overlay', JSON.stringify(premiumImagePrompt.text_overlay, null, 2))}
+                            onClick={() => copyPromptText('Overlay', getPremiumOverlayCopy(premiumImagePrompt))}
                             className="rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1 text-xs font-semibold text-indigo-100 hover:bg-indigo-500/20"
                           >
                             Copiar overlay
@@ -2609,7 +2648,8 @@ export default function NovoEpisodio() {
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                           {[
                             ['Topo', premiumImagePrompt.text_overlay.top],
-                            ['Titulo', premiumImagePrompt.text_overlay.main_title],
+                            ['Titulo principal no overlay', premiumImagePrompt.text_overlay.main_title],
+                            ['Titulo curto opcional', premiumImagePrompt.text_overlay.suggested_short_title],
                             ['Subtitulo', premiumImagePrompt.text_overlay.subtitle],
                             ['Frase inferior', premiumImagePrompt.text_overlay.bottom_quote],
                           ].map(([label, value]) => (
