@@ -92,6 +92,33 @@ type ConvertToMp3Response = {
   error?: string
 }
 
+type TranscriptionWord = {
+  word: string
+  start: number
+  end: number
+}
+
+type TranscribeAudioResponse = {
+  success?: boolean
+  transcriptionText?: string
+  transcriptionSegments?: Array<{ start: number; end: number; text: string }>
+  transcription_words?: TranscriptionWord[]
+  transcription_words_count?: number
+  transcription_words_status?: 'ready' | 'pending_save' | 'missing' | 'error'
+  transcription_words_url?: string
+  transcription_words_key?: string
+  error?: string
+}
+
+type PersistTranscriptionWordsResponse = {
+  success?: boolean
+  transcription_words_url?: string
+  transcription_words_key?: string
+  transcription_words_count?: number
+  transcription_words_status?: 'ready'
+  error?: string
+}
+
 function getLocalDateString() {
   const now = new Date()
   const year = now.getFullYear()
@@ -284,8 +311,15 @@ export default function NovoEpisodio() {
   const [generatingEpisodeMetadata, setGeneratingEpisodeMetadata] = useState(false)
 
   const [enableDailyQuote, setEnableDailyQuote] = useState(true)
+  const [generateAdvancedTranscription, setGenerateAdvancedTranscription] = useState(true)
   const [transcriptionText, setTranscriptionText] = useState('')
   const [transcriptionSegments, setTranscriptionSegments] = useState<Array<{ start: number; end: number; text: string }>>([])
+  const [transcriptionWords, setTranscriptionWords] = useState<TranscriptionWord[]>([])
+  const [transcriptionWordsCount, setTranscriptionWordsCount] = useState(0)
+  const [transcriptionWordsStatus, setTranscriptionWordsStatus] = useState<'ready' | 'pending_save' | 'missing' | 'error'>('missing')
+  const [transcriptionWordsUrl, setTranscriptionWordsUrl] = useState('')
+  const [transcriptionWordsKey, setTranscriptionWordsKey] = useState('')
+  const [transcriptionWordsPersistWarning, setTranscriptionWordsPersistWarning] = useState('')
   const [quoteSuggestions, setQuoteSuggestions] = useState<DailyQuoteSuggestion[]>([])
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState<number | null>(null)
   const [selectedDailyQuote, setSelectedDailyQuote] = useState('')
@@ -324,6 +358,12 @@ export default function NovoEpisodio() {
   const resetAutomationData = () => {
     setTranscriptionText('')
     setTranscriptionSegments([])
+    setTranscriptionWords([])
+    setTranscriptionWordsCount(0)
+    setTranscriptionWordsStatus('missing')
+    setTranscriptionWordsUrl('')
+    setTranscriptionWordsKey('')
+    setTranscriptionWordsPersistWarning('')
     setQuoteSuggestions([])
     setSelectedSuggestionIndex(null)
     setSelectedDailyQuote('')
@@ -341,6 +381,93 @@ export default function NovoEpisodio() {
     }
 
     return ''
+  }
+
+  const applyTranscriptionResult = (data: TranscribeAudioResponse) => {
+    setTranscriptionText(data.transcriptionText || '')
+    setTranscriptionSegments(Array.isArray(data.transcriptionSegments) ? data.transcriptionSegments : [])
+
+    const words = Array.isArray(data.transcription_words) ? data.transcription_words : []
+
+    setTranscriptionWords(words)
+    setTranscriptionWordsCount(data.transcription_words_count || words.length)
+    setTranscriptionWordsStatus(data.transcription_words_status || 'missing')
+    setTranscriptionWordsUrl(data.transcription_words_url || '')
+    setTranscriptionWordsKey(data.transcription_words_key || '')
+    setTranscriptionWordsPersistWarning('')
+  }
+
+  const getAdvancedTranscriptionMessage = (data: TranscribeAudioResponse) => {
+    if (!generateAdvancedTranscription) {
+      return 'Transcricao gerada com sucesso!'
+    }
+
+    const wordsCount = data.transcription_words_count || data.transcription_words?.length || 0
+
+    if (wordsCount > 0 && data.transcription_words_status === 'ready') {
+      return `Transcricao avancada gerada: ${wordsCount} palavras com timestamps.`
+    }
+
+    if (wordsCount > 0) {
+      return `Transcricao avancada gerada: ${wordsCount} palavras com timestamps. Words pendentes de salvamento ate o episodio ser salvo.`
+    }
+
+    return 'Transcricao gerada. Words nao foram retornadas pela transcricao avancada.'
+  }
+
+  const persistPendingTranscriptionWords = async (episodeId: string) => {
+    if (
+      !generateAdvancedTranscription ||
+      transcriptionWords.length === 0 ||
+      transcriptionWordsStatus !== 'pending_save' ||
+      (transcriptionWordsUrl && transcriptionWordsKey)
+    ) {
+      return { ok: true as const, message: '' }
+    }
+
+    try {
+      const response = await fetch('/api/ai/persist-transcription-words', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          episodeId,
+          words: transcriptionWords,
+          audioUrl: audioUrlCompatible || audioUrl,
+          episodeTitle: formData.title,
+        }),
+      })
+      const data = (await response.json()) as PersistTranscriptionWordsResponse
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Nao foi possivel salvar timestamps avancados.')
+      }
+
+      setTranscriptionWordsUrl(data.transcription_words_url || '')
+      setTranscriptionWordsKey(data.transcription_words_key || '')
+      setTranscriptionWordsCount(data.transcription_words_count || transcriptionWords.length)
+      setTranscriptionWordsStatus('ready')
+      setTranscriptionWordsPersistWarning('')
+
+      return {
+        ok: true as const,
+        message: ' Timestamps avancados salvos.',
+      }
+    } catch (error) {
+      console.error('Erro ao persistir timestamps avancados:', error)
+
+      const warning =
+        'Episodio salvo, mas nao foi possivel salvar os timestamps avancados. Voce pode gerar novamente na Central.'
+
+      setTranscriptionWordsStatus('error')
+      setTranscriptionWordsPersistWarning(warning)
+
+      return {
+        ok: false as const,
+        message: ` ${warning}`,
+      }
+    }
   }
 
   const applyAudioUploadMetadata = (data: AudioUploadResponse) => {
@@ -747,18 +874,18 @@ export default function NovoEpisodio() {
         },
         body: JSON.stringify({
           audioUrl: transcriptionAudioUrl,
+          advanced: generateAdvancedTranscription,
         }),
       })
 
-      const data = await response.json()
+      const data = (await response.json()) as TranscribeAudioResponse
 
       if (!response.ok) {
         throw new Error(data.error || 'Erro ao transcrever áudio.')
       }
 
-      setTranscriptionText(data.transcriptionText || '')
-      setTranscriptionSegments(Array.isArray(data.transcriptionSegments) ? data.transcriptionSegments : [])
-      alert('✅ Transcrição gerada com sucesso!')
+      applyTranscriptionResult(data)
+      alert(`✅ ${getAdvancedTranscriptionMessage(data)}`)
     } catch (error) {
       console.error('Erro ao transcrever:', error)
       alert(`❌ ${getErrorMessage(error)}`)
@@ -897,10 +1024,11 @@ export default function NovoEpisodio() {
         },
         body: JSON.stringify({
           audioUrl: transcriptionAudioUrl,
+          advanced: generateAdvancedTranscription,
         }),
       })
 
-      const transcribeData = await transcribeResponse.json()
+      const transcribeData = (await transcribeResponse.json()) as TranscribeAudioResponse
 
       if (!transcribeResponse.ok) {
         throw new Error(transcribeData.error || 'Erro ao transcrever áudio.')
@@ -916,12 +1044,10 @@ export default function NovoEpisodio() {
         )
       }
 
-      const generatedSegments = Array.isArray(transcribeData.transcriptionSegments)
-        ? transcribeData.transcriptionSegments
-        : []
-
-      setTranscriptionText(generatedTranscription)
-      setTranscriptionSegments(generatedSegments)
+      applyTranscriptionResult({
+        ...transcribeData,
+        transcriptionText: generatedTranscription,
+      })
 
       if (autoGenerateEpisodeMetadata) {
         await handleGenerateEpisodeMetadataFromTranscription(generatedTranscription)
@@ -962,7 +1088,11 @@ export default function NovoEpisodio() {
           ? 'com IA'
           : 'com modo local'
 
-      alert('✅ Transcrição e sugestões geradas ' + providerMessage + '!')
+      alert(
+        '✅ Transcricao e sugestoes geradas ' +
+          providerMessage +
+          `! ${getAdvancedTranscriptionMessage(transcribeData)}`
+      )
     } catch (error) {
       console.error('Erro no fluxo automático:', error)
       alert('❌ ' + getErrorMessage(error))
@@ -1250,6 +1380,12 @@ export default function NovoEpisodio() {
 
       if (error) throw error
 
+      if (!newEpisode?.id) {
+        throw new Error('Episodio criado sem ID retornado.')
+      }
+
+      const wordsPersistence = await persistPendingTranscriptionWords(newEpisode.id)
+
       if (hasDailyQuote && newEpisode?.id) {
         const selectedCard =
           selectedCardIndex !== null
@@ -1389,7 +1525,7 @@ export default function NovoEpisodio() {
         ? '✅ Rascunho salvo com Palavra do Dia!'
         : '✅ Rascunho salvo com sucesso!'
 
-      alert(message)
+      alert(`${message}${wordsPersistence.message}`)
       router.push('/admin')
     } catch (error) {
       console.error('Erro ao criar episódio:', error)
@@ -1751,6 +1887,25 @@ export default function NovoEpisodio() {
                   </div>
                 </label>
 
+                <label className="flex items-start gap-3 rounded-lg border border-slate-800 bg-slate-900/70 p-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={generateAdvancedTranscription}
+                    onChange={(e) => setGenerateAdvancedTranscription(e.target.checked)}
+                    className="mt-1"
+                  />
+
+                  <div>
+                    <p className="text-sm font-semibold text-slate-200">
+                      Gerar transcricao avancada para Central/Shorts
+                    </p>
+
+                    <p className="text-xs text-slate-500 mt-1">
+                      Gera segmentos para o player e palavras com timestamps para cortes e legendas sincronizadas.
+                    </p>
+                  </div>
+                </label>
+
                 <div className="flex flex-col sm:flex-row gap-3">
                   <button
                     type="button"
@@ -1804,6 +1959,16 @@ export default function NovoEpisodio() {
                   <p className="text-xs text-slate-500 mt-1">
                     Caracteres: {transcriptionText.trim().length}
                   </p>
+
+                  {transcriptionWordsStatus !== 'missing' && (
+                    <p className="text-xs text-cyan-300 mt-2">
+                      {transcriptionWordsStatus === 'error'
+                        ? transcriptionWordsPersistWarning || 'Nao foi possivel salvar os timestamps avancados.'
+                        : transcriptionWordsStatus === 'ready'
+                        ? `Transcricao avancada salva: ${transcriptionWordsCount} palavras com timestamps.`
+                        : `Transcricao avancada gerada: ${transcriptionWordsCount} palavras com timestamps. Words pendentes de salvamento ate o episodio ser salvo.`}
+                    </p>
+                  )}
                 </div>
 
                 {quoteSuggestions.length > 0 && (
