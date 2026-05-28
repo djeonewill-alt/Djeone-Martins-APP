@@ -1,7 +1,9 @@
 import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
-import ffmpegPath from 'ffmpeg-static'
+import ffmpegStaticPath from 'ffmpeg-static'
 import { randomUUID } from 'node:crypto'
+import { chmodSync, existsSync } from 'node:fs'
 import { readFile, rm, writeFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
@@ -22,6 +24,8 @@ const MP3_BITRATE_CANDIDATES = [
 ] as const
 const OUTPUT_CONTENT_TYPE = 'audio/mpeg'
 const OUTPUT_CACHE_CONTROL = 'public, max-age=31536000, immutable'
+const FFMPEG_NOT_FOUND_ERROR = 'Binário do ffmpeg não encontrado no ambiente de execução.'
+const require = createRequire(import.meta.url)
 
 type ConversionAttempt = {
   bitrate: string
@@ -35,6 +39,19 @@ type ConversionAttempt = {
 type ConvertToMp3Request = {
   sourceUrl?: unknown
   sourceKey?: unknown
+}
+
+type FfmpegResolution = {
+  ffmpegPath: string
+  exists: boolean
+  cwd: string
+  platform: NodeJS.Platform
+  nodeEnv: string
+  staticPath: string
+  testedPaths: Array<{
+    path: string
+    exists: boolean
+  }>
 }
 
 function cleanText(value: unknown) {
@@ -130,6 +147,80 @@ function getShortDiagnostic(value: string) {
   return value.replace(/\s+/g, ' ').trim().slice(0, 1200)
 }
 
+function getFfmpegBinaryName() {
+  return process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'
+}
+
+function getFfmpegPackageDir() {
+  try {
+    return path.dirname(require.resolve('ffmpeg-static/package.json'))
+  } catch {
+    return ''
+  }
+}
+
+function resolveFfmpegPath(): FfmpegResolution {
+  const cwd = process.cwd()
+  const staticPath = typeof ffmpegStaticPath === 'string' ? ffmpegStaticPath : ''
+  const binaryName = getFfmpegBinaryName()
+  const packageDir = getFfmpegPackageDir()
+  const candidatePaths = [
+    staticPath,
+    packageDir ? path.join(packageDir, binaryName) : '',
+    path.join(cwd, 'node_modules', 'ffmpeg-static', binaryName),
+    path.join('/var/task', 'node_modules', 'ffmpeg-static', binaryName),
+    path.join('/tmp', 'node_modules', 'ffmpeg-static', binaryName),
+  ].filter(Boolean)
+  const uniqueCandidatePaths = Array.from(new Set(candidatePaths))
+  const testedPaths = uniqueCandidatePaths.map((candidatePath) => ({
+    path: candidatePath,
+    exists: existsSync(candidatePath),
+  }))
+  const foundPath = testedPaths.find((candidate) => candidate.exists)?.path || ''
+
+  return {
+    ffmpegPath: foundPath || staticPath,
+    exists: Boolean(foundPath),
+    cwd,
+    platform: process.platform,
+    nodeEnv: process.env.NODE_ENV || '',
+    staticPath,
+    testedPaths,
+  }
+}
+
+function logFfmpegResolution(resolution: FfmpegResolution) {
+  console.log('[convert-to-mp3] ffmpeg resolution', {
+    ffmpegStaticPath: resolution.staticPath,
+    ffmpegPath: resolution.ffmpegPath,
+    exists: resolution.exists,
+    cwd: resolution.cwd,
+    platform: resolution.platform,
+    nodeEnv: resolution.nodeEnv,
+    testedPaths: resolution.testedPaths,
+  })
+}
+
+function ensureFfmpegExecutable(ffmpegPath: string) {
+  try {
+    chmodSync(ffmpegPath, 0o755)
+  } catch (error) {
+    console.warn('[convert-to-mp3] chmod ffmpeg falhou, seguindo mesmo assim', {
+      ffmpegPath,
+      error: getShortDiagnostic(getErrorMessage(error)),
+    })
+  }
+}
+
+function getFfmpegNotFoundAttempts(): ConversionAttempt[] {
+  return MP3_BITRATE_CANDIDATES.map((candidate) => ({
+    bitrate: candidate.label,
+    status: 'ffmpeg_failed',
+    withinLimit: false,
+    error: FFMPEG_NOT_FOUND_ERROR,
+  }))
+}
+
 function getCompatibleKey(sourceKey: string) {
   const parsed = path.posix.parse(sourceKey.replace(/\\/g, '/'))
   const baseName = parsed.name.replace(/[^a-zA-Z0-9._-]/g, '-')
@@ -186,10 +277,10 @@ async function writeFetchedUrlToFile(sourceUrl: string, filePath: string) {
   }
 }
 
-function runFfmpeg(inputPath: string, outputPath: string, bitrate: string) {
+function runFfmpeg(ffmpegPath: string, inputPath: string, outputPath: string, bitrate: string) {
   return new Promise<void>((resolve, reject) => {
-    if (!ffmpegPath) {
-      reject(new Error('ffmpeg-static nao encontrou o binario do ffmpeg.'))
+    if (!ffmpegPath || !existsSync(ffmpegPath)) {
+      reject(new Error(FFMPEG_NOT_FOUND_ERROR))
       return
     }
 
@@ -228,7 +319,7 @@ function runFfmpeg(inputPath: string, outputPath: string, bitrate: string) {
   })
 }
 
-async function convertWithBestBitrate(inputPath: string, outputPath: string) {
+async function convertWithBestBitrate(inputPath: string, outputPath: string, ffmpegPath: string) {
   const attempts: ConversionAttempt[] = []
 
   for (const candidate of MP3_BITRATE_CANDIDATES) {
@@ -238,7 +329,7 @@ async function convertWithBestBitrate(inputPath: string, outputPath: string) {
         bitrate: candidate.label,
       })
 
-      await runFfmpeg(inputPath, outputPath, candidate.value)
+      await runFfmpeg(ffmpegPath, inputPath, outputPath, candidate.value)
 
       let mp3Buffer: Buffer
 
@@ -402,7 +493,32 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const conversion = await convertWithBestBitrate(inputPath, outputPath)
+    const ffmpegResolution = resolveFfmpegPath()
+    logFfmpegResolution(ffmpegResolution)
+
+    if (!ffmpegResolution.ffmpegPath || !ffmpegResolution.exists) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: FFMPEG_NOT_FOUND_ERROR,
+          attempts: getFfmpegNotFoundAttempts(),
+          debug: {
+            ffmpegPath: ffmpegResolution.ffmpegPath,
+            cwd: ffmpegResolution.cwd,
+            platform: ffmpegResolution.platform,
+          },
+        },
+        { status: 500 }
+      )
+    }
+
+    ensureFfmpegExecutable(ffmpegResolution.ffmpegPath)
+
+    const conversion = await convertWithBestBitrate(
+      inputPath,
+      outputPath,
+      ffmpegResolution.ffmpegPath
+    )
     const mp3Buffer = conversion.mp3Buffer
 
     await r2Client.send(
