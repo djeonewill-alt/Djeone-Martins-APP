@@ -18,14 +18,16 @@ const MP3_BITRATE_CANDIDATES = [
   { label: '48k', value: '48k' },
   { label: '40k', value: '40k' },
   { label: '32k', value: '32k' },
+  { label: '24k', value: '24k' },
 ] as const
 const OUTPUT_CONTENT_TYPE = 'audio/mpeg'
 const OUTPUT_CACHE_CONTROL = 'public, max-age=31536000, immutable'
-const SAFE_EXTENSIONS = new Set(['.webm', '.ogg', '.wav', '.mp3', '.m4a'])
 
 type ConversionAttempt = {
   bitrate: string
+  status: 'converted' | 'too_large' | 'ffmpeg_failed' | 'skipped'
   sizeBytes?: number
+  sizeMb?: number
   withinLimit: boolean
   error?: string
 }
@@ -108,14 +110,24 @@ function getSourceKeyFromUrl(sourceUrl: string, publicBaseUrl: string) {
   return normalizeSourceKey(keyPath)
 }
 
-function validateSafeExtension(keyOrUrl: string) {
+function getSourceExtension(keyOrUrl: string) {
   const extension = path.extname(new URL(keyOrUrl, 'https://r2.local').pathname).toLowerCase()
 
-  if (!SAFE_EXTENSIONS.has(extension)) {
-    throw new Error('Formato de audio nao suportado para conversao.')
-  }
+  return extension || '.bin'
+}
 
-  return extension
+function bytesToMb(sizeBytes: number) {
+  return Number((sizeBytes / 1024 / 1024).toFixed(2))
+}
+
+function isMp3Source(extension: string, contentType: string) {
+  const normalizedContentType = contentType.toLowerCase().split(';')[0].trim()
+
+  return extension === '.mp3' || normalizedContentType === OUTPUT_CONTENT_TYPE
+}
+
+function getShortDiagnostic(value: string) {
+  return value.replace(/\s+/g, ' ').trim().slice(0, 1200)
 }
 
 function getCompatibleKey(sourceKey: string) {
@@ -151,6 +163,11 @@ async function writeR2ObjectToFile(sourceKey: string, filePath: string) {
 
   const bytes = await body.transformToByteArray()
   await writeFile(filePath, Buffer.from(bytes))
+
+  return {
+    sizeBytes: bytes.byteLength,
+    contentType: object.ContentType || '',
+  }
 }
 
 async function writeFetchedUrlToFile(sourceUrl: string, filePath: string) {
@@ -162,6 +179,11 @@ async function writeFetchedUrlToFile(sourceUrl: string, filePath: string) {
 
   const arrayBuffer = await response.arrayBuffer()
   await writeFile(filePath, Buffer.from(arrayBuffer))
+
+  return {
+    sizeBytes: arrayBuffer.byteLength,
+    contentType: response.headers.get('content-type') || '',
+  }
 }
 
 function runFfmpeg(inputPath: string, outputPath: string, bitrate: string) {
@@ -192,14 +214,16 @@ function runFfmpeg(inputPath: string, outputPath: string, bitrate: string) {
       stderr += chunk.toString()
     })
 
-    ffmpeg.on('error', reject)
+    ffmpeg.on('error', (error) => {
+      reject(new Error(`ffmpeg nao iniciou: ${error.message}`))
+    })
     ffmpeg.on('close', (code) => {
       if (code === 0) {
         resolve()
         return
       }
 
-      reject(new Error(`ffmpeg falhou ao converter o audio. ${stderr.slice(-1200)}`.trim()))
+      reject(new Error(getShortDiagnostic(`ffmpeg falhou ao converter o audio. ${stderr}`)))
     })
   })
 }
@@ -210,21 +234,38 @@ async function convertWithBestBitrate(inputPath: string, outputPath: string) {
   for (const candidate of MP3_BITRATE_CANDIDATES) {
     try {
       await rm(outputPath, { force: true })
+      console.log('[convert-to-mp3] tentando bitrate', {
+        bitrate: candidate.label,
+      })
+
       await runFfmpeg(inputPath, outputPath, candidate.value)
 
-      const mp3Buffer = await readFile(outputPath)
+      let mp3Buffer: Buffer
+
+      try {
+        mp3Buffer = await readFile(outputPath)
+      } catch {
+        throw new Error('ffmpeg terminou sem gerar arquivo MP3.')
+      }
+
       const withinLimit = mp3Buffer.byteLength <= MAX_COMPATIBLE_AUDIO_BYTES
+      const sizeMb = bytesToMb(mp3Buffer.byteLength)
 
       attempts.push({
         bitrate: candidate.label,
+        status: withinLimit ? 'converted' : 'too_large',
         sizeBytes: mp3Buffer.byteLength,
+        sizeMb,
         withinLimit,
+        error: withinLimit ? undefined : 'Arquivo gerado acima do limite de 4,5 MB.',
       })
 
       console.log('[convert-to-mp3] tentativa concluida', {
         bitrate: candidate.label,
         sizeBytes: mp3Buffer.byteLength,
+        sizeMb,
         withinLimit,
+        rejectedReason: withinLimit ? null : 'too_large',
       })
 
       if (withinLimit) {
@@ -239,8 +280,9 @@ async function convertWithBestBitrate(inputPath: string, outputPath: string) {
 
       attempts.push({
         bitrate: candidate.label,
+        status: 'ffmpeg_failed',
         withinLimit: false,
-        error: message,
+        error: getShortDiagnostic(message),
       })
 
       console.error('[convert-to-mp3] tentativa falhou', {
@@ -260,8 +302,8 @@ async function convertWithBestBitrate(inputPath: string, outputPath: string) {
   throw Object.assign(
     new Error(
       smallestSizeMb
-        ? `Nao foi possivel gerar MP3 abaixo de 4,5 MB. Menor tentativa: ${smallestAttempt?.bitrate} com ${smallestSizeMb} MB.`
-        : 'Nao foi possivel converter o audio para MP3 em nenhum bitrate.'
+        ? `Nao foi possivel gerar MP3 compativel. Veja as tentativas. Menor tentativa: ${smallestAttempt?.bitrate} com ${smallestSizeMb} MB.`
+        : 'Nao foi possivel gerar MP3 compativel. Veja as tentativas.'
     ),
     { attempts }
   )
@@ -295,19 +337,18 @@ export async function POST(request: NextRequest) {
       ? normalizeSourceKey(cleanText(body.sourceKey))
       : sourceUrlKey
 
-    validateSafeExtension(sourceKey)
-
     if (sourceKey !== sourceUrlKey) {
       throw new Error('A key de origem nao corresponde a URL informada.')
     }
 
-    const extension = validateSafeExtension(sourceUrl)
+    const extension = getSourceExtension(sourceKey)
     const compatibleKey = getCompatibleKey(sourceKey)
     const compatibleUrl = `${publicBaseUrl}/${compatibleKey}`
 
     console.log('[convert-to-mp3] inicio', {
       sourceUrl,
       sourceKey,
+      extension,
       compatibleKey,
       maxSizeBytes: MAX_COMPATIBLE_AUDIO_BYTES,
     })
@@ -315,10 +356,50 @@ export async function POST(request: NextRequest) {
     inputPath = path.join(tmpdir(), `djeone-audio-${tempId}${extension}`)
     outputPath = path.join(tmpdir(), `djeone-audio-${tempId}.mp3`)
 
-    if (sourceKey) {
-      await writeR2ObjectToFile(sourceKey, inputPath)
-    } else {
-      await writeFetchedUrlToFile(sourceUrl, inputPath)
+    const sourceObject = sourceKey
+      ? await writeR2ObjectToFile(sourceKey, inputPath)
+      : await writeFetchedUrlToFile(sourceUrl, inputPath)
+
+    console.log('[convert-to-mp3] origem baixada', {
+      sourceKey,
+      extension,
+      contentType: sourceObject.contentType,
+      sizeBytes: sourceObject.sizeBytes,
+      sizeMb: bytesToMb(sourceObject.sizeBytes),
+    })
+
+    if (
+      isMp3Source(extension, sourceObject.contentType) &&
+      sourceObject.sizeBytes <= MAX_COMPATIBLE_AUDIO_BYTES
+    ) {
+      const attempts: ConversionAttempt[] = [
+        {
+          bitrate: 'original',
+          status: 'skipped',
+          sizeBytes: sourceObject.sizeBytes,
+          sizeMb: bytesToMb(sourceObject.sizeBytes),
+          withinLimit: true,
+          error: 'MP3 original ja estava dentro do limite.',
+        },
+      ]
+
+      console.log('[convert-to-mp3] mp3 original aceito', {
+        sourceKey,
+        sizeBytes: sourceObject.sizeBytes,
+      })
+
+      return NextResponse.json({
+        success: true,
+        compatibleUrl: sourceUrl,
+        compatibleKey: sourceKey,
+        compatibleType: OUTPUT_CONTENT_TYPE,
+        sizeBytes: sourceObject.sizeBytes,
+        sizeMb: bytesToMb(sourceObject.sizeBytes),
+        bitrate: 'original',
+        maxSizeBytes: MAX_COMPATIBLE_AUDIO_BYTES,
+        withinLimit: true,
+        attempts,
+      })
     }
 
     const conversion = await convertWithBestBitrate(inputPath, outputPath)
@@ -336,8 +417,10 @@ export async function POST(request: NextRequest) {
 
     console.log('[convert-to-mp3] mp3 escolhido', {
       compatibleKey,
+      compatibleUrl,
       bitrate: conversion.bitrate,
       sizeBytes: mp3Buffer.byteLength,
+      sizeMb: bytesToMb(mp3Buffer.byteLength),
     })
 
     return NextResponse.json({
@@ -361,7 +444,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: getErrorMessage(error) || 'Nao foi possivel converter o audio para MP3.',
+        error: attempts?.length
+          ? 'Nao foi possivel gerar MP3 compativel. Veja as tentativas.'
+          : getErrorMessage(error) || 'Nao foi possivel converter o audio para MP3.',
         attempts,
       },
       { status: 500 }

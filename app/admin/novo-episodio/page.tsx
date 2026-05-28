@@ -83,7 +83,9 @@ type ConvertToMp3Response = {
   withinLimit?: boolean
   attempts?: Array<{
     bitrate: string
+    status?: 'converted' | 'too_large' | 'ffmpeg_failed' | 'skipped'
     sizeBytes?: number
+    sizeMb?: number
     withinLimit: boolean
     error?: string
   }>
@@ -125,6 +127,50 @@ function getRoundedFutureDateTime(minutesAhead: number) {
   date.setMinutes(roundedMinutes, 0, 0)
 
   return date
+}
+
+const MAX_COMPATIBLE_AUDIO_BYTES = 4.5 * 1024 * 1024
+
+function isSmallMp3Audio(data: AudioUploadResponse, fallbackSizeBytes = 0) {
+  const contentType = (data.contentType || data.type || '').toLowerCase()
+  const extension = (data.extension || '').toLowerCase().replace(/^\./, '')
+  const sizeBytes = data.sizeBytes || fallbackSizeBytes
+
+  return (
+    (contentType === 'audio/mpeg' || extension === 'mp3') &&
+    sizeBytes > 0 &&
+    sizeBytes <= MAX_COMPATIBLE_AUDIO_BYTES
+  )
+}
+
+function formatConversionAttempts(attempts?: ConvertToMp3Response['attempts']) {
+  if (!attempts?.length) return ''
+
+  return attempts
+    .map((attempt) => {
+      const sizeText = attempt.sizeMb
+        ? `${attempt.sizeMb.toFixed(2)} MB`
+        : attempt.sizeBytes
+          ? `${(attempt.sizeBytes / 1024 / 1024).toFixed(2)} MB`
+          : ''
+      const statusText =
+        attempt.status === 'converted'
+          ? `${sizeText} dentro do limite`.trim()
+          : attempt.status === 'too_large'
+            ? `${sizeText} acima do limite`.trim()
+            : attempt.status === 'skipped'
+              ? `${sizeText} sem reencodar`.trim()
+              : attempt.status === 'ffmpeg_failed'
+                ? attempt.error
+                  ? `falhou no ffmpeg: ${attempt.error.slice(0, 120)}`
+                  : 'falhou no ffmpeg'
+              : attempt.error
+                ? `falhou: ${attempt.error.slice(0, 120)}`
+                : 'falhou'
+
+      return `${attempt.bitrate}: ${statusText}`
+    })
+    .join('\n')
 }
 
 function getErrorMessage(error: unknown) {
@@ -291,6 +337,7 @@ export default function NovoEpisodio() {
     if (data.isAudioCompatible) {
       setAudioUrlCompatible(data.compatibleAudioUrl || data.url || '')
       setAudioCompatibleType(data.compatibleAudioType || contentType)
+      setAudioCompatibleSizeBytes(data.sizeBytes || 0)
       setIsAudioCompatible(true)
       setAudioCompatibilityWarning('')
       return
@@ -300,7 +347,7 @@ export default function NovoEpisodio() {
     setAudioCompatibleType('')
     setIsAudioCompatible(false)
     setAudioCompatibilityWarning(
-      'Este áudio está em um formato que pode não tocar no iPhone. Para publicar, envie MP3 ou M4A.'
+      'Este audio precisa gerar MP3 compativel abaixo de 4,5 MB antes de publicar ou agendar.'
     )
   }
 
@@ -424,7 +471,17 @@ export default function NovoEpisodio() {
       const data = (await response.json()) as ConvertToMp3Response
 
       if (!response.ok || !data.success || !data.compatibleUrl) {
-        throw new Error(data.error || 'Nao foi possivel converter o audio no servidor.')
+        const attemptsSummary = formatConversionAttempts(data.attempts)
+
+        if (attemptsSummary) {
+          console.error('Tentativas de conversao MP3:', data.attempts)
+        }
+
+        throw new Error(
+          attemptsSummary
+            ? `${data.error || 'Nao foi possivel converter o audio no servidor.'}\n\nTentativas:\n${attemptsSummary}`
+            : data.error || 'Nao foi possivel converter o audio no servidor.'
+        )
       }
 
       setAudioUrl(data.compatibleUrl)
@@ -450,7 +507,7 @@ export default function NovoEpisodio() {
       alert(`MP3 compativel gerado. Qualidade: ${bitrate}. Tamanho: ${sizeMb} MB. Dentro do limite de 4,5 MB.${attemptSummary}`)
     } catch (error) {
       console.error('Erro ao gerar MP3 compativel:', error)
-      alert(`A conversao no servidor falhou: ${getErrorMessage(error)} A gravacao original continua disponivel.`)
+      alert(`A conversao no servidor falhou. A gravacao original continua disponivel.\n\n${getErrorMessage(error)}`)
     } finally {
       setIsGeneratingCompatibleAudio(false)
     }
@@ -476,13 +533,30 @@ export default function NovoEpisodio() {
       const data = (await response.json()) as AudioUploadResponse
 
       if (data.url) {
+        const compatibleMp3 = isSmallMp3Audio(data, file.size)
+
         setRecordingBlob(null)
         setAudioUrl(data.url)
-        setAudioOriginalUrl('')
-        setAudioOriginalKey('')
-        setAudioOriginalType('')
-        setAudioCompatibleSizeBytes(data.sizeBytes || file.size)
-        applyAudioUploadMetadata(data)
+        setAudioOriginalUrl(data.url)
+        setAudioOriginalKey(data.key || '')
+        setAudioOriginalType(data.contentType || data.type || file.type || '')
+        setAudioCompatibleSizeBytes(compatibleMp3 ? data.sizeBytes || file.size : 0)
+        setUploadedAudioContentType(data.contentType || data.type || file.type || '')
+
+        if (compatibleMp3) {
+          setAudioUrlCompatible(data.compatibleAudioUrl || data.url)
+          setAudioCompatibleType('audio/mpeg')
+          setIsAudioCompatible(true)
+          setAudioCompatibilityWarning('')
+        } else {
+          setAudioUrlCompatible('')
+          setAudioCompatibleType('')
+          setIsAudioCompatible(false)
+          setAudioCompatibilityWarning(
+            'Este audio precisa gerar MP3 compativel abaixo de 4,5 MB antes de publicar ou agendar.'
+          )
+        }
+
         resetAutomationData()
 
         const audio = new Audio(data.url)
@@ -1092,7 +1166,7 @@ export default function NovoEpisodio() {
     }
 
     if (audioUrl && !audioUrlCompatible && (formData.status !== 'draft' || scheduledPublishAt)) {
-      alert('Para publicar ou agendar, envie um áudio MP3 ou M4A. O formato atual pode não tocar no iPhone.')
+      alert('Para publicar ou agendar, gere um MP3 compativel abaixo de 4,5 MB.')
       return
     }
 
@@ -1382,7 +1456,7 @@ export default function NovoEpisodio() {
             <AudioRecorder onRecordingComplete={handleRecordingComplete} />
 
             <p className="text-sm text-white mt-3">
-              Áudios gravados direto no navegador podem ficar em WEBM e não tocar no iPhone. Para publicação final, envie um MP3 ou M4A.
+              Audios gravados direto no navegador podem ficar em WEBM. Para publicacao final, gere um MP3 compativel abaixo de 4,5 MB.
             </p>
 
             {uploading && (
@@ -1413,7 +1487,7 @@ export default function NovoEpisodio() {
               </div>
             )}
 
-            {recordingBlob && audioUrl && !audioUrlCompatible && (
+            {audioUrl && !audioUrlCompatible && (
               <div className="mt-4 space-y-3">
                 <button
                   type="button"
@@ -1477,6 +1551,21 @@ export default function NovoEpisodio() {
                   </p>
                 ) : null}
                 <p className="text-sm text-green-400 mt-2">✅ Áudio carregado!</p>
+              </div>
+            )}
+
+            {audioUrl && !audioUrlCompatible && (
+              <div className="mt-4 space-y-3">
+                <button
+                  type="button"
+                  onClick={handleGenerateCompatibleAudio}
+                  disabled={uploading || isGeneratingCompatibleAudio}
+                  className="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                >
+                  {isGeneratingCompatibleAudio
+                    ? 'Convertendo MP3 no servidor...'
+                    : 'Gerar MP3 compativel para publicacao'}
+                </button>
               </div>
             )}
           </div>
