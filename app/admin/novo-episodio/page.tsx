@@ -196,6 +196,8 @@ function getRoundedFutureDateTime(minutesAhead: number) {
 }
 
 const MAX_COMPATIBLE_AUDIO_BYTES = 4.5 * 1024 * 1024
+const ALLOWED_COVER_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp']
+const ALLOWED_COVER_IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp']
 const TRANSCRIPTION_COMPATIBLE_AUDIO_WARNING =
   'Antes de transcrever, gere o MP3 compativel. Isso garante que a legenda fique sincronizada com o audio publicado.'
 
@@ -208,6 +210,15 @@ function isSmallMp3Audio(data: AudioUploadResponse, fallbackSizeBytes = 0) {
     (contentType === 'audio/mpeg' || extension === 'mp3') &&
     sizeBytes > 0 &&
     sizeBytes <= MAX_COMPATIBLE_AUDIO_BYTES
+  )
+}
+
+function isAllowedCoverImage(file: File) {
+  const extension = file.name.split('.').pop()?.toLowerCase() || ''
+
+  return (
+    ALLOWED_COVER_IMAGE_TYPES.includes(file.type) ||
+    ALLOWED_COVER_IMAGE_EXTENSIONS.includes(extension)
   )
 }
 
@@ -826,10 +837,13 @@ export default function NovoEpisodio() {
     }
   }
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-
-    if (!file) return
+  const uploadEpisodeCoverImage = async (
+    file: File,
+    successMessage = 'Imagem enviada e definida como capa do episodio.'
+  ) => {
+    if (!isAllowedCoverImage(file)) {
+      throw new Error('Envie uma imagem PNG, JPG, JPEG ou WEBP.')
+    }
 
     setUploading(true)
 
@@ -848,15 +862,41 @@ export default function NovoEpisodio() {
       if (data.url) {
         setEpisodeImageUrl(data.url)
         setUseSeriesImage(false)
-        alert('✅ Imagem carregada!')
+        alert(successMessage)
       } else {
         throw new Error(data.error || 'Erro ao fazer upload')
       }
-    } catch (error) {
-      console.error('Erro no upload:', error)
-      alert('❌ Erro ao fazer upload da imagem. Tente novamente.')
     } finally {
       setUploading(false)
+    }
+  }
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+
+    if (!file) return
+
+    try {
+      await uploadEpisodeCoverImage(file)
+    } catch (error) {
+      console.error('Erro no upload:', error)
+      alert(`Erro ao fazer upload da imagem: ${getErrorMessage(error)}`)
+    }
+  }
+
+  const handlePremiumManualImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+
+    if (!file) return
+
+    try {
+      await uploadEpisodeCoverImage(
+        file,
+        'Imagem premium enviada e definida como capa do episodio.'
+      )
+    } catch (error) {
+      console.error('Erro no upload da imagem premium:', error)
+      alert(`Erro ao enviar imagem premium: ${getErrorMessage(error)}`)
     }
   }
 
@@ -2488,6 +2528,53 @@ export default function NovoEpisodio() {
                     ? 'Gerando prompt premium...'
                     : 'Gerar prompt premium'}
                 </button>
+
+                <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/70 p-3">
+                  <p className="text-sm font-bold text-white">
+                    Imagem premium gerada manualmente
+                  </p>
+
+                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                    Gere a imagem com o prompt acima no ChatGPT Plus ou outra ferramenta. Depois baixe a imagem e envie aqui para usar como capa do episodio.
+                  </p>
+
+                  <input
+                    type="file"
+                    accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+                    onChange={handlePremiumManualImageUpload}
+                    disabled={uploading}
+                    className="mt-3 w-full rounded-lg border border-slate-700 bg-slate-800 p-2 text-sm text-white disabled:opacity-50"
+                  />
+
+                  <p className="mt-2 text-xs text-slate-500">
+                    Formatos aceitos: PNG, JPG, JPEG ou WEBP. O upload usa o mesmo fluxo de capa do episodio.
+                  </p>
+
+                  {episodeImageUrl && !useSeriesImage && (
+                    <div className="mt-3">
+                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Capa atual do episodio
+                      </p>
+
+                      <img
+                        src={episodeImageUrl}
+                        alt="Capa atual do episodio"
+                        className="h-36 w-full rounded-lg object-cover"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUseSeriesImage(false)
+                          alert('Imagem definida como capa do episodio.')
+                        }}
+                        className="mt-3 w-full rounded-lg border border-indigo-400/30 bg-indigo-500/10 py-2 text-xs font-bold text-indigo-100 hover:bg-indigo-500/20"
+                      >
+                        Usar como capa do episodio
+                      </button>
+                    </div>
+                  )}
+                </div>
 
                 {premiumImagePrompt && (
                   <div className="mt-4 space-y-4">
