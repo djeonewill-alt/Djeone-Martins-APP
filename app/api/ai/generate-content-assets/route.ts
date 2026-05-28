@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { GetObjectCommand } from '@aws-sdk/client-s3'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { r2Client, R2_BUCKET_NAME } from '@/lib/r2/client'
 
 export const runtime = 'nodejs'
 
@@ -7,6 +9,40 @@ type TranscriptionSegment = {
   start: number
   end: number
   text: string
+}
+
+type WordTimestamp = {
+  word: string
+  start: number
+  end: number
+}
+
+type CaptionSyncCut = {
+  title?: string
+  start: number
+  end: number
+  hook?: string
+  source_excerpt?: string
+}
+
+type SyncedCaptionLine = {
+  start: number
+  end: number
+  text: string
+  words_count: number
+}
+
+type SyncedCaptions = {
+  source: 'word_timestamps'
+  cut_title: string
+  cut_start: number
+  cut_end: number
+  duration_seconds: number
+  words_count: number
+  lines: SyncedCaptionLine[]
+  srt: string
+  plain_text: string
+  json: SyncedCaptionLine[]
 }
 
 type ShortIdea = {
@@ -125,6 +161,7 @@ type ContentAssets = {
   cut_suggestions_note?: string
   expanded_cut?: CutSuggestion
   short_script?: ShortScript
+  synced_captions?: SyncedCaptions
   metadata?: ContentAssetsMetadata
 }
 
@@ -138,6 +175,7 @@ type GenerationMode =
   | 'cuts'
   | 'short_script'
   | 'expand_cut'
+  | 'caption_sync'
 
 const MAX_TRANSCRIPTION_CHARS = 28000
 const MAX_SEGMENTS = 160
@@ -158,6 +196,7 @@ const GENERATION_MODES: GenerationMode[] = [
   'cuts',
   'short_script',
   'expand_cut',
+  'caption_sync',
 ]
 
 function cleanText(text: string) {
@@ -660,6 +699,32 @@ function normalizeSelectedCut(input: unknown): CutSuggestion | null {
   return selectedCut
 }
 
+function normalizeCaptionSyncCut(input: unknown): CaptionSyncCut | null {
+  if (!input || typeof input !== 'object') return null
+
+  const value = input as {
+    title?: unknown
+    start?: unknown
+    end?: unknown
+    hook?: unknown
+    source_excerpt?: unknown
+  }
+  const start = Number(value.start)
+  const end = Number(value.end)
+
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return null
+  }
+
+  return {
+    title: cleanText(String(value.title || '')).slice(0, 140) || undefined,
+    start,
+    end,
+    hook: cleanText(String(value.hook || '')).slice(0, 220) || undefined,
+    source_excerpt: cleanText(String(value.source_excerpt || '')).slice(0, 700) || undefined,
+  }
+}
+
 function normalizeShortScript(input: unknown): ShortScript | undefined {
   if (!input || typeof input !== 'object') return undefined
 
@@ -1049,6 +1114,233 @@ function completeShortScriptFallbacks(script: ShortScript, selectedCut?: CutSugg
     : undefined
 
   return script
+}
+
+function normalizeWordTimestamp(input: unknown): WordTimestamp | null {
+  if (!input || typeof input !== 'object') return null
+
+  const value = input as { word?: unknown; start?: unknown; end?: unknown }
+  const word = cleanText(String(value.word || ''))
+  const start = Number(value.start)
+  const end = Number(value.end)
+
+  if (!word || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return null
+  }
+
+  return { word, start, end }
+}
+
+function cleanCaptionWord(word: string) {
+  return cleanText(word)
+    .replace(/^[,.;:!?]+|[,.;:!?]+$/g, '')
+    .trim()
+}
+
+function shouldSkipCaptionToken(word: string) {
+  return /^(n[eé]|eh|e\.\.\.|é\.\.\.)$/i.test(word)
+}
+
+function isWeakCaptionEnding(word: string) {
+  return /^(de|do|da|dos|das|com|em|no|na|nos|nas|que|para|por|mas|e|porque|portanto|at[eé])$/i.test(word)
+}
+
+function cleanSyncedCaptionText(words: string[]) {
+  const deduped = words.filter((word, index) => {
+    return index === 0 || word.toLowerCase() !== words[index - 1].toLowerCase()
+  })
+
+  return cleanText(deduped.join(' '))
+    .replace(/\bJesus\s+ele\b/gi, 'Jesus')
+    .replace(/\b(Chequen[aá]|Shekinah)\s+de\s+Deus\b/gi, 'a gloria de Deus')
+    .replace(/\b(Chequen[aá]|Shekinah)\b/gi, 'a gloria de Deus')
+    .replace(/\s+([,.!?;:])/g, '$1')
+}
+
+function roundCaptionTime(seconds: number) {
+  return Math.max(0, Number(seconds.toFixed(2)))
+}
+
+function formatSrtTime(seconds: number) {
+  const safeSeconds = Math.max(0, seconds)
+  const hours = Math.floor(safeSeconds / 3600)
+  const minutes = Math.floor((safeSeconds % 3600) / 60)
+  const secs = Math.floor(safeSeconds % 60)
+  const millis = Math.round((safeSeconds - Math.floor(safeSeconds)) * 1000)
+
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(millis).padStart(3, '0')}`
+}
+
+function buildSrt(lines: SyncedCaptionLine[]) {
+  return lines
+    .map((line, index) => {
+      return [
+        String(index + 1),
+        `${formatSrtTime(line.start)} --> ${formatSrtTime(line.end)}`,
+        line.text,
+      ].join('\n')
+    })
+    .join('\n\n')
+}
+
+function groupCaptionWords(words: WordTimestamp[], cut: CaptionSyncCut): SyncedCaptionLine[] {
+  const usableWords = words
+    .map((word) => ({
+      ...word,
+      word: cleanCaptionWord(word.word),
+    }))
+    .filter((word) => word.word && !shouldSkipCaptionToken(word.word))
+
+  const lines: SyncedCaptionLine[] = []
+  let current: WordTimestamp[] = []
+
+  function pushCurrent() {
+    if (!current.length) return
+
+    const text = cleanSyncedCaptionText(current.map((word) => word.word))
+
+    if (text) {
+      lines.push({
+        start: roundCaptionTime(current[0].start - cut.start),
+        end: roundCaptionTime(current[current.length - 1].end - cut.start),
+        text,
+        words_count: current.length,
+      })
+    }
+
+    current = []
+  }
+
+  for (let index = 0; index < usableWords.length; index += 1) {
+    current.push(usableWords[index])
+
+    const duration = current[current.length - 1].end - current[0].start
+    const wordsCount = current.length
+    const nextWord = usableWords[index + 1]
+    const lastWord = current[current.length - 1].word
+    const shouldPullNext = nextWord && isWeakCaptionEnding(lastWord)
+    const reachedPreferredSize = wordsCount >= 3 && duration >= 1.2
+    const reachedHardLimit = wordsCount >= 7 || duration >= 3.5
+
+    if ((reachedHardLimit || reachedPreferredSize) && !shouldPullNext) {
+      pushCurrent()
+    }
+  }
+
+  pushCurrent()
+
+  if (lines.length > 1 && lines[lines.length - 1].words_count < 3) {
+    const last = lines.pop()
+    const previous = lines[lines.length - 1]
+
+    if (last && previous && previous.words_count + last.words_count <= 8) {
+      previous.end = last.end
+      previous.text = cleanSyncedCaptionText(`${previous.text} ${last.text}`.split(/\s+/))
+      previous.words_count += last.words_count
+    } else if (last) {
+      lines.push(last)
+    }
+  }
+
+  return lines.filter((line) => line.end > line.start && line.text)
+}
+
+async function readR2ObjectAsText(key: string) {
+  const response = await r2Client.send(
+    new GetObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: key,
+    })
+  )
+  const body = response.Body as { transformToString?: () => Promise<string> } | undefined
+
+  if (!body?.transformToString) {
+    throw new Error('Nao foi possivel ler words.json no R2.')
+  }
+
+  return body.transformToString()
+}
+
+async function fetchWordsJson(params: { url?: string | null; key?: string | null }) {
+  if (params.url) {
+    const response = await fetch(params.url)
+
+    if (!response.ok) {
+      throw new Error('Nao foi possivel baixar words.json pela URL publica.')
+    }
+
+    return response.text()
+  }
+
+  if (params.key) {
+    return readR2ObjectAsText(params.key)
+  }
+
+  throw new Error('Este episodio ainda nao possui arquivo words.json.')
+}
+
+async function buildSyncedCaptions(params: {
+  episodeId: string
+  selectedCut: CaptionSyncCut
+}): Promise<SyncedCaptions> {
+  const supabase = await createSupabaseServerClient()
+  const { data: episode, error } = await supabase
+    .from('episodes')
+    .select('id, title, transcription_words_url, transcription_words_key, transcription_words_status, transcription_words_count')
+    .eq('id', params.episodeId)
+    .single()
+
+  if (error || !episode) {
+    throw new Error('Episodio nao encontrado para sincronizar legendas.')
+  }
+
+  if (
+    episode.transcription_words_status !== 'ready' ||
+    (!episode.transcription_words_url && !episode.transcription_words_key)
+  ) {
+    throw new Error('Este episodio ainda nao possui timestamps avancados. Gere os timestamps avancados antes de sincronizar legendas.')
+  }
+
+  const wordsText = await fetchWordsJson({
+    url: episode.transcription_words_url,
+    key: episode.transcription_words_key,
+  })
+  const parsed = JSON.parse(wordsText) as { words?: unknown }
+  const words = Array.isArray(parsed.words)
+    ? parsed.words.map(normalizeWordTimestamp).filter((word): word is WordTimestamp => Boolean(word))
+    : []
+
+  if (!words.length) {
+    throw new Error('O arquivo words.json nao possui palavras validas.')
+  }
+
+  const cut = params.selectedCut
+  const cutWords = words
+    .filter((word) => word.start >= cut.start - 0.15 && word.end <= cut.end + 0.15)
+    .sort((a, b) => a.start - b.start)
+
+  if (cutWords.length < 8) {
+    throw new Error('Nao ha palavras suficientes neste intervalo para gerar legendas sincronizadas.')
+  }
+
+  const lines = groupCaptionWords(cutWords, cut)
+
+  if (!lines.length) {
+    throw new Error('Nao foi possivel agrupar palavras em legendas sincronizadas.')
+  }
+
+  return {
+    source: 'word_timestamps',
+    cut_title: cut.title || episode.title || 'Corte selecionado',
+    cut_start: cut.start,
+    cut_end: cut.end,
+    duration_seconds: Math.round(cut.end - cut.start),
+    words_count: cutWords.length,
+    lines,
+    srt: buildSrt(lines),
+    plain_text: lines.map((line) => line.text).join('\n'),
+    json: lines,
+  }
 }
 
 function buildExpandedCut(
@@ -1615,6 +1907,9 @@ Gere somente expanded_cut a partir do selected_cut informado e dos segmentos pro
   }
 }
 `.trim(),
+    caption_sync: `
+Este modo e local. Nao chame IA para caption_sync.
+`.trim(),
   }
 
   return contracts[mode]
@@ -1946,12 +2241,40 @@ export async function POST(request: NextRequest) {
     const hasReliableSegments = transcriptionSegments.length > 0
     const mode = normalizeMode(body.mode)
     const selectedCut = normalizeSelectedCut(body.selected_cut)
+    const captionSyncCut = normalizeCaptionSyncCut(body.selected_cut)
 
     if (!episodeId) {
       return NextResponse.json(
         { success: false, error: 'Envie o ID do episódio.' },
         { status: 400 }
       )
+    }
+
+    if (mode === 'caption_sync') {
+      if (!captionSyncCut) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Envie um corte valido para sincronizar legendas.',
+          },
+          { status: 400 }
+        )
+      }
+
+      const syncedCaptions = await buildSyncedCaptions({
+        episodeId,
+        selectedCut: captionSyncCut,
+      })
+
+      return NextResponse.json({
+        success: true,
+        provider: 'local',
+        model: 'word-timestamps',
+        mode,
+        assets: {
+          synced_captions: syncedCaptions,
+        },
+      })
     }
 
     if (!transcriptionText || transcriptionText.length < 300) {

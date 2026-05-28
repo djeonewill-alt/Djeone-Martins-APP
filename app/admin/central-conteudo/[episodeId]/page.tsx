@@ -18,6 +18,26 @@ type DailyQuoteSuggestion = {
   score?: number
 }
 
+type SyncedCaptionLine = {
+  start: number
+  end: number
+  text: string
+  words_count: number
+}
+
+type SyncedCaptions = {
+  source: 'word_timestamps'
+  cut_title: string
+  cut_start: number
+  cut_end: number
+  duration_seconds: number
+  words_count: number
+  lines: SyncedCaptionLine[]
+  srt: string
+  plain_text: string
+  json: SyncedCaptionLine[]
+}
+
 type ShortIdea = {
   title: string
   hook: string
@@ -128,6 +148,7 @@ type ContentAssets = {
   cut_suggestions_note?: string
   expanded_cut?: CutSuggestion
   short_script?: ShortScript
+  synced_captions?: SyncedCaptions
 }
 
 type GenerationMode =
@@ -140,6 +161,7 @@ type GenerationMode =
   | 'cuts'
   | 'short_script'
   | 'expand_cut'
+  | 'caption_sync'
 
 const EMPTY_CONTENT_ASSETS: ContentAssets = {
   devotional_summary: '',
@@ -283,6 +305,7 @@ const generatingLabels: Record<GenerationMode, string> = {
   cuts: 'Gerando cortes...',
   short_script: 'Gerando roteiro...',
   expand_cut: 'Expandindo corte...',
+  caption_sync: 'Sincronizando legendas...',
 }
 
 function formatShortScriptForCopy(script: ShortScript) {
@@ -350,8 +373,11 @@ export default function AdminContentStudioPage() {
   const [generatingMode, setGeneratingMode] = useState<GenerationMode | null>(null)
   const [generatingShortScriptKey, setGeneratingShortScriptKey] = useState('')
   const [generatingExpandedCutKey, setGeneratingExpandedCutKey] = useState('')
+  const [generatingSyncedCaptionKey, setGeneratingSyncedCaptionKey] = useState('')
+  const [syncedCaptionSourceKey, setSyncedCaptionSourceKey] = useState('')
   const [expandedCutSourceKey, setExpandedCutSourceKey] = useState('')
   const [expandedCutErrorByKey, setExpandedCutErrorByKey] = useState<Record<string, string>>({})
+  const [syncedCaptionErrorByKey, setSyncedCaptionErrorByKey] = useState<Record<string, string>>({})
   const [contentAssetsError, setContentAssetsError] = useState('')
   const [generatingWordTimestamps, setGeneratingWordTimestamps] = useState(false)
   const [wordTimestampsError, setWordTimestampsError] = useState('')
@@ -583,6 +609,71 @@ export default function AdminContentStudioPage() {
       setExpandedCutErrorByKey((current) => ({ ...current, [loadingKey]: message }))
     } finally {
       setGeneratingExpandedCutKey('')
+    }
+  }
+
+  async function handleGenerateSyncedCaptions(cut: CutSuggestion, index: number) {
+    if (!episode) return
+
+    const loadingKey = getCutKey(cut, index)
+    const hasReadyWords =
+      episode.transcription_words_status === 'ready' &&
+      Boolean(episode.transcription_words_url || episode.transcription_words_key)
+
+    if (!hasReadyWords) {
+      setSyncedCaptionSourceKey(loadingKey)
+      setSyncedCaptionErrorByKey((current) => ({
+        ...current,
+        [loadingKey]: 'Gere timestamps avancados antes de sincronizar legendas.',
+      }))
+      return
+    }
+
+    try {
+      setGeneratingSyncedCaptionKey(loadingKey)
+      setSyncedCaptionSourceKey(loadingKey)
+      setSyncedCaptionErrorByKey((current) => ({ ...current, [loadingKey]: '' }))
+      setContentAssetsError('')
+
+      const response = await fetch('/api/ai/generate-content-assets', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          episodeId: episode.id,
+          mode: 'caption_sync',
+          selected_cut: {
+            title: cut.title,
+            start: cut.start,
+            end: cut.end,
+            hook: cut.hook,
+            source_excerpt: cut.source_excerpt,
+          },
+        }),
+      })
+      const payload = await response.json()
+
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error || 'Nao foi possivel sincronizar legendas.')
+      }
+
+      setContentAssets((current) => {
+        return {
+          ...(current || EMPTY_CONTENT_ASSETS),
+          ...(payload.assets as Partial<ContentAssets>),
+        }
+      })
+    } catch (error) {
+      console.error('Erro ao sincronizar legendas:', error)
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Nao foi possivel sincronizar legendas.'
+
+      setSyncedCaptionErrorByKey((current) => ({ ...current, [loadingKey]: message }))
+    } finally {
+      setGeneratingSyncedCaptionKey('')
     }
   }
 
@@ -1289,6 +1380,38 @@ export default function AdminContentStudioPage() {
                   </article>
                   )}
 
+                  {contentAssets.synced_captions && (
+                  <article className="rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/10 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h2 className="text-sm font-black text-fuchsia-50">Legendas sincronizadas</h2>
+                        <p className="mt-1 text-xs font-bold text-fuchsia-100/70">
+                          Origem: word timestamps | {formatSegmentTime(contentAssets.synced_captions.cut_start)} - {formatSegmentTime(contentAssets.synced_captions.cut_end)} | {formatDuration(contentAssets.synced_captions.duration_seconds)}
+                        </p>
+                        <p className="mt-1 text-xs font-bold text-fuchsia-100/60">
+                          {contentAssets.synced_captions.cut_title} · {contentAssets.synced_captions.words_count} palavras
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <CopyButton value={contentAssets.synced_captions.srt} label="Copiar SRT" />
+                        <CopyButton value={contentAssets.synced_captions.plain_text} label="Copiar texto" />
+                        <CopyButton value={JSON.stringify(contentAssets.synced_captions.json, null, 2)} label="Copiar JSON" />
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-2">
+                      {contentAssets.synced_captions.lines.map((line, index) => (
+                        <div key={`${line.start}-${line.end}-${index}`} className="rounded-xl border border-white/10 bg-slate-950/50 p-3">
+                          <p className="text-[11px] font-black text-fuchsia-200">
+                            {line.start.toFixed(2)}s - {line.end.toFixed(2)}s · {line.words_count} palavras
+                          </p>
+                          <p className="mt-2 text-sm font-bold leading-6 text-fuchsia-50">{line.text}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                  )}
+
                   {contentAssets.expanded_cut && (
                   <article className="rounded-2xl border border-emerald-300/15 bg-emerald-500/10 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1298,16 +1421,28 @@ export default function AdminContentStudioPage() {
                           {formatSegmentTime(contentAssets.expanded_cut.start)} - {formatSegmentTime(contentAssets.expanded_cut.end)} | {formatDuration(getCutDuration(contentAssets.expanded_cut))}
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleGenerateShortScript(contentAssets.expanded_cut as CutSuggestion, -1)}
-                        disabled={Boolean(generatingShortScriptKey)}
-                        className="rounded-xl border border-emerald-300/20 bg-slate-950/50 px-3 py-2 text-xs font-black text-emerald-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
-                      >
-                        {generatingShortScriptKey === `${contentAssets.expanded_cut.start}-${contentAssets.expanded_cut.end}--1`
-                          ? 'Gerando roteiro...'
-                          : 'Gerar roteiro do Short'}
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleGenerateShortScript(contentAssets.expanded_cut as CutSuggestion, -1)}
+                          disabled={Boolean(generatingShortScriptKey)}
+                          className="rounded-xl border border-emerald-300/20 bg-slate-950/50 px-3 py-2 text-xs font-black text-emerald-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                        >
+                          {generatingShortScriptKey === `${contentAssets.expanded_cut.start}-${contentAssets.expanded_cut.end}--1`
+                            ? 'Gerando roteiro...'
+                            : 'Gerar roteiro do Short'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleGenerateSyncedCaptions(contentAssets.expanded_cut as CutSuggestion, -1)}
+                          disabled={Boolean(generatingSyncedCaptionKey)}
+                          className="rounded-xl border border-fuchsia-300/20 bg-fuchsia-500/10 px-3 py-2 text-xs font-black text-fuchsia-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                        >
+                          {generatingSyncedCaptionKey === getCutKey(contentAssets.expanded_cut, -1)
+                            ? 'Sincronizando...'
+                            : 'Gerar legendas sincronizadas'}
+                        </button>
+                      </div>
                     </div>
 
                     <div className="mt-3 rounded-xl border border-emerald-200/10 bg-slate-950/40 p-3">
@@ -1331,6 +1466,11 @@ export default function AdminContentStudioPage() {
                       {contentAssets.expanded_cut.needs_manual_trim && (
                         <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-500/10 p-3 text-xs font-bold leading-5 text-amber-50">
                           {contentAssets.expanded_cut.trim_warning || 'Este corte pode precisar de ajuste manual no final.'}
+                        </p>
+                      )}
+                      {syncedCaptionErrorByKey[getCutKey(contentAssets.expanded_cut, -1)] && (
+                        <p className="mt-3 rounded-xl border border-rose-300/20 bg-rose-500/10 p-3 text-xs font-bold leading-5 text-rose-100">
+                          {syncedCaptionErrorByKey[getCutKey(contentAssets.expanded_cut, -1)]}
                         </p>
                       )}
                     </div>
@@ -1437,20 +1577,37 @@ export default function AdminContentStudioPage() {
                                   : 'Expandir para corte completo'}
                               </button>
                             ) : (
-                              <button
-                                type="button"
-                                onClick={() => handleGenerateShortScript(cut, index)}
-                                disabled={Boolean(generatingShortScriptKey)}
-                                className="mt-4 rounded-xl border border-cyan-300/20 bg-cyan-500/10 px-3 py-2 text-xs font-black text-cyan-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
-                              >
-                                {generatingShortScriptKey === getCutKey(cut, index)
-                                  ? 'Gerando roteiro...'
-                                  : 'Gerar roteiro do Short'}
-                              </button>
+                              <div className="mt-4 flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleGenerateShortScript(cut, index)}
+                                  disabled={Boolean(generatingShortScriptKey)}
+                                  className="rounded-xl border border-cyan-300/20 bg-cyan-500/10 px-3 py-2 text-xs font-black text-cyan-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                                >
+                                  {generatingShortScriptKey === getCutKey(cut, index)
+                                    ? 'Gerando roteiro...'
+                                    : 'Gerar roteiro do Short'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleGenerateSyncedCaptions(cut, index)}
+                                  disabled={Boolean(generatingSyncedCaptionKey)}
+                                  className="rounded-xl border border-fuchsia-300/20 bg-fuchsia-500/10 px-3 py-2 text-xs font-black text-fuchsia-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                                >
+                                  {generatingSyncedCaptionKey === getCutKey(cut, index)
+                                    ? 'Sincronizando...'
+                                    : 'Gerar legendas sincronizadas'}
+                                </button>
+                              </div>
                             )}
                             {expandedCutErrorByKey[getCutKey(cut, index)] && (
                               <p className="mt-3 rounded-xl border border-rose-300/20 bg-rose-500/10 p-3 text-xs font-bold leading-5 text-rose-100">
                                 {expandedCutErrorByKey[getCutKey(cut, index)]}
+                              </p>
+                            )}
+                            {syncedCaptionErrorByKey[getCutKey(cut, index)] && (
+                              <p className="mt-3 rounded-xl border border-rose-300/20 bg-rose-500/10 p-3 text-xs font-bold leading-5 text-rose-100">
+                                {syncedCaptionErrorByKey[getCutKey(cut, index)]}
                               </p>
                             )}
                             {contentAssets.expanded_cut && expandedCutSourceKey === getCutKey(cut, index) && (
@@ -1493,16 +1650,33 @@ export default function AdminContentStudioPage() {
                                     ))}
                                   </div>
                                 )}
-                                <button
-                                  type="button"
-                                  onClick={() => handleGenerateShortScript(contentAssets.expanded_cut as CutSuggestion, -1)}
-                                  disabled={Boolean(generatingShortScriptKey)}
-                                  className="mt-4 rounded-xl border border-emerald-300/20 bg-slate-950/50 px-3 py-2 text-xs font-black text-emerald-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
-                                >
-                                  {generatingShortScriptKey === getCutKey(contentAssets.expanded_cut, -1)
-                                    ? 'Gerando roteiro...'
-                                    : 'Gerar roteiro do Short'}
-                                </button>
+                                <div className="mt-4 flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleGenerateShortScript(contentAssets.expanded_cut as CutSuggestion, -1)}
+                                    disabled={Boolean(generatingShortScriptKey)}
+                                    className="rounded-xl border border-emerald-300/20 bg-slate-950/50 px-3 py-2 text-xs font-black text-emerald-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                                  >
+                                    {generatingShortScriptKey === getCutKey(contentAssets.expanded_cut, -1)
+                                      ? 'Gerando roteiro...'
+                                      : 'Gerar roteiro do Short'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleGenerateSyncedCaptions(contentAssets.expanded_cut as CutSuggestion, -1)}
+                                    disabled={Boolean(generatingSyncedCaptionKey)}
+                                    className="rounded-xl border border-fuchsia-300/20 bg-fuchsia-500/10 px-3 py-2 text-xs font-black text-fuchsia-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                                  >
+                                    {generatingSyncedCaptionKey === getCutKey(contentAssets.expanded_cut, -1)
+                                      ? 'Sincronizando...'
+                                      : 'Gerar legendas sincronizadas'}
+                                  </button>
+                                </div>
+                                {syncedCaptionErrorByKey[getCutKey(contentAssets.expanded_cut, -1)] && (
+                                  <p className="mt-3 rounded-xl border border-rose-300/20 bg-rose-500/10 p-3 text-xs font-bold leading-5 text-rose-100">
+                                    {syncedCaptionErrorByKey[getCutKey(contentAssets.expanded_cut, -1)]}
+                                  </p>
+                                )}
                               </div>
                             )}
                           </div>
