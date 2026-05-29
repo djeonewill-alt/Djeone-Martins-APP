@@ -174,6 +174,8 @@ type GenerationMode =
   | 'expand_cut'
   | 'caption_sync'
 
+type StudioTab = 'studio' | 'episode' | 'transcription' | 'phrases' | 'publishing'
+
 const EMPTY_CONTENT_ASSETS: ContentAssets = {
   devotional_summary: '',
   strong_phrases: [],
@@ -491,6 +493,7 @@ export default function AdminContentStudioPage() {
   const [wordTimestampsError, setWordTimestampsError] = useState('')
   const [selectedCutKey, setSelectedCutKey] = useState('')
   const [workspaceRestored, setWorkspaceRestored] = useState(false)
+  const [activeStudioTab, setActiveStudioTab] = useState<StudioTab>('studio')
 
   useEffect(() => {
     loadEpisode()
@@ -971,6 +974,13 @@ export default function AdminContentStudioPage() {
   const wordTimestampStatus =
     episode.transcription_words_status ||
     (episode.transcription_words_url ? 'ready' : 'missing')
+  const studioTabs: Array<{ key: StudioTab; label: string; description: string }> = [
+    { key: 'studio', label: 'Estudio', description: 'Cortes, roteiros e legendas' },
+    { key: 'episode', label: 'Episodio', description: 'Audio e dados base' },
+    { key: 'transcription', label: 'Transcricao', description: 'Texto e timestamps' },
+    { key: 'phrases', label: 'Frases', description: 'Frases fortes' },
+    { key: 'publishing', label: 'Publicacao', description: 'Pacote para redes' },
+  ]
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6 lg:px-8">
@@ -1030,8 +1040,33 @@ export default function AdminContentStudioPage() {
           </div>
         )}
 
+        <nav className="mb-5 overflow-x-auto rounded-[26px] border border-white/10 bg-slate-900/80 p-2 shadow-2xl shadow-black/20">
+          <div className="flex min-w-max gap-2">
+            {studioTabs.map((tab) => {
+              const isActive = activeStudioTab === tab.key
+
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveStudioTab(tab.key)}
+                  className={`rounded-2xl border px-4 py-3 text-left active:scale-[0.98] ${
+                    isActive
+                      ? 'border-blue-300/35 bg-blue-500/15 text-white'
+                      : 'border-white/10 bg-slate-950/60 text-slate-300 hover:border-white/20'
+                  }`}
+                >
+                  <span className="block text-sm font-black">{tab.label}</span>
+                  <span className="mt-1 block text-[11px] font-bold text-slate-400">{tab.description}</span>
+                </button>
+              )
+            })}
+          </div>
+        </nav>
+
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="grid gap-5 lg:col-start-1 lg:row-start-2">
+          {activeStudioTab === 'episode' && (
+          <div className="grid gap-5 lg:col-span-2">
             <section className="rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
@@ -1088,8 +1123,13 @@ export default function AdminContentStudioPage() {
                   </div>
                 )}
               </details>
-            </section>
 
+            </section>
+          </div>
+          )}
+
+          {activeStudioTab === 'transcription' && (
+          <div className="grid gap-5 lg:col-start-1">
             <section className="rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
@@ -1132,8 +1172,13 @@ export default function AdminContentStudioPage() {
                   </div>
                 )}
               </details>
-            </section>
 
+            </section>
+          </div>
+          )}
+
+          {activeStudioTab === 'phrases' && (
+          <div className="grid gap-5 lg:col-span-2">
             <section className="rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
@@ -1182,11 +1227,111 @@ export default function AdminContentStudioPage() {
                   </div>
                 )}
               </details>
+
+              {contentAssets?.strong_phrases.length ? (
+                <article className="mt-5 rounded-2xl border border-amber-300/15 bg-amber-500/10 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="text-sm font-black text-amber-50">Frases fortes geradas</h2>
+                    <CopyButton value={contentAssets.strong_phrases.map(getStrongPhraseText).join('\n')} />
+                  </div>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    {contentAssets.strong_phrases.map((phrase, index) => (
+                      <div key={`${getStrongPhraseText(phrase)}-${index}`} className="rounded-xl border border-amber-200/10 bg-slate-950/30 p-3">
+                        <p className="text-sm font-bold leading-6 text-amber-50/90">
+                          {getStrongPhraseText(phrase)}
+                        </p>
+                        {typeof phrase !== 'string' && (
+                          <div className="mt-3 grid gap-2 text-xs leading-5 text-amber-100/70">
+                            {(phrase.use_case || phrase.score) && (
+                              <p className="font-black uppercase tracking-[0.12em] text-amber-100">
+                                {phrase.use_case || 'uso livre'}
+                                {phrase.score ? ` - nota ${phrase.score}` : ''}
+                              </p>
+                            )}
+                            {phrase.source_excerpt && (
+                              <p className="border-l-2 border-amber-200/30 pl-3">
+                                {phrase.source_excerpt}
+                              </p>
+                            )}
+                            {phrase.why_it_works && <p>{phrase.why_it_works}</p>}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </article>
+              ) : null}
             </section>
           </div>
+          )}
 
-          <aside className="grid gap-5 self-start lg:col-span-2 lg:row-start-1 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
-            <section className="rounded-[34px] border border-cyan-300/15 bg-cyan-500/10 p-5 shadow-2xl shadow-black/20 lg:col-start-2">
+          {activeStudioTab === 'publishing' && (
+          <div className="grid gap-5 lg:col-span-2">
+            <section className="rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.20em] text-blue-300">
+                    Pacote de publicacao
+                  </p>
+                  <h2 className="mt-2 text-2xl font-black text-white">Pacote de publicacao</h2>
+                  <p className="mt-2 max-w-3xl text-sm font-bold leading-6 text-slate-400">
+                    Em breve, esta area vai reunir textos prontos para YouTube Shorts, Instagram, TikTok, Facebook, X e WhatsApp.
+                  </p>
+                </div>
+                {selectedCut && (
+                  <CopyButton
+                    value={formatCutPackageForCopy(selectedCut, contentAssets)}
+                    label="Copiar pacote do corte"
+                  />
+                )}
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {['YouTube Shorts', 'Instagram Reels', 'TikTok', 'WhatsApp', 'Facebook', 'X/Twitter'].map((channel) => (
+                  <div key={channel} className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                    <p className="text-sm font-black text-white">{channel}</p>
+                    <p className="mt-2 text-xs font-bold leading-5 text-slate-500">
+                      Planejado para o fluxo de publicacao.
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              {(contentAssets?.whatsapp_text || contentAssets?.instagram_caption) && (
+                <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                  {contentAssets.whatsapp_text && (
+                    <article className="rounded-2xl border border-emerald-300/15 bg-emerald-500/10 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <h3 className="text-sm font-black text-emerald-50">Texto para WhatsApp</h3>
+                        <CopyButton value={contentAssets.whatsapp_text} />
+                      </div>
+                      <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-emerald-50/85">
+                        {contentAssets.whatsapp_text}
+                      </p>
+                    </article>
+                  )}
+
+                  {contentAssets.instagram_caption && (
+                    <article className="rounded-2xl border border-purple-300/15 bg-purple-500/10 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <h3 className="text-sm font-black text-purple-50">Legenda Instagram</h3>
+                        <CopyButton value={contentAssets.instagram_caption} />
+                      </div>
+                      <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-purple-50/85">
+                        {contentAssets.instagram_caption}
+                      </p>
+                    </article>
+                  )}
+                </div>
+              )}
+            </section>
+          </div>
+          )}
+
+          {(activeStudioTab === 'studio' || activeStudioTab === 'transcription') && (
+          <aside className="contents">
+            {(activeStudioTab === 'studio' || activeStudioTab === 'transcription') && (
+            <section className="order-2 rounded-[34px] border border-cyan-300/15 bg-cyan-500/10 p-5 shadow-2xl shadow-black/20 lg:order-none lg:col-start-2">
               <p className="text-[11px] font-black uppercase tracking-[0.20em] text-cyan-200">
                 Timestamps avancados
               </p>
@@ -1246,8 +1391,10 @@ export default function AdminContentStudioPage() {
                     : 'Gerar timestamps avancados'}
               </button>
             </section>
+            )}
 
-            <section className="rounded-[34px] border border-blue-300/15 bg-blue-500/10 p-5 shadow-2xl shadow-black/20 lg:col-start-2">
+            {activeStudioTab === 'studio' && (
+            <section className="order-3 rounded-[34px] border border-blue-300/15 bg-blue-500/10 p-5 shadow-2xl shadow-black/20 lg:order-none lg:col-start-2">
               <p className="text-[11px] font-black uppercase tracking-[0.20em] text-blue-200">
                 Conteudos textuais
               </p>
@@ -1302,9 +1449,10 @@ export default function AdminContentStudioPage() {
                 Regenerar cortes substitui a lista atual nesta tela.
               </p>
             </section>
+            )}
 
-            {selectedCut && (
-              <section className="rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20 lg:col-start-2">
+            {activeStudioTab === 'studio' && selectedCut && (
+              <section className="order-4 rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20 lg:order-none lg:col-start-2">
                 <p className="text-[11px] font-black uppercase tracking-[0.20em] text-blue-300">
                   Corte selecionado
                 </p>
@@ -1319,8 +1467,8 @@ export default function AdminContentStudioPage() {
               </section>
             )}
 
-            {!contentAssets && (
-              <section className="rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20 lg:col-start-1 lg:row-span-3 lg:row-start-1">
+            {activeStudioTab === 'studio' && !contentAssets && (
+              <section className="order-1 rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20 lg:order-none lg:col-start-1 lg:row-span-3 lg:row-start-1">
                 <p className="text-[11px] font-black uppercase tracking-[0.20em] text-blue-300">
                   Modo Estudio
                 </p>
@@ -1357,8 +1505,8 @@ export default function AdminContentStudioPage() {
               </section>
             )}
 
-            {contentAssets && (
-              <section className="rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20 lg:col-start-1 lg:row-span-4 lg:row-start-1">
+            {activeStudioTab === 'studio' && contentAssets && (
+              <section className="order-1 rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20 lg:order-none lg:col-start-1 lg:row-span-4 lg:row-start-1">
                 <p className="text-[11px] font-black uppercase tracking-[0.20em] text-blue-300">
                   Modo Estudio
                 </p>
@@ -1447,7 +1595,7 @@ export default function AdminContentStudioPage() {
                   </article>
 
                   {contentAssets.devotional_summary && (
-                  <article className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                  <article className="hidden rounded-2xl border border-white/10 bg-slate-950/70 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <h2 className="text-sm font-black text-white">Resumo devocional</h2>
                       <CopyButton value={contentAssets.devotional_summary} />
@@ -1459,7 +1607,7 @@ export default function AdminContentStudioPage() {
                   )}
 
                   {contentAssets.strong_phrases.length > 0 && (
-                  <article className="rounded-2xl border border-amber-300/15 bg-amber-500/10 p-4">
+                  <article className="hidden rounded-2xl border border-amber-300/15 bg-amber-500/10 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <h2 className="text-sm font-black text-amber-50">Frases fortes</h2>
                       <CopyButton value={contentAssets.strong_phrases.map(getStrongPhraseText).join('\n')} />
@@ -1493,7 +1641,7 @@ export default function AdminContentStudioPage() {
                   )}
 
                   {contentAssets.whatsapp_text && (
-                  <article className="rounded-2xl border border-emerald-300/15 bg-emerald-500/10 p-4">
+                  <article className="hidden rounded-2xl border border-emerald-300/15 bg-emerald-500/10 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <h2 className="text-sm font-black text-emerald-50">Texto para WhatsApp</h2>
                       <CopyButton value={contentAssets.whatsapp_text} />
@@ -1505,7 +1653,7 @@ export default function AdminContentStudioPage() {
                   )}
 
                   {contentAssets.instagram_caption && (
-                  <article className="rounded-2xl border border-purple-300/15 bg-purple-500/10 p-4">
+                  <article className="hidden rounded-2xl border border-purple-300/15 bg-purple-500/10 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <h2 className="text-sm font-black text-purple-50">Legenda Instagram</h2>
                       <CopyButton value={contentAssets.instagram_caption} />
@@ -1517,7 +1665,7 @@ export default function AdminContentStudioPage() {
                   )}
 
                   {contentAssets.hashtags.length > 0 && (
-                  <article className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                  <article className="hidden rounded-2xl border border-white/10 bg-slate-950/70 p-4">
                     <h2 className="text-sm font-black text-white">Hashtags</h2>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {contentAssets.hashtags.map((hashtag) => (
@@ -1530,7 +1678,7 @@ export default function AdminContentStudioPage() {
                   )}
 
                   {contentAssets.short_ideas.length > 0 && (
-                  <article className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                  <article className="hidden rounded-2xl border border-white/10 bg-slate-950/70 p-4">
                     <h2 className="text-sm font-black text-white">Ideias de Shorts</h2>
                     <div className="mt-3 grid gap-3">
                       {contentAssets.short_ideas.map((idea, index) => (
@@ -2093,6 +2241,7 @@ export default function AdminContentStudioPage() {
               </section>
             )}
 
+            {activeStudioTab === 'transcription' && (
             <section className="rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20 lg:col-start-2">
               <p className="text-[11px] font-black uppercase tracking-[0.20em] text-blue-300">
                 Transcricao com timestamps
@@ -2100,7 +2249,7 @@ export default function AdminContentStudioPage() {
 
               {segments.length > 0 ? (
                 <div className="mt-4 grid max-h-[360px] gap-2 overflow-y-auto">
-                  {segments.slice(0, 12).map((segment, index) => (
+                  {segments.map((segment, index) => (
                     <div
                       key={`${segment.start}-${segment.end}-${index}`}
                       className="rounded-2xl border border-white/10 bg-slate-950/70 p-3"
@@ -2120,7 +2269,9 @@ export default function AdminContentStudioPage() {
                 </p>
               )}
             </section>
+            )}
           </aside>
+          )}
         </div>
       </section>
     </main>
