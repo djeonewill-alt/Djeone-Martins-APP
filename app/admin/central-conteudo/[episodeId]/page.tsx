@@ -151,6 +151,17 @@ type ContentAssets = {
   synced_captions?: SyncedCaptions
 }
 
+type ContentStudioWorkspace = {
+  contentAssets: ContentAssets | null
+  expandedCutSourceKey: string
+  syncedCaptionSourceKey: string
+  selectedCutKey: string
+  expandedCutErrorByKey: Record<string, string>
+  syncedCaptionErrorByKey: Record<string, string>
+  contentAssetsError: string
+  savedAt: string
+}
+
 type GenerationMode =
   | 'all'
   | 'summary'
@@ -353,12 +364,109 @@ function formatShortScriptForCopy(script: ShortScript) {
   ].filter(Boolean).join('\n')
 }
 
+function formatCutForCopy(cut: CutSuggestion) {
+  return [
+    `Titulo: ${cut.title}`,
+    `Tempo: ${formatSegmentTime(cut.start)} - ${formatSegmentTime(cut.end)}`,
+    `Duracao: ${formatDuration(getCutDuration(cut))}`,
+    `Tipo: ${isHookCut(cut) ? 'Gancho para expandir' : 'Corte completo'}`,
+    `Gancho: ${cut.hook}`,
+    cut.source_excerpt ? `Trecho-base:\n${cut.source_excerpt}` : '',
+    `Motivo: ${cut.reason}`,
+    cut.strength_score ? `Nota editorial: ${cut.strength_score}/10` : '',
+    cut.strength_reason ? `Por que funciona: ${cut.strength_reason}` : '',
+    cut.suggested_caption_lines?.length
+      ? `Linhas de legenda:\n${cut.suggested_caption_lines.join('\n')}`
+      : '',
+  ].filter(Boolean).join('\n')
+}
+
+function formatCutPackageForCopy(cut: CutSuggestion, assets: ContentAssets | null) {
+  const blocks = [`DADOS DO CORTE\n${formatCutForCopy(cut)}`]
+
+  if (assets?.expanded_cut) {
+    blocks.push(`CORTE EXPANDIDO\n${formatCutForCopy(assets.expanded_cut)}`)
+  }
+
+  if (assets?.short_script) {
+    blocks.push(`ROTEIRO DO SHORT\n${formatShortScriptForCopy(assets.short_script)}`)
+  }
+
+  if (assets?.synced_captions) {
+    blocks.push(
+      [
+        'LEGENDAS SINCRONIZADAS',
+        `Origem: ${assets.synced_captions.cut_title}`,
+        `Tempo: ${formatSegmentTime(assets.synced_captions.cut_start)} - ${formatSegmentTime(assets.synced_captions.cut_end)}`,
+        '',
+        'SRT:',
+        assets.synced_captions.srt,
+        '',
+        'Texto:',
+        assets.synced_captions.plain_text,
+      ].join('\n')
+    )
+  }
+
+  return blocks.join('\n\n---\n\n')
+}
+
 function isHookCut(cut: CutSuggestion) {
   return cut.cut_type === 'hook' || cut.needs_expansion === true || getCutDuration(cut) < 25
 }
 
 function getCutKey(cut: Pick<CutSuggestion, 'start' | 'end'>, index: number) {
   return `${cut.start}-${cut.end}-${index}`
+}
+
+function getWorkspaceStorageKey(episodeId: string) {
+  return `central-conteudo:${episodeId}:workspace:v1`
+}
+
+function readStoredWorkspace(episodeId: string): ContentStudioWorkspace | null {
+  if (typeof window === 'undefined') return null
+
+  try {
+    const raw = window.localStorage.getItem(getWorkspaceStorageKey(episodeId))
+    if (!raw) return null
+
+    const parsed = JSON.parse(raw) as Partial<ContentStudioWorkspace>
+    if (!parsed || typeof parsed !== 'object') return null
+
+    return {
+      contentAssets: parsed.contentAssets || null,
+      expandedCutSourceKey: parsed.expandedCutSourceKey || '',
+      syncedCaptionSourceKey: parsed.syncedCaptionSourceKey || '',
+      selectedCutKey: parsed.selectedCutKey || '',
+      expandedCutErrorByKey: parsed.expandedCutErrorByKey || {},
+      syncedCaptionErrorByKey: parsed.syncedCaptionErrorByKey || {},
+      contentAssetsError: parsed.contentAssetsError || '',
+      savedAt: parsed.savedAt || '',
+    }
+  } catch (error) {
+    console.error('Erro ao restaurar workspace da Central:', error)
+    return null
+  }
+}
+
+function writeStoredWorkspace(episodeId: string, workspace: ContentStudioWorkspace) {
+  if (typeof window === 'undefined') return
+
+  try {
+    window.localStorage.setItem(getWorkspaceStorageKey(episodeId), JSON.stringify(workspace))
+  } catch (error) {
+    console.error('Erro ao salvar workspace da Central:', error)
+  }
+}
+
+function removeStoredWorkspace(episodeId: string) {
+  if (typeof window === 'undefined') return
+
+  try {
+    window.localStorage.removeItem(getWorkspaceStorageKey(episodeId))
+  } catch (error) {
+    console.error('Erro ao limpar workspace da Central:', error)
+  }
 }
 
 export default function AdminContentStudioPage() {
@@ -381,11 +489,49 @@ export default function AdminContentStudioPage() {
   const [contentAssetsError, setContentAssetsError] = useState('')
   const [generatingWordTimestamps, setGeneratingWordTimestamps] = useState(false)
   const [wordTimestampsError, setWordTimestampsError] = useState('')
+  const [selectedCutKey, setSelectedCutKey] = useState('')
+  const [workspaceRestored, setWorkspaceRestored] = useState(false)
 
   useEffect(() => {
     loadEpisode()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [episodeId])
+
+  useEffect(() => {
+    if (loading) return
+
+    const hasWorkspace =
+      Boolean(contentAssets) ||
+      Boolean(expandedCutSourceKey) ||
+      Boolean(syncedCaptionSourceKey) ||
+      Boolean(selectedCutKey) ||
+      Boolean(contentAssetsError) ||
+      Object.values(expandedCutErrorByKey).some(Boolean) ||
+      Object.values(syncedCaptionErrorByKey).some(Boolean)
+
+    if (!hasWorkspace) return
+
+    writeStoredWorkspace(episodeId, {
+      contentAssets,
+      expandedCutSourceKey,
+      syncedCaptionSourceKey,
+      selectedCutKey,
+      expandedCutErrorByKey,
+      syncedCaptionErrorByKey,
+      contentAssetsError,
+      savedAt: new Date().toISOString(),
+    })
+  }, [
+    episodeId,
+    loading,
+    contentAssets,
+    expandedCutSourceKey,
+    syncedCaptionSourceKey,
+    selectedCutKey,
+    expandedCutErrorByKey,
+    syncedCaptionErrorByKey,
+    contentAssetsError,
+  ])
 
   async function loadEpisode() {
     try {
@@ -431,8 +577,28 @@ export default function AdminContentStudioPage() {
       if (error) throw error
 
       setEpisode((data as unknown) as EpisodeStudioRow)
-      setContentAssets(null)
-      setContentAssetsError('')
+      const storedWorkspace = readStoredWorkspace(episodeId)
+
+      if (storedWorkspace) {
+        setContentAssets(storedWorkspace.contentAssets)
+        setExpandedCutSourceKey(storedWorkspace.expandedCutSourceKey)
+        setSyncedCaptionSourceKey(storedWorkspace.syncedCaptionSourceKey)
+        setSelectedCutKey(storedWorkspace.selectedCutKey)
+        setExpandedCutErrorByKey(storedWorkspace.expandedCutErrorByKey)
+        setSyncedCaptionErrorByKey(storedWorkspace.syncedCaptionErrorByKey)
+        setContentAssetsError(storedWorkspace.contentAssetsError)
+        setWorkspaceRestored(true)
+      } else {
+        setContentAssets(null)
+        setExpandedCutSourceKey('')
+        setSyncedCaptionSourceKey('')
+        setSelectedCutKey('')
+        setExpandedCutErrorByKey({})
+        setSyncedCaptionErrorByKey({})
+        setContentAssetsError('')
+        setWorkspaceRestored(false)
+      }
+
       setWordTimestampsError('')
     } catch (error) {
       console.error('Erro ao carregar estudio de conteudo:', error)
@@ -440,6 +606,18 @@ export default function AdminContentStudioPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  function handleClearWorkspace() {
+    removeStoredWorkspace(episodeId)
+    setContentAssets(null)
+    setExpandedCutSourceKey('')
+    setSyncedCaptionSourceKey('')
+    setSelectedCutKey('')
+    setExpandedCutErrorByKey({})
+    setSyncedCaptionErrorByKey({})
+    setContentAssetsError('')
+    setWorkspaceRestored(false)
   }
 
   async function handleGenerateContentAssets(mode: GenerationMode = 'all') {
@@ -503,6 +681,7 @@ export default function AdminContentStudioPage() {
 
     try {
       setGeneratingShortScriptKey(loadingKey)
+      setSelectedCutKey(loadingKey)
       setContentAssetsError('')
 
       const response = await fetch('/api/ai/generate-content-assets', {
@@ -557,6 +736,7 @@ export default function AdminContentStudioPage() {
     try {
       setGeneratingExpandedCutKey(loadingKey)
       setExpandedCutSourceKey(loadingKey)
+      setSelectedCutKey(loadingKey)
       setExpandedCutErrorByKey((current) => ({ ...current, [loadingKey]: '' }))
       setContentAssetsError('')
 
@@ -616,6 +796,7 @@ export default function AdminContentStudioPage() {
     if (!episode) return
 
     const loadingKey = getCutKey(cut, index)
+    setSelectedCutKey(loadingKey)
     const hasReadyWords =
       episode.transcription_words_status === 'ready' &&
       Boolean(episode.transcription_words_url || episode.transcription_words_key)
@@ -777,6 +958,16 @@ export default function AdminContentStudioPage() {
   const fullCutSuggestions = contentAssets?.cut_suggestions.filter((cut) => !isHookCut(cut)) || []
   const hookSuggestions = contentAssets?.cut_suggestions.filter((cut) => isHookCut(cut)) || []
   const orderedCutSuggestions = [...fullCutSuggestions, ...hookSuggestions]
+  const selectedCut =
+    (selectedCutKey
+      ? orderedCutSuggestions.find((cut, index) => getCutKey(cut, index) === selectedCutKey)
+      : null) ||
+    (contentAssets?.expanded_cut && getCutKey(contentAssets.expanded_cut, -1) === selectedCutKey
+      ? contentAssets.expanded_cut
+      : null)
+  const selectedCutLabel = selectedCut
+    ? `${formatSegmentTime(selectedCut.start)} - ${formatSegmentTime(selectedCut.end)}`
+    : ''
   const wordTimestampStatus =
     episode.transcription_words_status ||
     (episode.transcription_words_url ? 'ready' : 'missing')
@@ -814,14 +1005,30 @@ export default function AdminContentStudioPage() {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={loadEpisode}
-            className="rounded-2xl border border-blue-300/30 bg-blue-500/15 px-5 py-3 text-sm font-black text-blue-100 active:scale-[0.98]"
-          >
-            Atualizar
-          </button>
+          <div className="flex flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
+            <button
+              type="button"
+              onClick={loadEpisode}
+              className="rounded-2xl border border-blue-300/30 bg-blue-500/15 px-5 py-3 text-sm font-black text-blue-100 active:scale-[0.98]"
+            >
+              Atualizar
+            </button>
+            <button
+              type="button"
+              onClick={handleClearWorkspace}
+              disabled={!contentAssets && !selectedCutKey && !contentAssetsError}
+              className="rounded-2xl border border-rose-300/20 bg-rose-500/10 px-5 py-3 text-sm font-black text-rose-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              Limpar resultados desta tela
+            </button>
+          </div>
         </div>
+
+        {workspaceRestored && (
+          <div className="mb-5 rounded-2xl border border-emerald-300/20 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-100">
+            Resultados restaurados deste episodio.
+          </div>
+        )}
 
         <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
           <div className="grid gap-5">
@@ -1034,7 +1241,7 @@ export default function AdminContentStudioPage() {
                   ['whatsapp', 'Gerar WhatsApp'],
                   ['instagram', 'Gerar Instagram'],
                   ['short_ideas', 'Gerar ideias'],
-                  ['cuts', 'Gerar cortes'],
+                  ['cuts', contentAssets?.cut_suggestions.length ? 'Regenerar cortes' : 'Gerar cortes'],
                 ] as Array<[GenerationMode, string]>).map(([mode, label]) => (
                   <button
                     key={mode}
@@ -1047,6 +1254,12 @@ export default function AdminContentStudioPage() {
                   </button>
                 ))}
               </div>
+
+              {contentAssets?.cut_suggestions.length ? (
+                <p className="mt-3 rounded-xl border border-amber-300/15 bg-amber-500/10 p-3 text-xs font-bold leading-5 text-amber-50/80">
+                  Regenerar cortes substitui a lista atual nesta tela. Use "Limpar resultados desta tela" se quiser recomecar do zero.
+                </p>
+              ) : null}
             </section>
 
             {contentAssets && (
@@ -1056,6 +1269,80 @@ export default function AdminContentStudioPage() {
                 </p>
 
                 <div className="mt-4 grid gap-4">
+                  <article className="rounded-2xl border border-blue-300/15 bg-blue-500/10 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h2 className="text-sm font-black text-blue-50">Area de trabalho do Short</h2>
+                        <p className="mt-1 text-xs font-bold text-blue-100/70">
+                          {selectedCut
+                            ? `Trabalhando no corte: ${selectedCutLabel}`
+                            : 'Selecione um corte ao gerar roteiro, legenda ou expansao.'}
+                        </p>
+                      </div>
+
+                      {selectedCut && (
+                        <CopyButton
+                          value={formatCutPackageForCopy(selectedCut, contentAssets)}
+                          label="Copiar pacote do corte"
+                        />
+                      )}
+                    </div>
+
+                    {selectedCut ? (
+                      <div className="mt-4 grid gap-3">
+                        <div className="rounded-xl border border-white/10 bg-slate-950/50 p-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <InfoPill label="Em trabalho" tone="blue" />
+                            <span className="text-xs font-black text-blue-200">
+                              {selectedCutLabel} | {formatDuration(getCutDuration(selectedCut))}
+                            </span>
+                          </div>
+                          <p className="mt-3 text-sm font-black text-white">{selectedCut.title}</p>
+                          <p className="mt-2 text-xs font-bold leading-5 text-slate-300">{selectedCut.hook}</p>
+                        </div>
+
+                        <div className="grid gap-3 md:grid-cols-3">
+                          <div className="rounded-xl border border-emerald-300/15 bg-emerald-500/10 p-3">
+                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100">
+                              Corte expandido
+                            </p>
+                            <p className="mt-2 text-xs font-bold leading-5 text-emerald-50/80">
+                              {contentAssets.expanded_cut
+                                ? `${formatSegmentTime(contentAssets.expanded_cut.start)} - ${formatSegmentTime(contentAssets.expanded_cut.end)}`
+                                : 'Ainda nao gerado para este workspace.'}
+                            </p>
+                          </div>
+
+                          <div className="rounded-xl border border-cyan-300/15 bg-cyan-500/10 p-3">
+                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100">
+                              Roteiro do Short
+                            </p>
+                            <p className="mt-2 text-xs font-bold leading-5 text-cyan-50/80">
+                              {contentAssets.short_script
+                                ? contentAssets.short_script.title
+                                : 'Ainda nao gerado.'}
+                            </p>
+                          </div>
+
+                          <div className="rounded-xl border border-fuchsia-300/15 bg-fuchsia-500/10 p-3">
+                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-fuchsia-100">
+                              Legendas sincronizadas
+                            </p>
+                            <p className="mt-2 text-xs font-bold leading-5 text-fuchsia-50/80">
+                              {contentAssets.synced_captions
+                                ? `${contentAssets.synced_captions.lines.length} linhas prontas`
+                                : 'Ainda nao geradas.'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-4 rounded-xl border border-dashed border-white/10 bg-slate-950/40 p-3 text-xs font-bold leading-5 text-slate-400">
+                        A lista de cortes continua disponivel abaixo. Ao acionar uma tarefa em um card, ele aparece aqui sem apagar os outros resultados.
+                      </p>
+                    )}
+                  </article>
+
                   {contentAssets.devotional_summary && (
                   <article className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
                     <div className="flex items-center justify-between gap-3">
@@ -1425,7 +1712,7 @@ export default function AdminContentStudioPage() {
                         <button
                           type="button"
                           onClick={() => handleGenerateShortScript(contentAssets.expanded_cut as CutSuggestion, -1)}
-                          disabled={Boolean(generatingShortScriptKey)}
+                          disabled={generatingShortScriptKey === getCutKey(contentAssets.expanded_cut, -1)}
                           className="rounded-xl border border-emerald-300/20 bg-slate-950/50 px-3 py-2 text-xs font-black text-emerald-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
                         >
                           {generatingShortScriptKey === `${contentAssets.expanded_cut.start}-${contentAssets.expanded_cut.end}--1`
@@ -1435,7 +1722,7 @@ export default function AdminContentStudioPage() {
                         <button
                           type="button"
                           onClick={() => handleGenerateSyncedCaptions(contentAssets.expanded_cut as CutSuggestion, -1)}
-                          disabled={Boolean(generatingSyncedCaptionKey)}
+                          disabled={generatingSyncedCaptionKey === getCutKey(contentAssets.expanded_cut, -1)}
                           className="rounded-xl border border-fuchsia-300/20 bg-fuchsia-500/10 px-3 py-2 text-xs font-black text-fuchsia-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
                         >
                           {generatingSyncedCaptionKey === getCutKey(contentAssets.expanded_cut, -1)
@@ -1498,17 +1785,26 @@ export default function AdminContentStudioPage() {
                     {contentAssets.cut_suggestions.length > 0 ? (
                       <div className="mt-3 grid gap-3">
                         {orderedCutSuggestions.map((cut, index) => (
-                          <>
+                          <div key={`${cut.title}-${index}`} className="contents">
                           {(index === 0 || isHookCut(orderedCutSuggestions[index - 1]) !== isHookCut(cut)) && (
                             <h3 className="pt-2 text-xs font-black uppercase tracking-[0.16em] text-slate-400">
                               {isHookCut(cut) ? 'Ganchos para expandir' : 'Cortes completos'}
                             </h3>
                           )}
-                          <div key={`${cut.title}-${index}`} className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
+                          <div className={`rounded-xl border p-3 ${
+                            getCutKey(cut, index) === selectedCutKey
+                              ? 'border-blue-300/35 bg-blue-500/10'
+                              : 'border-white/10 bg-white/[0.04]'
+                          }`}>
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-xs font-black text-blue-200">
                                 {formatSegmentTime(cut.start)} - {formatSegmentTime(cut.end)}
                               </span>
+                              {getCutKey(cut, index) === selectedCutKey && (
+                                <span className="rounded-full border border-blue-300/25 bg-blue-500/15 px-2 py-1 text-[11px] font-black text-blue-100">
+                                  Em trabalho
+                                </span>
+                              )}
                               <span className="rounded-full border border-white/10 bg-slate-950 px-2 py-1 text-[11px] font-black text-slate-300">
                                 {formatDuration(getCutDuration(cut))}
                               </span>
@@ -1569,7 +1865,7 @@ export default function AdminContentStudioPage() {
                               <button
                                 type="button"
                                 onClick={() => handleExpandCut(cut, index)}
-                                disabled={Boolean(generatingExpandedCutKey)}
+                                disabled={generatingExpandedCutKey === getCutKey(cut, index)}
                                 className="mt-4 rounded-xl border border-amber-300/20 bg-amber-500/10 px-3 py-2 text-xs font-black text-amber-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
                               >
                                 {generatingExpandedCutKey === getCutKey(cut, index)
@@ -1581,7 +1877,7 @@ export default function AdminContentStudioPage() {
                                 <button
                                   type="button"
                                   onClick={() => handleGenerateShortScript(cut, index)}
-                                  disabled={Boolean(generatingShortScriptKey)}
+                                  disabled={generatingShortScriptKey === getCutKey(cut, index)}
                                   className="rounded-xl border border-cyan-300/20 bg-cyan-500/10 px-3 py-2 text-xs font-black text-cyan-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
                                 >
                                   {generatingShortScriptKey === getCutKey(cut, index)
@@ -1591,7 +1887,7 @@ export default function AdminContentStudioPage() {
                                 <button
                                   type="button"
                                   onClick={() => handleGenerateSyncedCaptions(cut, index)}
-                                  disabled={Boolean(generatingSyncedCaptionKey)}
+                                  disabled={generatingSyncedCaptionKey === getCutKey(cut, index)}
                                   className="rounded-xl border border-fuchsia-300/20 bg-fuchsia-500/10 px-3 py-2 text-xs font-black text-fuchsia-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
                                 >
                                   {generatingSyncedCaptionKey === getCutKey(cut, index)
@@ -1654,7 +1950,7 @@ export default function AdminContentStudioPage() {
                                   <button
                                     type="button"
                                     onClick={() => handleGenerateShortScript(contentAssets.expanded_cut as CutSuggestion, -1)}
-                                    disabled={Boolean(generatingShortScriptKey)}
+                                    disabled={generatingShortScriptKey === getCutKey(contentAssets.expanded_cut, -1)}
                                     className="rounded-xl border border-emerald-300/20 bg-slate-950/50 px-3 py-2 text-xs font-black text-emerald-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
                                   >
                                     {generatingShortScriptKey === getCutKey(contentAssets.expanded_cut, -1)
@@ -1664,7 +1960,7 @@ export default function AdminContentStudioPage() {
                                   <button
                                     type="button"
                                     onClick={() => handleGenerateSyncedCaptions(contentAssets.expanded_cut as CutSuggestion, -1)}
-                                    disabled={Boolean(generatingSyncedCaptionKey)}
+                                    disabled={generatingSyncedCaptionKey === getCutKey(contentAssets.expanded_cut, -1)}
                                     className="rounded-xl border border-fuchsia-300/20 bg-fuchsia-500/10 px-3 py-2 text-xs font-black text-fuchsia-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
                                   >
                                     {generatingSyncedCaptionKey === getCutKey(contentAssets.expanded_cut, -1)
@@ -1680,7 +1976,7 @@ export default function AdminContentStudioPage() {
                               </div>
                             )}
                           </div>
-                          </>
+                          </div>
                         ))}
                       </div>
                     ) : (
