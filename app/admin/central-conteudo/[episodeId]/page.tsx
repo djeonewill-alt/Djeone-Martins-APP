@@ -65,6 +65,9 @@ type CutSuggestion = {
   expansion_reason?: string
   needs_manual_trim?: boolean
   trim_warning?: string
+  manual?: boolean
+  editorial_score?: number
+  editorial_note?: string
 }
 
 type ShortScriptTimelineItem = {
@@ -154,6 +157,7 @@ type ContentAssets = {
 
 type ContentStudioWorkspace = {
   contentAssets: ContentAssets | null
+  manualCuts: CutSuggestion[]
   expandedCutSourceKey: string
   syncedCaptionSourceKey: string
   selectedCutKey: string
@@ -176,6 +180,15 @@ type GenerationMode =
   | 'caption_sync'
 
 type StudioTab = 'studio' | 'episode' | 'transcription' | 'phrases' | 'publishing'
+
+type ManualCutFormState = {
+  start: string
+  end: string
+  title: string
+  hook: string
+  sourceExcerpt: string
+  reason: string
+}
 
 const EMPTY_CONTENT_ASSETS: ContentAssets = {
   devotional_summary: '',
@@ -305,6 +318,40 @@ function getCutDuration(cut: CutSuggestion) {
   return Math.max(0, Math.round(cut.end - cut.start))
 }
 
+function parseTimeToSeconds(value: string): number | null {
+  const normalized = value.trim().replace(',', '.')
+  if (!normalized) return null
+
+  if (/^\d+(\.\d+)?$/.test(normalized)) {
+    const seconds = Number(normalized)
+    return Number.isFinite(seconds) ? seconds : null
+  }
+
+  const parts = normalized.split(':')
+
+  if (parts.length < 2 || parts.length > 3) return null
+  if (!parts.every((part) => /^\d+(\.\d+)?$/.test(part))) return null
+
+  const numbers = parts.map(Number)
+
+  if (numbers.some((number) => !Number.isFinite(number))) return null
+
+  if (numbers.length === 2) {
+    const [minutes, seconds] = numbers
+    if (seconds >= 60) return null
+    return minutes * 60 + seconds
+  }
+
+  const [hours, minutes, seconds] = numbers
+  if (minutes >= 60 || seconds >= 60) return null
+
+  return hours * 3600 + minutes * 60 + seconds
+}
+
+function cleanManualInput(value: string) {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
 function getGenerateLabel(mode: GenerationMode, idleLabel: string) {
   return generatingLabels[mode] || idleLabel
 }
@@ -419,6 +466,10 @@ function isHookCut(cut: CutSuggestion) {
 }
 
 function getCutKey(cut: Pick<CutSuggestion, 'start' | 'end'>, index: number) {
+  if ('manual' in cut && cut.manual) {
+    return `manual:${cut.start}-${cut.end}`
+  }
+
   return `${cut.start}-${cut.end}-${index}`
 }
 
@@ -438,6 +489,7 @@ function readStoredWorkspace(episodeId: string): ContentStudioWorkspace | null {
 
     return {
       contentAssets: parsed.contentAssets || null,
+      manualCuts: Array.isArray(parsed.manualCuts) ? parsed.manualCuts as CutSuggestion[] : [],
       expandedCutSourceKey: parsed.expandedCutSourceKey || '',
       syncedCaptionSourceKey: parsed.syncedCaptionSourceKey || '',
       selectedCutKey: parsed.selectedCutKey || '',
@@ -481,6 +533,7 @@ export default function AdminContentStudioPage() {
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
   const [contentAssets, setContentAssets] = useState<ContentAssets | null>(null)
+  const [manualCuts, setManualCuts] = useState<CutSuggestion[]>([])
   const [generatingMode, setGeneratingMode] = useState<GenerationMode | null>(null)
   const [generatingShortScriptKey, setGeneratingShortScriptKey] = useState('')
   const [generatingExpandedCutKey, setGeneratingExpandedCutKey] = useState('')
@@ -495,6 +548,16 @@ export default function AdminContentStudioPage() {
   const [selectedCutKey, setSelectedCutKey] = useState('')
   const [workspaceRestored, setWorkspaceRestored] = useState(false)
   const [activeStudioTab, setActiveStudioTab] = useState<StudioTab>('studio')
+  const [manualCutForm, setManualCutForm] = useState<ManualCutFormState>({
+    start: '',
+    end: '',
+    title: '',
+    hook: '',
+    sourceExcerpt: '',
+    reason: '',
+  })
+  const [manualCutError, setManualCutError] = useState('')
+  const [manualCutWarning, setManualCutWarning] = useState('')
 
   useEffect(() => {
     loadEpisode()
@@ -506,6 +569,7 @@ export default function AdminContentStudioPage() {
 
     const hasWorkspace =
       Boolean(contentAssets) ||
+      manualCuts.length > 0 ||
       Boolean(expandedCutSourceKey) ||
       Boolean(syncedCaptionSourceKey) ||
       Boolean(selectedCutKey) ||
@@ -517,6 +581,7 @@ export default function AdminContentStudioPage() {
 
     writeStoredWorkspace(episodeId, {
       contentAssets,
+      manualCuts,
       expandedCutSourceKey,
       syncedCaptionSourceKey,
       selectedCutKey,
@@ -529,6 +594,7 @@ export default function AdminContentStudioPage() {
     episodeId,
     loading,
     contentAssets,
+    manualCuts,
     expandedCutSourceKey,
     syncedCaptionSourceKey,
     selectedCutKey,
@@ -585,6 +651,7 @@ export default function AdminContentStudioPage() {
 
       if (storedWorkspace) {
         setContentAssets(storedWorkspace.contentAssets)
+        setManualCuts(storedWorkspace.manualCuts)
         setExpandedCutSourceKey(storedWorkspace.expandedCutSourceKey)
         setSyncedCaptionSourceKey(storedWorkspace.syncedCaptionSourceKey)
         setSelectedCutKey(storedWorkspace.selectedCutKey)
@@ -594,6 +661,7 @@ export default function AdminContentStudioPage() {
         setWorkspaceRestored(true)
       } else {
         setContentAssets(null)
+        setManualCuts([])
         setExpandedCutSourceKey('')
         setSyncedCaptionSourceKey('')
         setSelectedCutKey('')
@@ -604,6 +672,8 @@ export default function AdminContentStudioPage() {
       }
 
       setWordTimestampsError('')
+      setManualCutError('')
+      setManualCutWarning('')
     } catch (error) {
       console.error('Erro ao carregar estudio de conteudo:', error)
       setErrorMessage('Nao foi possivel carregar este episodio.')
@@ -615,6 +685,7 @@ export default function AdminContentStudioPage() {
   function handleClearWorkspace() {
     removeStoredWorkspace(episodeId)
     setContentAssets(null)
+    setManualCuts([])
     setExpandedCutSourceKey('')
     setSyncedCaptionSourceKey('')
     setSelectedCutKey('')
@@ -622,6 +693,79 @@ export default function AdminContentStudioPage() {
     setSyncedCaptionErrorByKey({})
     setContentAssetsError('')
     setWorkspaceRestored(false)
+    setManualCutError('')
+    setManualCutWarning('')
+  }
+
+  function updateManualCutForm(field: keyof ManualCutFormState, value: string) {
+    setManualCutForm((current) => ({ ...current, [field]: value }))
+    setManualCutError('')
+    setManualCutWarning('')
+  }
+
+  function handleAddManualCut() {
+    const start = parseTimeToSeconds(manualCutForm.start)
+    const end = parseTimeToSeconds(manualCutForm.end)
+
+    if (start === null || end === null) {
+      setManualCutError('Informe inicio e fim em um formato valido, como 4:53, 1:02:15 ou 293.5.')
+      return
+    }
+
+    if (start < 0 || end <= start) {
+      setManualCutError('O fim precisa ser maior que o inicio.')
+      return
+    }
+
+    const duration = end - start
+
+    if (duration < 10) {
+      setManualCutError('O corte manual precisa ter pelo menos 10 segundos.')
+      return
+    }
+
+    if (duration > 120) {
+      setManualCutError('O corte manual pode ter no maximo 120 segundos.')
+      return
+    }
+
+    const normalizedStart = Number(start.toFixed(2))
+    const normalizedEnd = Number(end.toFixed(2))
+    const manualCut: CutSuggestion = {
+      start: normalizedStart,
+      end: normalizedEnd,
+      duration: Math.round(duration),
+      title: cleanManualInput(manualCutForm.title) || 'Corte manual',
+      hook: cleanManualInput(manualCutForm.hook) || 'Corte criado manualmente',
+      source_excerpt: cleanManualInput(manualCutForm.sourceExcerpt),
+      reason: cleanManualInput(manualCutForm.reason) || 'Corte criado manualmente para teste/editorial.',
+      strength_score: 9,
+      strength_reason: 'Corte manual criado pelo usuario.',
+      editorial_score: 9,
+      editorial_note: 'Corte manual criado pelo usuario.',
+      suggested_caption_lines: [],
+      cut_type: 'full_cut',
+      needs_expansion: false,
+      manual: true,
+    }
+    const manualKey = getCutKey(manualCut, 0)
+
+    setManualCuts((current) => [
+      manualCut,
+      ...current.filter((cut) => getCutKey(cut, 0) !== manualKey),
+    ])
+    setContentAssets((current) => current || EMPTY_CONTENT_ASSETS)
+    setSelectedCutKey(manualKey)
+    setManualCutForm({
+      start: '',
+      end: '',
+      title: '',
+      hook: '',
+      sourceExcerpt: '',
+      reason: '',
+    })
+    setManualCutError('')
+    setManualCutWarning(duration > 90 ? 'Corte adicionado. Ele passa de 90s, entao revise o ritmo antes de publicar.' : '')
   }
 
   async function handleGenerateContentAssets(mode: GenerationMode = 'all') {
@@ -962,9 +1106,11 @@ export default function AdminContentStudioPage() {
   const fullCutSuggestions = contentAssets?.cut_suggestions.filter((cut) => !isHookCut(cut)) || []
   const hookSuggestions = contentAssets?.cut_suggestions.filter((cut) => isHookCut(cut)) || []
   const orderedCutSuggestions = [...fullCutSuggestions, ...hookSuggestions]
+  const manualCutSuggestions = manualCuts
   const selectedCut =
     (selectedCutKey
-      ? orderedCutSuggestions.find((cut, index) => getCutKey(cut, index) === selectedCutKey)
+      ? manualCutSuggestions.find((cut) => getCutKey(cut, 0) === selectedCutKey) ||
+        orderedCutSuggestions.find((cut, index) => getCutKey(cut, index) === selectedCutKey)
       : null) ||
     (contentAssets?.expanded_cut && getCutKey(contentAssets.expanded_cut, -1) === selectedCutKey
       ? contentAssets.expanded_cut
@@ -982,6 +1128,105 @@ export default function AdminContentStudioPage() {
     { key: 'phrases', label: 'Frases', description: 'Frases fortes' },
     { key: 'publishing', label: 'Publicacao', description: 'Pacote para redes' },
   ]
+  const manualCutFormCard = (
+    <article className="order-2 rounded-2xl border border-amber-300/15 bg-amber-500/10 p-4">
+      <details>
+        <summary className="cursor-pointer text-sm font-black text-amber-50">
+          Adicionar corte manual
+        </summary>
+
+        <p className="mt-3 text-xs font-bold leading-5 text-amber-100/75">
+          Use esta opcao quando quiser trabalhar um trecho especifico do audio, mesmo que a IA nao tenha sugerido.
+        </p>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <label className="grid gap-1 text-xs font-black uppercase tracking-[0.12em] text-amber-100/80">
+            Inicio
+            <input
+              type="text"
+              value={manualCutForm.start}
+              onChange={(event) => updateManualCutForm('start', event.target.value)}
+              placeholder="4:53"
+              className="rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm font-bold normal-case tracking-normal text-white outline-none focus:border-amber-300/40"
+            />
+          </label>
+
+          <label className="grid gap-1 text-xs font-black uppercase tracking-[0.12em] text-amber-100/80">
+            Fim
+            <input
+              type="text"
+              value={manualCutForm.end}
+              onChange={(event) => updateManualCutForm('end', event.target.value)}
+              placeholder="5:18"
+              className="rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm font-bold normal-case tracking-normal text-white outline-none focus:border-amber-300/40"
+            />
+          </label>
+
+          <label className="grid gap-1 text-xs font-black uppercase tracking-[0.12em] text-amber-100/80">
+            Titulo
+            <input
+              type="text"
+              value={manualCutForm.title}
+              onChange={(event) => updateManualCutForm('title', event.target.value)}
+              placeholder="O Valor da Adoracao"
+              className="rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm font-bold normal-case tracking-normal text-white outline-none focus:border-amber-300/40"
+            />
+          </label>
+
+          <label className="grid gap-1 text-xs font-black uppercase tracking-[0.12em] text-amber-100/80">
+            Gancho
+            <input
+              type="text"
+              value={manualCutForm.hook}
+              onChange={(event) => updateManualCutForm('hook', event.target.value)}
+              placeholder="Maria derramou um perfume..."
+              className="rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm font-bold normal-case tracking-normal text-white outline-none focus:border-amber-300/40"
+            />
+          </label>
+
+          <label className="grid gap-1 text-xs font-black uppercase tracking-[0.12em] text-amber-100/80 md:col-span-2">
+            Trecho-base
+            <textarea
+              value={manualCutForm.sourceExcerpt}
+              onChange={(event) => updateManualCutForm('sourceExcerpt', event.target.value)}
+              rows={3}
+              className="rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm font-bold normal-case tracking-normal text-white outline-none focus:border-amber-300/40"
+            />
+          </label>
+
+          <label className="grid gap-1 text-xs font-black uppercase tracking-[0.12em] text-amber-100/80 md:col-span-2">
+            Motivo
+            <textarea
+              value={manualCutForm.reason}
+              onChange={(event) => updateManualCutForm('reason', event.target.value)}
+              rows={3}
+              className="rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm font-bold normal-case tracking-normal text-white outline-none focus:border-amber-300/40"
+            />
+          </label>
+        </div>
+
+        {manualCutError && (
+          <p className="mt-3 rounded-xl border border-rose-300/20 bg-rose-500/10 p-3 text-xs font-bold leading-5 text-rose-100">
+            {manualCutError}
+          </p>
+        )}
+
+        {manualCutWarning && (
+          <p className="mt-3 rounded-xl border border-amber-300/20 bg-slate-950/40 p-3 text-xs font-bold leading-5 text-amber-50">
+            {manualCutWarning}
+          </p>
+        )}
+
+        <button
+          type="button"
+          onClick={handleAddManualCut}
+          className="mt-4 rounded-xl border border-amber-300/20 bg-amber-500/15 px-4 py-3 text-xs font-black text-amber-50 active:scale-[0.98]"
+        >
+          Adicionar corte
+        </button>
+      </details>
+    </article>
+  )
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6 lg:px-8">
@@ -1027,7 +1272,7 @@ export default function AdminContentStudioPage() {
             <button
               type="button"
               onClick={handleClearWorkspace}
-              disabled={!contentAssets && !selectedCutKey && !contentAssetsError}
+              disabled={!contentAssets && manualCuts.length === 0 && !selectedCutKey && !contentAssetsError}
               className="rounded-2xl border border-rose-300/20 bg-rose-500/10 px-5 py-3 text-sm font-black text-rose-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45"
             >
               Limpar resultados desta tela
@@ -1497,6 +1742,8 @@ export default function AdminContentStudioPage() {
                   </p>
                 </article>
 
+                {manualCutFormCard}
+
                 <article className="mt-4 rounded-2xl border border-white/10 bg-slate-950/70 p-4">
                   <h2 className="text-sm font-black text-white">Sugestoes de cortes editoriais</h2>
                   <p className="mt-3 text-sm font-bold leading-6 text-slate-500">
@@ -1594,6 +1841,8 @@ export default function AdminContentStudioPage() {
                       </p>
                     )}
                   </article>
+
+                  {manualCutFormCard}
 
                   {contentAssets.devotional_summary && (
                   <article className="hidden rounded-2xl border border-white/10 bg-slate-950/70 p-4">
@@ -2027,7 +2276,7 @@ export default function AdminContentStudioPage() {
                   </article>
                   )}
 
-                  {(contentAssets.cut_suggestions.length > 0 || contentAssets.cut_suggestions_note) && (
+                  {(manualCutSuggestions.length > 0 || contentAssets.cut_suggestions.length > 0 || contentAssets.cut_suggestions_note) && (
                   <article className="order-2 rounded-2xl border border-white/10 bg-slate-950/70 p-4">
                     <h2 className="text-sm font-black text-white">Sugestões de cortes editoriais</h2>
                     {contentAssets.cut_suggestions.length === 0 && contentAssets.cut_suggestions_note && (
@@ -2040,9 +2289,95 @@ export default function AdminContentStudioPage() {
                         Somente 1 corte passou pelos criterios editoriais desta geracao.
                       </p>
                     )}
-                    {contentAssets.cut_suggestions.length > 0 && (
+                    {(manualCutSuggestions.length > 0 || contentAssets.cut_suggestions.length > 0) && (
                       <div className="mt-3 grid gap-2 text-xs font-bold text-slate-400">
-                        <p>Cortes completos: {fullCutSuggestions.length} · Ganchos para expandir: {hookSuggestions.length}</p>
+                        <p>Cortes manuais: {manualCutSuggestions.length} · Cortes completos: {fullCutSuggestions.length} · Ganchos para expandir: {hookSuggestions.length}</p>
+                      </div>
+                    )}
+                    {manualCutSuggestions.length > 0 && (
+                      <div className="mt-4 grid gap-3">
+                        <h3 className="pt-2 text-xs font-black uppercase tracking-[0.16em] text-amber-100">
+                          Cortes manuais
+                        </h3>
+                        {manualCutSuggestions.map((cut) => {
+                          const manualKey = getCutKey(cut, 0)
+
+                          return (
+                            <div key={manualKey} className={`rounded-xl border p-3 ${
+                              manualKey === selectedCutKey
+                                ? 'border-blue-300/35 bg-blue-500/10'
+                                : 'border-amber-300/20 bg-amber-500/10'
+                            }`}>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-xs font-black text-blue-200">
+                                  {formatSegmentTime(cut.start)} - {formatSegmentTime(cut.end)}
+                                </span>
+                                {manualKey === selectedCutKey && (
+                                  <span className="rounded-full border border-blue-300/25 bg-blue-500/15 px-2 py-1 text-[11px] font-black text-blue-100">
+                                    Em trabalho
+                                  </span>
+                                )}
+                                <span className="rounded-full border border-amber-300/20 bg-slate-950/40 px-2 py-1 text-[11px] font-black text-amber-100">
+                                  Corte manual
+                                </span>
+                                <span className="rounded-full border border-white/10 bg-slate-950 px-2 py-1 text-[11px] font-black text-slate-300">
+                                  {formatDuration(getCutDuration(cut))}
+                                </span>
+                              </div>
+                              <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Titulo</p>
+                              <p className="mt-1 text-sm font-black text-white">{cut.title}</p>
+                              <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Gancho</p>
+                              <p className="mt-1 text-xs font-bold leading-5 text-slate-300">{cut.hook}</p>
+                              {cut.source_excerpt && (
+                                <>
+                                  <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Trecho-base</p>
+                                  <p className="mt-1 border-l-2 border-amber-300/30 pl-3 text-xs leading-5 text-slate-400">
+                                    {cut.source_excerpt}
+                                  </p>
+                                </>
+                              )}
+                              <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Motivo</p>
+                              <p className="mt-1 text-xs leading-5 text-slate-500">{cut.reason}</p>
+                              {(cut.editorial_note || cut.strength_reason) && (
+                                <div className="mt-3 rounded-xl border border-emerald-300/15 bg-emerald-500/10 p-3">
+                                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100">
+                                    Nota editorial {cut.editorial_score || cut.strength_score || 9}/10
+                                  </p>
+                                  <p className="mt-2 text-xs leading-5 text-emerald-50/80">
+                                    {cut.editorial_note || cut.strength_reason}
+                                  </p>
+                                </div>
+                              )}
+                              <div className="mt-4 flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleGenerateShortScript(cut, 0)}
+                                  disabled={generatingShortScriptKey === manualKey}
+                                  className="rounded-xl border border-cyan-300/20 bg-cyan-500/10 px-3 py-2 text-xs font-black text-cyan-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                                >
+                                  {generatingShortScriptKey === manualKey
+                                    ? 'Gerando roteiro...'
+                                    : 'Gerar roteiro do Short'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleGenerateSyncedCaptions(cut, 0)}
+                                  disabled={generatingSyncedCaptionKey === manualKey}
+                                  className="rounded-xl border border-fuchsia-300/20 bg-fuchsia-500/10 px-3 py-2 text-xs font-black text-fuchsia-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                                >
+                                  {generatingSyncedCaptionKey === manualKey
+                                    ? 'Sincronizando...'
+                                    : 'Gerar legendas sincronizadas'}
+                                </button>
+                              </div>
+                              {syncedCaptionErrorByKey[manualKey] && (
+                                <p className="mt-3 rounded-xl border border-rose-300/20 bg-rose-500/10 p-3 text-xs font-bold leading-5 text-rose-100">
+                                  {syncedCaptionErrorByKey[manualKey]}
+                                </p>
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
                     )}
                     {contentAssets.cut_suggestions.length > 0 ? (
