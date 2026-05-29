@@ -36,6 +36,7 @@ type SyncedCaptions = {
   srt: string
   plain_text: string
   json: SyncedCaptionLine[]
+  caption_quality_warnings?: string[]
 }
 
 type ShortIdea = {
@@ -1936,6 +1937,17 @@ export default function AdminContentStudioPage() {
                         <CopyButton value={JSON.stringify(contentAssets.synced_captions.json, null, 2)} label="Copiar JSON" />
                       </div>
                     </div>
+
+                    {contentAssets.synced_captions.caption_quality_warnings?.length ? (
+                      <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-500/10 p-3">
+                        <p className="text-xs font-black text-amber-50">Avisos de qualidade</p>
+                        <ul className="mt-2 list-disc space-y-1 pl-4 text-xs font-bold leading-5 text-amber-50/80">
+                          {contentAssets.synced_captions.caption_quality_warnings.map((warning) => (
+                            <li key={warning}>{warning}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
 
                     <div className="mt-4 grid gap-2">
                       {contentAssets.synced_captions.lines.map((line, index) => (

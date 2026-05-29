@@ -43,6 +43,7 @@ type SyncedCaptions = {
   srt: string
   plain_text: string
   json: SyncedCaptionLine[]
+  caption_quality_warnings?: string[]
 }
 
 type ShortIdea = {
@@ -1183,6 +1184,165 @@ function buildSrt(lines: SyncedCaptionLine[]) {
     .join('\n\n')
 }
 
+function normalizeCaptionTokenForGrouping(word: string) {
+  return cleanCaptionWord(word)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+function isWeakCaptionLineEnding(word: string) {
+  return /^(de|do|da|dos|das|com|que|para|por|em|a|o|e|mas|entao|porque|como|esse|essa|no|na|nos|nas|portanto|ate)$/.test(normalizeCaptionTokenForGrouping(word))
+}
+
+function isWeakCaptionLineOpening(word: string) {
+  return /^(e|mas|que|entao|porque|com|de|para)$/.test(normalizeCaptionTokenForGrouping(word))
+}
+
+function cleanSyncedCaptionLineText(words: string[]) {
+  const deduped = words.filter((word, index) => {
+    return index === 0 || normalizeCaptionTokenForGrouping(word) !== normalizeCaptionTokenForGrouping(words[index - 1])
+  })
+
+  return cleanText(deduped.join(' ')).replace(/\s+([,.!?;:])/g, '$1')
+}
+
+const STRONG_CAPTION_EXPRESSIONS = [
+  ['300', 'dias', 'de', 'trabalho'],
+  ['pes', 'de', 'jesus'],
+  ['nardo', 'puro'],
+  ['perfume', 'de', 'maria'],
+  ['com', 'esse', 'oleo'],
+  ['com', 'esse', 'perfume'],
+  ['com', 'os', 'cabelos'],
+  ['adoracao', 'extravagante'],
+  ['de', 'todo', 'o', 'coracao'],
+  ['honra', 'para', 'jesus'],
+  ['desperdicio', 'para', 'muitos'],
+]
+
+function buildStrongExpressionNoBreaks(words: WordTimestamp[]) {
+  const normalizedWords = words.map((word) => normalizeCaptionTokenForGrouping(word.word))
+  const noBreakAfter = new Set<number>()
+
+  STRONG_CAPTION_EXPRESSIONS.forEach((expression) => {
+    for (let index = 0; index <= normalizedWords.length - expression.length; index += 1) {
+      const matches = expression.every((token, tokenIndex) => normalizedWords[index + tokenIndex] === token)
+
+      if (matches) {
+        for (let tokenIndex = 0; tokenIndex < expression.length - 1; tokenIndex += 1) {
+          noBreakAfter.add(index + tokenIndex)
+        }
+      }
+    }
+  })
+
+  return noBreakAfter
+}
+
+function getCaptionGroupDuration(group: WordTimestamp[]) {
+  if (!group.length) return 0
+  return group[group.length - 1].end - group[0].start
+}
+
+function canMergeCaptionGroups(left: WordTimestamp[], right: WordTimestamp[]) {
+  return left.length + right.length <= 9 && getCaptionGroupDuration([...left, ...right]) <= 4.4
+}
+
+function splitLongCaptionGroup(group: WordTimestamp[]) {
+  if (group.length <= 7 && getCaptionGroupDuration(group) <= 3.8) return [group]
+
+  const minLeft = 3
+  const maxLeft = Math.min(6, group.length - 3)
+  let bestIndex = 0
+  let bestScore = Number.NEGATIVE_INFINITY
+
+  for (let index = minLeft; index <= maxLeft; index += 1) {
+    const left = group.slice(0, index)
+    const right = group.slice(index)
+    const leftLast = left[left.length - 1]?.word || ''
+    const rightFirst = right[0]?.word || ''
+    let score = 20 - Math.abs(left.length - 5) - Math.abs(right.length - 5)
+
+    if (isWeakCaptionLineEnding(leftLast)) score -= 8
+    if (isWeakCaptionLineOpening(rightFirst)) score -= 6
+
+    const gap = right[0].start - left[left.length - 1].end
+    if (gap > 0.45) score += 3
+
+    if (score > bestScore) {
+      bestScore = score
+      bestIndex = index
+    }
+  }
+
+  if (!bestIndex) return [group]
+
+  return [group.slice(0, bestIndex), group.slice(bestIndex)]
+}
+
+function refineCaptionGroups(groups: WordTimestamp[][]) {
+  const refined = [...groups]
+
+  for (let index = 0; index < refined.length - 1; index += 1) {
+    const current = refined[index]
+    const next = refined[index + 1]
+    const lastWord = current[current.length - 1]?.word || ''
+    const firstNextWord = next[0]?.word || ''
+
+    if ((isWeakCaptionLineEnding(lastWord) || isWeakCaptionLineOpening(firstNextWord)) && canMergeCaptionGroups(current, next)) {
+      refined[index] = [...current, ...next]
+      refined.splice(index + 1, 1)
+      index = Math.max(-1, index - 2)
+    }
+  }
+
+  for (let index = 0; index < refined.length; index += 1) {
+    const current = refined[index]
+
+    if (current.length >= 3) continue
+
+    const previous = refined[index - 1]
+    const next = refined[index + 1]
+
+    if (previous && canMergeCaptionGroups(previous, current)) {
+      refined[index - 1] = [...previous, ...current]
+      refined.splice(index, 1)
+      index = Math.max(-1, index - 2)
+    } else if (next && canMergeCaptionGroups(current, next)) {
+      refined[index] = [...current, ...next]
+      refined.splice(index + 1, 1)
+      index = Math.max(-1, index - 1)
+    }
+  }
+
+  return refined.flatMap(splitLongCaptionGroup)
+}
+
+function buildCaptionQualityWarnings(lines: SyncedCaptionLine[]) {
+  const warnings: string[] = []
+
+  if (lines.some((line) => line.words_count < 3)) {
+    warnings.push('Algumas linhas podem estar curtas demais.')
+  }
+
+  if (lines.some((line) => {
+    const words = line.text.split(/\s+/).filter(Boolean)
+    const first = words[0] || ''
+    const last = words[words.length - 1] || ''
+
+    return isWeakCaptionLineOpening(first) || isWeakCaptionLineEnding(last)
+  })) {
+    warnings.push('Algumas linhas podem comecar ou terminar com palavras fracas.')
+  }
+
+  if (lines.some((line) => /\b(os|as|a|o)\s+de\s+Jesus\b/i.test(line.text))) {
+    warnings.push('Algumas expressoes parecem incompletas. Confira manualmente se palavras importantes foram omitidas.')
+  }
+
+  return warnings
+}
+
 function groupCaptionWords(words: WordTimestamp[], cut: CaptionSyncCut): SyncedCaptionLine[] {
   const usableWords = words
     .map((word) => ({
@@ -1191,56 +1351,50 @@ function groupCaptionWords(words: WordTimestamp[], cut: CaptionSyncCut): SyncedC
     }))
     .filter((word) => word.word && !shouldSkipCaptionToken(word.word))
 
-  const lines: SyncedCaptionLine[] = []
+  const groups: WordTimestamp[][] = []
+  const noBreakAfter = buildStrongExpressionNoBreaks(usableWords)
   let current: WordTimestamp[] = []
 
-  function pushCurrent() {
-    if (!current.length) return
-
-    const text = cleanSyncedCaptionText(current.map((word) => word.word))
-
-    if (text) {
-      lines.push({
-        start: roundCaptionTime(current[0].start - cut.start),
-        end: roundCaptionTime(current[current.length - 1].end - cut.start),
-        text,
-        words_count: current.length,
-      })
-    }
-
-    current = []
-  }
-
   for (let index = 0; index < usableWords.length; index += 1) {
-    current.push(usableWords[index])
-
-    const duration = current[current.length - 1].end - current[0].start
-    const wordsCount = current.length
+    const word = usableWords[index]
     const nextWord = usableWords[index + 1]
-    const lastWord = current[current.length - 1].word
-    const shouldPullNext = nextWord && isWeakCaptionEnding(lastWord)
-    const reachedPreferredSize = wordsCount >= 3 && duration >= 1.2
-    const reachedHardLimit = wordsCount >= 7 || duration >= 3.5
+    current.push(word)
 
-    if ((reachedHardLimit || reachedPreferredSize) && !shouldPullNext) {
-      pushCurrent()
+    if (!nextWord) {
+      groups.push(current)
+      current = []
+      continue
+    }
+
+    const duration = getCaptionGroupDuration(current)
+    const wordsCount = current.length
+    const gapToNext = nextWord.start - word.end
+    const lastWord = word.word
+    const firstNextWord = nextWord.word
+    const shouldProtectExpression = noBreakAfter.has(index)
+    const shouldPullNext = isWeakCaptionLineEnding(lastWord) || isWeakCaptionLineOpening(firstNextWord)
+    const reachedPause = gapToNext > 0.55 && wordsCount >= 3 && duration >= 1.0
+    const reachedIdealSize = wordsCount >= 5 && duration >= 1.2
+    const reachedHardLimit = wordsCount >= 7 || duration >= 3.8
+
+    if ((reachedHardLimit || reachedPause || reachedIdealSize) && !shouldPullNext && !shouldProtectExpression) {
+      groups.push(current)
+      current = []
     }
   }
 
-  pushCurrent()
+  const refinedGroups = refineCaptionGroups(groups)
+  const lines = refinedGroups
+    .map((group) => {
+      const text = cleanSyncedCaptionLineText(group.map((word) => word.word))
 
-  if (lines.length > 1 && lines[lines.length - 1].words_count < 3) {
-    const last = lines.pop()
-    const previous = lines[lines.length - 1]
-
-    if (last && previous && previous.words_count + last.words_count <= 8) {
-      previous.end = last.end
-      previous.text = cleanSyncedCaptionText(`${previous.text} ${last.text}`.split(/\s+/))
-      previous.words_count += last.words_count
-    } else if (last) {
-      lines.push(last)
-    }
-  }
+      return {
+        start: roundCaptionTime(group[0].start - cut.start),
+        end: roundCaptionTime(group[group.length - 1].end - cut.start),
+        text,
+        words_count: group.length,
+      }
+    })
 
   return lines.filter((line) => line.end > line.start && line.text)
 }
@@ -1329,6 +1483,8 @@ async function buildSyncedCaptions(params: {
     throw new Error('Nao foi possivel agrupar palavras em legendas sincronizadas.')
   }
 
+  const captionQualityWarnings = buildCaptionQualityWarnings(lines)
+
   return {
     source: 'word_timestamps',
     cut_title: cut.title || episode.title || 'Corte selecionado',
@@ -1340,6 +1496,7 @@ async function buildSyncedCaptions(params: {
     srt: buildSrt(lines),
     plain_text: lines.map((line) => line.text).join('\n'),
     json: lines,
+    caption_quality_warnings: captionQualityWarnings,
   }
 }
 
