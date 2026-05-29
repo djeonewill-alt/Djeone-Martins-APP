@@ -331,6 +331,33 @@ function getPremiumOverlayCopy(prompt: PremiumImagePromptResponse) {
   )
 }
 
+function hasExplicitWaterTheme(text: string) {
+  const normalized = text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+
+  const patterns = [
+    /\batos\s*27\b/,
+    /\bpaulo\b.*\b(viagem|navio|naufragio|mar)\b/,
+    /\bcenturiao\b.*\b(naufragio|navio|mar|prisioneiros?)\b/,
+    /\bmar\b/,
+    /\bbarco\b/,
+    /\bnavio\b/,
+    /\bnaufragio\b/,
+    /\baguas?\b/,
+    /\bondas?\b/,
+    /\btempestade\b/,
+    /\bnadar\b/,
+    /\bnadando\b/,
+    /\bpraia\b/,
+    /\bcosta\b/,
+    /\bterra firme\b/,
+  ]
+
+  return patterns.some((pattern) => pattern.test(normalized))
+}
+
 function hasFallbackImage(data: { provider?: string; images?: BackgroundImage[] }) {
   return (
     data.provider === 'fallback' ||
@@ -1020,7 +1047,15 @@ export default function NovoEpisodio() {
     const selectedSuggestion =
       selectedSuggestionIndex !== null
         ? quoteSuggestions[selectedSuggestionIndex]
-        : null
+        : quoteSuggestions.find((suggestion) => {
+            const display = getSuggestionDisplayData(suggestion)
+            const selected = selectedDailyQuote.trim()
+
+            return (
+              display.quoteText === selected ||
+              display.quoteText.replace(/^["'“”]+|["'“”]+$/g, '') === selected
+            )
+          }) || null
     const display = selectedSuggestion
       ? getSuggestionDisplayData(selectedSuggestion)
       : null
@@ -1030,6 +1065,7 @@ export default function NovoEpisodio() {
       sourceExcerpt: display?.sourceExcerpt || '',
       reason: display?.reason || '',
       specificityReason: display?.specificityReason || '',
+      useCase: display?.useCaseLabel || '',
     }
   }
 
@@ -1421,6 +1457,33 @@ export default function NovoEpisodio() {
     setGeneratingCards(true)
 
     try {
+      const quoteContext = getSelectedQuotePromptContext()
+      const visualContext = [
+        quoteText,
+        quoteContext.sourceExcerpt,
+        quoteContext.reason,
+        quoteContext.specificityReason,
+        formData.title,
+        formData.bible_reference,
+        transcriptionText.slice(0, 900),
+      ].filter(Boolean).join(' ')
+      const avoidWaterThemes = hasExplicitWaterTheme(visualContext)
+        ? []
+        : [
+            'mar',
+            'barco',
+            'agua',
+            'aguas',
+            'ocean',
+            'sea',
+            'boat',
+            'ship',
+            'storm',
+            'waves',
+            'water',
+            'shipwreck',
+          ]
+
       const response = await fetch('/api/images/search-backgrounds', {
         method: 'POST',
         headers: {
@@ -1428,6 +1491,15 @@ export default function NovoEpisodio() {
         },
         body: JSON.stringify({
           quoteText,
+          purpose: 'daily_quote_card',
+          title: formData.title,
+          bibleReference: formData.bible_reference,
+          sourceExcerpt: quoteContext.sourceExcerpt,
+          reason: quoteContext.reason,
+          specificityReason: quoteContext.specificityReason,
+          useCase: quoteContext.useCase,
+          transcriptionPreview: transcriptionText.slice(0, 900),
+          avoidThemes: avoidWaterThemes,
         }),
       })
 

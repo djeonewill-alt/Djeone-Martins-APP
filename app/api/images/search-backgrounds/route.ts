@@ -17,6 +17,9 @@ type BackgroundImage = {
   alt?: string
   query: string
   theme_keywords: string[]
+  searchQueryUsed?: string
+  visualTheme?: string
+  matchedReason?: string
   quote_background_id?: string | null
   pexels_photo_id?: string | null
 }
@@ -68,6 +71,8 @@ type DetectedTheme = {
   queries: string[]
   theme_keywords: string[]
   avoid_keywords?: string[]
+  visual_theme?: string
+  matched_reason?: string
 }
 
 type SearchDebug = {
@@ -85,11 +90,37 @@ type SearchDebug = {
 const DAYS_WITHOUT_REPEAT = 120
 
 const SAFE_DAILY_QUOTE_QUERIES = [
-  'peaceful sunrise landscape hope faith',
   'open bible morning light peaceful',
-  'mountain sunrise path hope peace',
-  'calm ocean sunrise hope light',
-  'golden sky peaceful landscape',
+  'warm sunrise ancient path hope',
+  'candle light quiet room devotion',
+  'stone path sunrise peaceful',
+  'humble doorway warm light',
+  'golden field sunrise hope',
+  'soft morning light peaceful landscape',
+  'olive tree sunrise path',
+]
+
+const WATER_AVOID_KEYWORDS = [
+  'mar',
+  'barco',
+  'agua',
+  'aguas',
+  'ocean',
+  'sea',
+  'boat',
+  'ship',
+  'storm',
+  'waves',
+  'water',
+  'shipwreck',
+]
+
+const WATER_ALLOWED_QUERIES = [
+  'stormy sea shoreline',
+  'shipwreck shore sunrise',
+  'broken wood waves shore',
+  'survivors shoreline storm',
+  'dramatic coast storm light',
 ]
 
 const THEME_MAP = [
@@ -292,13 +323,155 @@ function uniqueList(values: string[]) {
   return Array.from(new Set(values.map((value) => cleanText(value)).filter(Boolean)))
 }
 
+function hasExplicitWaterTheme(text: string) {
+  const normalized = normalizeText(text)
+
+  const patterns = [
+    /\batos\s*27\b/,
+    /\bpaulo\b.*\b(viagem|navio|naufragio|mar)\b/,
+    /\bcenturiao\b.*\b(naufragio|navio|mar|prisioneiros?)\b/,
+    /\bmar\b/,
+    /\bbarco\b/,
+    /\bnavio\b/,
+    /\bnaufragio\b/,
+    /\baguas?\b/,
+    /\bondas?\b/,
+    /\btempestade\b/,
+    /\bnadar\b/,
+    /\bnadando\b/,
+    /\bpraia\b/,
+    /\bcosta\b/,
+    /\bterra firme\b/,
+  ]
+
+  return patterns.some((pattern) => pattern.test(normalized))
+}
+
+function queryHasAvoidedTheme(query: string, avoidThemes: string[]) {
+  const normalizedQuery = normalizeText(query)
+
+  return avoidThemes.some((theme) => {
+    const normalizedTheme = normalizeText(theme)
+
+    return normalizedTheme && normalizedQuery.includes(normalizedTheme)
+  })
+}
+
+function filterQueriesByAvoidThemes(queries: string[], avoidThemes: string[]) {
+  const filtered = uniqueList(queries).filter((query) => !queryHasAvoidedTheme(query, avoidThemes))
+
+  return filtered.length > 0 ? filtered : SAFE_DAILY_QUOTE_QUERIES
+}
+
+function getConcreteVisualTheme(contextText: string): DetectedTheme | null {
+  const normalized = normalizeText(contextText)
+
+  const mappings: Array<{
+    theme: string
+    reason: string
+    patterns: RegExp[]
+    queries: string[]
+    keywords: string[]
+  }> = [
+    {
+      theme: 'alabastro',
+      reason: 'Frase/trecho menciona Maria, nardo, perfume, aroma ou vaso de alabastro.',
+      patterns: [/\bnardo\b/, /\balabastro\b/, /\bperfume\b/, /\baroma\b/, /\bungiu\b/, /\boleo\b/],
+      queries: [
+        'alabaster jar warm light',
+        'perfume oil candle light',
+        'ancient jar devotional light',
+        'warm ancient house candle',
+        'worship offering warm light',
+      ],
+      keywords: ['alabastro', 'nardo', 'perfume', 'adoracao'],
+    },
+    {
+      theme: 'betania',
+      reason: 'Contexto visual aponta para Betania, Lazaro, Marta, Maria ou casa da aflicao.',
+      patterns: [/\bbetania\b/, /\blazaro\b/, /\bmarta\b/, /\bmaria\b/, /\bcasa da aflicao\b/],
+      queries: [
+        'ancient village house warm light',
+        'biblical stone house doorway',
+        'humble home sunset',
+        'old village road warm light',
+        'doorway light hope',
+      ],
+      keywords: ['betania', 'casa', 'esperanca'],
+    },
+    {
+      theme: 'entrada_triunfal',
+      reason: 'Contexto visual aponta para jumentinho, Jerusalem, ramos ou entrada triunfal.',
+      patterns: [/\bjumentinho\b/, /\bjumento\b/, /\bjerusalem\b/, /\bramos?\b/, /\bentrada triunfal\b/],
+      queries: [
+        'donkey ancient road',
+        'palm branches ancient road',
+        'jerusalem road sunrise',
+        'humble king road',
+        'biblical city gate road',
+      ],
+      keywords: ['jumentinho', 'jerusalem', 'ramos'],
+    },
+    {
+      theme: 'grao_de_trigo',
+      reason: 'Contexto visual aponta para grao de trigo, semente, morrer ou frutificar.',
+      patterns: [/\bgrao\b/, /\btrigo\b/, /\bsemente\b/, /\bfrutificar\b/, /\bmorrer\b/],
+      queries: [
+        'wheat grain soil close up',
+        'seed in soil sunlight',
+        'golden wheat field sunrise',
+        'sprout growing from soil',
+        'wheat harvest golden light',
+      ],
+      keywords: ['trigo', 'semente', 'frutificacao'],
+    },
+    {
+      theme: 'templo_jerusalem',
+      reason: 'Contexto visual aponta para templo, Jerusalem ou presenca de Deus.',
+      patterns: [/\btemplo\b/, /\bjerusalem\b/, /\bpresenca de deus\b/, /\blugar sagrado\b/],
+      queries: [
+        'ancient stone temple light',
+        'jerusalem old city warm light',
+        'ancient doorway sunlight',
+        'stone path sunrise',
+        'sacred place warm light',
+      ],
+      keywords: ['templo', 'jerusalem', 'presenca'],
+    },
+    {
+      theme: 'naufragio',
+      reason: 'Contexto explicito de Atos 27, naufragio, mar, centuriao, Paulo ou terra firme.',
+      patterns: [/\batos\s*27\b/, /\bnaufragio\b/, /\bnavio\b/, /\bmar\b/, /\bcenturiao\b/, /\bterra firme\b/],
+      queries: WATER_ALLOWED_QUERIES,
+      keywords: ['naufragio', 'mar', 'terra firme', 'atos 27'],
+    },
+  ]
+
+  const match = mappings.find((mapping) =>
+    mapping.patterns.some((pattern) => pattern.test(normalized))
+  )
+
+  if (!match) return null
+
+  return {
+    query: match.queries[0],
+    queries: match.queries,
+    theme_keywords: match.keywords,
+    avoid_keywords: [],
+    visual_theme: match.theme,
+    matched_reason: match.reason,
+  }
+}
+
 function shouldAvoidPhoto(photo: PexelsPhoto, themeKeywords: string[], avoidKeywords: string[] = []) {
   const allowDramatic =
     themeKeywords.includes('tempestade') ||
     themeKeywords.includes('deserto')
 
   if (allowDramatic) {
-    return false
+    return avoidKeywords.some((word) =>
+      normalizeText(photo.alt || '').includes(normalizeText(word))
+    )
   }
 
   const alt = normalizeText(photo.alt || '')
@@ -866,8 +1039,29 @@ export async function POST(request: NextRequest) {
     const quoteText = cleanText(String(body.quoteText || ''))
     const manualQuery = cleanText(String(body.query || ''))
     const purpose = cleanText(String(body.purpose || ''))
+    const title = cleanText(String(body.title || ''))
+    const bibleReference = cleanText(String(body.bibleReference || ''))
+    const sourceExcerpt = cleanText(String(body.sourceExcerpt || ''))
+    const reason = cleanText(String(body.reason || ''))
+    const specificityReason = cleanText(String(body.specificityReason || ''))
+    const useCase = cleanText(String(body.useCase || ''))
+    const transcriptionPreview = cleanText(String(body.transcriptionPreview || ''))
     const preferredThemes = getStringArray(body.preferredThemes)
-    const avoidThemes = getStringArray(body.avoidThemes)
+    const visualContext = [
+      quoteText,
+      sourceExcerpt,
+      reason,
+      specificityReason,
+      title,
+      bibleReference,
+      useCase,
+      transcriptionPreview,
+    ].filter(Boolean).join(' ')
+    const explicitWaterTheme = hasExplicitWaterTheme(visualContext || quoteText || manualQuery)
+    const avoidThemes = uniqueList([
+      ...getStringArray(body.avoidThemes),
+      ...(explicitWaterTheme ? [] : WATER_AVOID_KEYWORDS),
+    ])
 
     if (!quoteText && !manualQuery) {
       return NextResponse.json(
@@ -879,6 +1073,8 @@ export async function POST(request: NextRequest) {
     const detectedThemeBase =
       purpose === 'episode_thumbnail'
         ? detectEpisodeThumbnailTheme(quoteText || manualQuery, preferredThemes, avoidThemes)
+        : purpose === 'daily_quote_card'
+        ? getConcreteVisualTheme(visualContext) || detectThemeFromQuote(visualContext || quoteText)
         : manualQuery
         ? {
             query: manualQuery,
@@ -888,29 +1084,54 @@ export async function POST(request: NextRequest) {
         : detectThemeFromQuote(quoteText)
 
     const detectedTheme =
-      !purpose && !manualQuery
+      (purpose === 'daily_quote_card' || (!purpose && !manualQuery))
         ? improveDailyQuoteQueries(detectedThemeBase)
         : detectedThemeBase
+    const filteredQueries = filterQueriesByAvoidThemes(
+      detectedTheme.queries,
+      avoidThemes
+    )
+    const finalDetectedTheme = {
+      ...detectedTheme,
+      query: filteredQueries[0] || detectedTheme.query,
+      queries: filteredQueries,
+      avoid_keywords: uniqueList([
+        ...(detectedTheme.avoid_keywords || []),
+        ...avoidThemes,
+      ]),
+    }
 
     const history = await getRecentImageHistory()
 
     const curatedImages = await searchCuratedImages({
-      theme_keywords: detectedTheme.theme_keywords,
+      theme_keywords: finalDetectedTheme.theme_keywords,
       history,
     })
 
     const pexelsImages = await searchPexelsImages({
-      queries: detectedTheme.queries,
-      theme_keywords: detectedTheme.theme_keywords,
-      avoid_keywords: detectedTheme.avoid_keywords,
+      queries: finalDetectedTheme.queries,
+      theme_keywords: finalDetectedTheme.theme_keywords,
+      avoid_keywords: finalDetectedTheme.avoid_keywords,
       history,
     })
 
     const finalImages: BackgroundImage[] = []
 
-    curatedImages.slice(0, 3).forEach((image) => {
-      addUniqueImage(finalImages, image)
+    const allowedCuratedImages = curatedImages.filter((image) => {
+      const searchableText = [
+        image.query,
+        image.alt || '',
+        ...(image.theme_keywords || []),
+      ].join(' ')
+
+      return !queryHasAvoidedTheme(searchableText, finalDetectedTheme.avoid_keywords || [])
     })
+
+    allowedCuratedImages
+      .slice(0, 3)
+      .forEach((image) => {
+        addUniqueImage(finalImages, image)
+      })
 
     pexelsImages.images.forEach((image) => {
       addUniqueImage(finalImages, image)
@@ -920,9 +1141,15 @@ export async function POST(request: NextRequest) {
       finalImages.length > 0
         ? finalImages.slice(0, 9)
         : FALLBACK_IMAGES
+    const imagesWithMetadata = images.map((image) => ({
+      ...image,
+      searchQueryUsed: image.query || finalDetectedTheme.query,
+      visualTheme: finalDetectedTheme.visual_theme || finalDetectedTheme.theme_keywords[0] || '',
+      matchedReason: finalDetectedTheme.matched_reason || 'Busca baseada no contexto visual da Palavra do Dia.',
+    }))
 
     const provider =
-      curatedImages.length > 0
+      allowedCuratedImages.length > 0
         ? 'curated'
         : pexelsImages.images.length > 0
         ? 'pexels'
@@ -947,10 +1174,12 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      query: detectedTheme.query,
-      queries: detectedTheme.queries,
-      theme_keywords: detectedTheme.theme_keywords,
-      images,
+      query: finalDetectedTheme.query,
+      queries: finalDetectedTheme.queries,
+      theme_keywords: finalDetectedTheme.theme_keywords,
+      visual_theme: finalDetectedTheme.visual_theme || finalDetectedTheme.theme_keywords[0] || '',
+      matched_reason: finalDetectedTheme.matched_reason || '',
+      images: imagesWithMetadata,
       provider,
       source_counts: {
         curated: curatedImages.length,
