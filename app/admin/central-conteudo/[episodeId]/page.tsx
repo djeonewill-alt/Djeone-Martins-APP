@@ -1030,14 +1030,22 @@ export default function AdminContentStudioPage() {
           </div>
         )}
 
-        <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
-          <div className="grid gap-5">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="grid gap-5 lg:col-start-1 lg:row-start-2">
             <section className="rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20">
-              <p className="text-[11px] font-black uppercase tracking-[0.20em] text-blue-300">
-                Base do episodio
-              </p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.20em] text-blue-300">
+                    Base do episodio
+                  </p>
+                  <p className="mt-2 text-sm font-bold text-slate-400">
+                    Dados essenciais compactados para consulta durante a edicao.
+                  </p>
+                </div>
+                <InfoPill label="Compacta" tone="slate" />
+              </div>
 
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <div className="mt-5 grid gap-3 md:grid-cols-4">
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Referencia</p>
                   <p className="mt-1 text-sm font-bold text-blue-100">{episode.bible_reference || 'Nao informada'}</p>
@@ -1059,19 +1067,27 @@ export default function AdminContentStudioPage() {
                 </div>
               </div>
 
-              {episode.description && (
-                <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/70 p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Descricao</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-300">{episode.description}</p>
-                </div>
-              )}
+              <details className="mt-4 rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.14em] text-blue-200">
+                  Expandir detalhes
+                </summary>
 
-              {episode.audio_url && (
-                <div className="mt-5">
-                  <p className="mb-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500">Audio</p>
-                  <audio src={episode.audio_url} controls preload="metadata" className="w-full" />
-                </div>
-              )}
+                {episode.description && (
+                  <details className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                    <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+                      Ver descricao
+                    </summary>
+                    <p className="mt-3 text-sm leading-6 text-slate-300">{episode.description}</p>
+                  </details>
+                )}
+
+                {episode.audio_url && (
+                  <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                    <p className="mb-2 text-xs font-black uppercase tracking-[0.14em] text-slate-400">Audio</p>
+                    <audio src={episode.audio_url} controls preload="metadata" className="w-full" />
+                  </div>
+                )}
+              </details>
             </section>
 
             <section className="rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20">
@@ -1083,6 +1099,9 @@ export default function AdminContentStudioPage() {
                   <p className="mt-2 text-sm text-slate-400">
                     Status: {episode.transcription_status || 'nao iniciado'}
                   </p>
+                  <p className="mt-1 text-xs font-bold text-slate-500">
+                    {segments.length} segmentos
+                  </p>
                 </div>
 
                 {episode.transcription_generated_at && (
@@ -1092,58 +1111,82 @@ export default function AdminContentStudioPage() {
                 )}
               </div>
 
-              {episode.transcription_error && (
-                <div className="mt-4 rounded-2xl border border-rose-300/20 bg-rose-500/10 p-4 text-sm font-bold text-rose-100">
-                  {episode.transcription_error}
-                </div>
-              )}
+              <details className="mt-4 rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.14em] text-blue-200">
+                  Ver transcricao completa
+                </summary>
 
-              {episode.transcription_text ? (
-                <div className="mt-4 max-h-[520px] overflow-y-auto rounded-2xl border border-white/10 bg-slate-950/80 p-4 text-sm leading-7 text-slate-200">
-                  {episode.transcription_text}
-                </div>
-              ) : (
-                <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-slate-950/70 p-5 text-sm font-bold text-slate-500">
-                  Este episodio ainda nao tem transcricao salva.
-                </div>
-              )}
+                {episode.transcription_error && (
+                  <div className="mt-4 rounded-2xl border border-rose-300/20 bg-rose-500/10 p-4 text-sm font-bold text-rose-100">
+                    {episode.transcription_error}
+                  </div>
+                )}
+
+                {episode.transcription_text ? (
+                  <div className="mt-4 max-h-[520px] overflow-y-auto rounded-2xl border border-white/10 bg-slate-950/80 p-4 text-sm leading-7 text-slate-200">
+                    {episode.transcription_text}
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-slate-950/70 p-5 text-sm font-bold text-slate-500">
+                    Este episodio ainda nao tem transcricao salva.
+                  </div>
+                )}
+              </details>
             </section>
 
             <section className="rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20">
-              <p className="text-[11px] font-black uppercase tracking-[0.20em] text-blue-300">
-                Frases fortes existentes
-              </p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.20em] text-blue-300">
+                    Frases fortes existentes
+                  </p>
+                  <p className="mt-2 text-sm font-bold text-slate-400">
+                    {suggestions.length} frases salvas
+                  </p>
+                </div>
+                {suggestions[0]?.quote_text && (
+                  <p className="max-w-xl rounded-2xl border border-amber-300/15 bg-amber-500/10 p-3 text-xs font-bold leading-5 text-amber-50/80">
+                    {suggestions[0].quote_text}
+                  </p>
+                )}
+              </div>
 
-              {suggestions.length > 0 ? (
-                <div className="mt-4 grid gap-3">
-                  {suggestions.map((suggestion, index) => (
-                    <article
-                      key={`${suggestion.quote_text || 'frase'}-${index}`}
-                      className="rounded-2xl border border-amber-300/15 bg-amber-500/10 p-4"
-                    >
-                      <p className="text-sm font-black leading-6 text-amber-50">
-                        {suggestion.quote_text || 'Frase sem texto'}
-                      </p>
+              <details className="mt-4 rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.14em] text-blue-200">
+                  Ver frases fortes
+                </summary>
 
-                      {(suggestion.reason || suggestion.score) && (
-                        <p className="mt-2 text-xs font-bold leading-5 text-amber-100/70">
-                          {suggestion.reason || 'Sugestao gerada por IA'}
-                          {suggestion.score ? ` - nota ${suggestion.score}` : ''}
+                {suggestions.length > 0 ? (
+                  <div className="mt-4 grid gap-3">
+                    {suggestions.map((suggestion, index) => (
+                      <article
+                        key={`${suggestion.quote_text || 'frase'}-${index}`}
+                        className="rounded-2xl border border-amber-300/15 bg-amber-500/10 p-4"
+                      >
+                        <p className="text-sm font-black leading-6 text-amber-50">
+                          {suggestion.quote_text || 'Frase sem texto'}
                         </p>
-                      )}
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-slate-950/70 p-5 text-sm font-bold text-slate-500">
-                  Nenhuma sugestao de Palavra do Dia foi salva neste episodio.
-                </div>
-              )}
+
+                        {(suggestion.reason || suggestion.score) && (
+                          <p className="mt-2 text-xs font-bold leading-5 text-amber-100/70">
+                            {suggestion.reason || 'Sugestao gerada por IA'}
+                            {suggestion.score ? ` - nota ${suggestion.score}` : ''}
+                          </p>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-slate-950/70 p-5 text-sm font-bold text-slate-500">
+                    Nenhuma sugestao de Palavra do Dia foi salva neste episodio.
+                  </div>
+                )}
+              </details>
             </section>
           </div>
 
-          <aside className="grid gap-5 self-start">
-            <section className="rounded-[34px] border border-cyan-300/15 bg-cyan-500/10 p-5 shadow-2xl shadow-black/20">
+          <aside className="grid gap-5 self-start lg:col-span-2 lg:row-start-1 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+            <section className="rounded-[34px] border border-cyan-300/15 bg-cyan-500/10 p-5 shadow-2xl shadow-black/20 lg:col-start-2">
               <p className="text-[11px] font-black uppercase tracking-[0.20em] text-cyan-200">
                 Timestamps avancados
               </p>
@@ -1204,7 +1247,7 @@ export default function AdminContentStudioPage() {
               </button>
             </section>
 
-            <section className="rounded-[34px] border border-blue-300/15 bg-blue-500/10 p-5 shadow-2xl shadow-black/20">
+            <section className="rounded-[34px] border border-blue-300/15 bg-blue-500/10 p-5 shadow-2xl shadow-black/20 lg:col-start-2">
               <p className="text-[11px] font-black uppercase tracking-[0.20em] text-blue-200">
                 Conteudos textuais
               </p>
@@ -1255,29 +1298,89 @@ export default function AdminContentStudioPage() {
                 ))}
               </div>
 
-              {contentAssets?.cut_suggestions.length ? (
-                <p className="mt-3 rounded-xl border border-amber-300/15 bg-amber-500/10 p-3 text-xs font-bold leading-5 text-amber-50/80">
-                  Regenerar cortes substitui a lista atual nesta tela. Use "Limpar resultados desta tela" se quiser recomecar do zero.
-                </p>
-              ) : null}
+              <p className="mt-3 rounded-xl border border-amber-300/15 bg-amber-500/10 p-3 text-xs font-bold leading-5 text-amber-50/80">
+                Regenerar cortes substitui a lista atual nesta tela.
+              </p>
             </section>
 
-            {contentAssets && (
-              <section className="rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20">
+            {selectedCut && (
+              <section className="rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20 lg:col-start-2">
                 <p className="text-[11px] font-black uppercase tracking-[0.20em] text-blue-300">
-                  Resultado gerado
+                  Corte selecionado
+                </p>
+                <div className="mt-4 rounded-2xl border border-blue-300/15 bg-blue-500/10 p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <InfoPill label="Em trabalho" tone="blue" />
+                    <span className="text-xs font-black text-blue-100">{selectedCutLabel}</span>
+                  </div>
+                  <p className="mt-3 text-sm font-black leading-5 text-white">{selectedCut.title}</p>
+                  <p className="mt-2 line-clamp-4 text-xs font-bold leading-5 text-slate-300">{selectedCut.hook}</p>
+                </div>
+              </section>
+            )}
+
+            {!contentAssets && (
+              <section className="rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20 lg:col-start-1 lg:row-span-3 lg:row-start-1">
+                <p className="text-[11px] font-black uppercase tracking-[0.20em] text-blue-300">
+                  Modo Estudio
                 </p>
 
-                <div className="mt-4 grid gap-4">
-                  <article className="rounded-2xl border border-blue-300/15 bg-blue-500/10 p-4">
+                <article className="mt-4 rounded-2xl border border-blue-300/15 bg-blue-500/10 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h2 className="text-sm font-black text-blue-50">Area de trabalho do Short</h2>
+                      <p className="mt-1 text-xs font-bold text-blue-100/70">
+                        Selecione um corte para gerar roteiro, legenda ou expansao.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {['Resumo', 'Roteiro', 'Legendas', 'Visual', 'Publicacao'].map((step) => (
+                      <span key={step} className="rounded-full border border-white/10 bg-slate-950/50 px-3 py-1 text-[11px] font-black text-slate-300">
+                        {step}
+                      </span>
+                    ))}
+                  </div>
+
+                  <p className="mt-4 rounded-xl border border-dashed border-white/10 bg-slate-950/40 p-3 text-xs font-bold leading-5 text-slate-400">
+                    Gere cortes editoriais na lateral para iniciar o pacote de producao do Short.
+                  </p>
+                </article>
+
+                <article className="mt-4 rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                  <h2 className="text-sm font-black text-white">Sugestoes de cortes editoriais</h2>
+                  <p className="mt-3 text-sm font-bold leading-6 text-slate-500">
+                    Nenhum corte foi gerado nesta tela ainda.
+                  </p>
+                </article>
+              </section>
+            )}
+
+            {contentAssets && (
+              <section className="rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20 lg:col-start-1 lg:row-span-4 lg:row-start-1">
+                <p className="text-[11px] font-black uppercase tracking-[0.20em] text-blue-300">
+                  Modo Estudio
+                </p>
+
+                <div className="mt-4 grid gap-4 [&>article]:order-3">
+                  <article className="order-1 rounded-2xl border border-blue-300/15 bg-blue-500/10 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <h2 className="text-sm font-black text-blue-50">Area de trabalho do Short</h2>
                         <p className="mt-1 text-xs font-bold text-blue-100/70">
                           {selectedCut
                             ? `Trabalhando no corte: ${selectedCutLabel}`
-                            : 'Selecione um corte ao gerar roteiro, legenda ou expansao.'}
+                            : 'Selecione um corte para gerar roteiro, legenda ou expansao.'}
                         </p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        {['Resumo', 'Roteiro', 'Legendas', 'Visual', 'Publicacao'].map((step) => (
+                          <span key={step} className="rounded-full border border-white/10 bg-slate-950/50 px-3 py-1 text-[11px] font-black text-slate-300">
+                            {step}
+                          </span>
+                        ))}
                       </div>
 
                       {selectedCut && (
@@ -1765,7 +1868,7 @@ export default function AdminContentStudioPage() {
                   )}
 
                   {(contentAssets.cut_suggestions.length > 0 || contentAssets.cut_suggestions_note) && (
-                  <article className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                  <article className="order-2 rounded-2xl border border-white/10 bg-slate-950/70 p-4">
                     <h2 className="text-sm font-black text-white">Sugestões de cortes editoriais</h2>
                     {contentAssets.cut_suggestions.length === 0 && contentAssets.cut_suggestions_note && (
                       <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-500/10 p-3 text-xs font-bold leading-5 text-amber-50">
@@ -1990,7 +2093,7 @@ export default function AdminContentStudioPage() {
               </section>
             )}
 
-            <section className="rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20">
+            <section className="rounded-[34px] border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20 lg:col-start-2">
               <p className="text-[11px] font-black uppercase tracking-[0.20em] text-blue-300">
                 Transcricao com timestamps
               </p>
