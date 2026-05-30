@@ -155,6 +155,21 @@ type CutSuggestion = {
   duration_label?: string
   recommended_use?: string
   risk?: string
+  production_priority?: number
+  production_label?: string
+  production_role?: 'main_short' | 'quick_teaser' | 'extended_short' | 'micro_devotional' | 'sensitive_topic' | 'backup_cut'
+  editorial_alert_level?: 'low' | 'medium' | 'high'
+  editorial_alert?: string
+  format_recommendation?: string
+  should_publish_first?: boolean
+  needs_context_warning?: boolean
+  suggested_smaller_cut?: {
+    start: number
+    end: number
+    title: string
+    hook: string
+    reason: string
+  } | null
   cut_type?: 'hook' | 'full_cut'
   needs_expansion?: boolean
   original_hook_start?: number
@@ -1064,6 +1079,35 @@ export default function AdminContentStudioPage() {
     })
     setManualCutError('')
     setManualCutWarning(duration > 90 ? 'Corte adicionado. Ele passa de 90s, entao revise o ritmo antes de publicar.' : '')
+  }
+
+  function handleUseSuggestedSmallerCut(cut: NonNullable<CutSuggestion['suggested_smaller_cut']>) {
+    const derivedCut: CutSuggestion = {
+      start: cut.start,
+      end: cut.end,
+      duration: Math.round(cut.end - cut.start),
+      title: cut.title || 'Recorte menor sugerido',
+      hook: cut.hook || 'Recorte menor sugerido pela IA forte.',
+      source_excerpt: '',
+      reason: cut.reason || 'Recorte menor sugerido dentro de um corte longo.',
+      strength_score: 9,
+      strength_reason: 'Recorte menor sugerido pela IA forte.',
+      editorial_score: 9,
+      editorial_note: 'Recorte sugerido pela IA forte para melhorar retencao.',
+      suggested_caption_lines: [],
+      cut_type: 'full_cut',
+      needs_expansion: false,
+      manual: true,
+    }
+    const derivedKey = getCutKey(derivedCut, 0)
+
+    setManualCuts((current) => [
+      derivedCut,
+      ...current.filter((existing) => getCutKey(existing, 0) !== derivedKey),
+    ])
+    setContentAssets((current) => current || EMPTY_CONTENT_ASSETS)
+    setSelectedCutKey(derivedKey)
+    setManualCutWarning('Recorte menor adicionado aos cortes manuais e selecionado para producao.')
   }
 
   async function handleGenerateContentAssets(mode: GenerationMode = 'all') {
@@ -3462,7 +3506,7 @@ export default function AdminContentStudioPage() {
                       <div>
                         <h2 className="text-sm font-black text-emerald-50">Melhores cortes com IA forte</h2>
                         <p className="mt-1 text-xs font-bold leading-5 text-emerald-100/70">
-                          {contentAssets.best_ai_cuts.editorial_summary}
+                          Recomendacao: comece pelo corte #1. Use os alertas para decidir teaser, microdevocional ou cuidado editorial.
                         </p>
                         <p className="mt-1 text-xs font-bold text-emerald-100/55">
                           Modelo: {contentAssets.best_ai_cuts.model}
@@ -3470,6 +3514,15 @@ export default function AdminContentStudioPage() {
                       </div>
                       <InfoPill label="IA forte" tone="green" />
                     </div>
+
+                    <details className="mt-3 rounded-xl border border-emerald-300/15 bg-slate-950/35 p-3">
+                      <summary className="cursor-pointer text-xs font-black text-emerald-100">
+                        Resumo editorial
+                      </summary>
+                      <p className="mt-2 text-xs font-bold leading-5 text-emerald-50/80">
+                        {contentAssets.best_ai_cuts.editorial_summary}
+                      </p>
+                    </details>
 
                     {contentAssets.best_ai_cuts.warnings.length > 0 && (
                       <div className="mt-3 rounded-xl border border-amber-300/20 bg-amber-500/10 p-3">
@@ -3493,7 +3546,19 @@ export default function AdminContentStudioPage() {
                               : 'border-emerald-300/20 bg-slate-950/35'
                           }`}>
                             <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded-full border border-blue-300/20 bg-blue-500/10 px-2 py-1 text-[11px] font-black text-blue-100">
+                                #{cut.production_priority || index + 1}
+                              </span>
                               <InfoPill label="IA forte" tone="green" />
+                              <span className={`rounded-full border px-2 py-1 text-[11px] font-black ${
+                                cut.editorial_alert_level === 'high'
+                                  ? 'border-rose-300/25 bg-rose-500/10 text-rose-100'
+                                  : cut.editorial_alert_level === 'medium'
+                                    ? 'border-amber-300/25 bg-amber-500/10 text-amber-100'
+                                    : 'border-emerald-300/20 bg-emerald-500/10 text-emerald-100'
+                              }`}>
+                                {cut.production_label || 'Postar depois'}
+                              </span>
                               {cutKey === selectedCutKey && <InfoPill label="Em trabalho" tone="blue" />}
                               <span className="text-xs font-black text-blue-200">
                                 {formatSegmentTime(cut.start)} - {formatSegmentTime(cut.end)}
@@ -3503,6 +3568,12 @@ export default function AdminContentStudioPage() {
                               </span>
                               <CutDurationBadge duration={getCutDuration(cut)} />
                             </div>
+
+                            {cut.should_publish_first && (
+                              <p className="mt-3 rounded-xl border border-blue-300/20 bg-blue-500/10 p-3 text-xs font-black text-blue-100">
+                                Recomendado para primeiro post.
+                              </p>
+                            )}
 
                             <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100/70">Titulo</p>
                             <p className="mt-1 text-sm font-black text-white">{cut.title}</p>
@@ -3552,6 +3623,46 @@ export default function AdminContentStudioPage() {
                               <p className="mt-3 rounded-xl border border-amber-300/15 bg-amber-500/10 p-3 text-xs font-bold leading-5 text-amber-50/80">
                                 Risco editorial: {cut.risk}
                               </p>
+                            )}
+
+                            {(cut.editorial_alert_level === 'medium' || cut.editorial_alert_level === 'high' || cut.needs_context_warning) && (
+                              <p className={`mt-3 rounded-xl border p-3 text-xs font-bold leading-5 ${
+                                cut.editorial_alert_level === 'high'
+                                  ? 'border-rose-300/20 bg-rose-500/10 text-rose-100'
+                                  : 'border-amber-300/20 bg-amber-500/10 text-amber-50'
+                              }`}>
+                                Atencao editorial: {cut.editorial_alert || 'Confira o contexto antes de publicar.'}
+                              </p>
+                            )}
+
+                            {cut.suggested_smaller_cut && (
+                              <div className="mt-3 rounded-xl border border-cyan-300/15 bg-cyan-500/10 p-3">
+                                <p className="text-xs font-black text-cyan-50">Recorte menor sugerido</p>
+                                <p className="mt-2 text-xs font-black text-cyan-100">
+                                  {formatSegmentTime(cut.suggested_smaller_cut.start)} - {formatSegmentTime(cut.suggested_smaller_cut.end)}
+                                </p>
+                                <p className="mt-2 text-sm font-black text-white">{cut.suggested_smaller_cut.title}</p>
+                                <p className="mt-2 text-xs font-bold leading-5 text-cyan-50">{cut.suggested_smaller_cut.hook}</p>
+                                <p className="mt-2 text-xs leading-5 text-cyan-100/75">{cut.suggested_smaller_cut.reason}</p>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUseSuggestedSmallerCut(cut.suggested_smaller_cut as NonNullable<CutSuggestion['suggested_smaller_cut']>)}
+                                    className="rounded-xl border border-cyan-300/20 bg-slate-950/40 px-3 py-2 text-xs font-black text-cyan-100 active:scale-[0.98]"
+                                  >
+                                    Usar recorte menor
+                                  </button>
+                                  <CopyButton
+                                    value={[
+                                      `Recorte menor sugerido: ${cut.suggested_smaller_cut.title}`,
+                                      `Tempo: ${formatSegmentTime(cut.suggested_smaller_cut.start)} - ${formatSegmentTime(cut.suggested_smaller_cut.end)}`,
+                                      `Gancho: ${cut.suggested_smaller_cut.hook}`,
+                                      `Motivo: ${cut.suggested_smaller_cut.reason}`,
+                                    ].join('\n')}
+                                    label="Copiar recorte menor"
+                                  />
+                                </div>
+                              </div>
                             )}
 
                             {cut.suggested_caption_lines && cut.suggested_caption_lines.length > 0 && (

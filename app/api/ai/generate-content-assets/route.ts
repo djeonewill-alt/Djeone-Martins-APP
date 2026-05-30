@@ -164,6 +164,21 @@ type CutSuggestion = {
   duration_label?: string
   recommended_use?: string
   risk?: string
+  production_priority?: number
+  production_label?: string
+  production_role?: 'main_short' | 'quick_teaser' | 'extended_short' | 'micro_devotional' | 'sensitive_topic' | 'backup_cut'
+  editorial_alert_level?: 'low' | 'medium' | 'high'
+  editorial_alert?: string
+  format_recommendation?: string
+  should_publish_first?: boolean
+  needs_context_warning?: boolean
+  suggested_smaller_cut?: {
+    start: number
+    end: number
+    title: string
+    hook: string
+    reason: string
+  } | null
   cut_type?: 'hook' | 'full_cut'
   needs_expansion?: boolean
   original_hook_start?: number
@@ -823,6 +838,102 @@ function normalizeScore(value: unknown, fallback = 8) {
   return Number.isFinite(score) ? Math.max(1, Math.min(10, Math.round(score))) : fallback
 }
 
+function getProductionRoleByDuration(duration: number): CutSuggestion['production_role'] {
+  if (duration <= 25) return 'quick_teaser'
+  if (duration <= 45) return 'main_short'
+  if (duration <= 60) return 'extended_short'
+  if (duration <= 90) return 'micro_devotional'
+  return 'backup_cut'
+}
+
+function getProductionLabelByRole(role: CutSuggestion['production_role']) {
+  const labels = {
+    main_short: 'Postar primeiro',
+    quick_teaser: 'Teaser curto',
+    extended_short: 'Postar depois',
+    micro_devotional: 'Microdevocional',
+    sensitive_topic: 'Usar com cuidado',
+    backup_cut: 'Reserva',
+  }
+
+  return labels[role || 'backup_cut']
+}
+
+function normalizeProductionRole(input: unknown, duration: number): CutSuggestion['production_role'] {
+  const role = cleanText(String(input || ''))
+  const allowed: Array<NonNullable<CutSuggestion['production_role']>> = [
+    'main_short',
+    'quick_teaser',
+    'extended_short',
+    'micro_devotional',
+    'sensitive_topic',
+    'backup_cut',
+  ]
+
+  return allowed.includes(role as NonNullable<CutSuggestion['production_role']>)
+    ? role as NonNullable<CutSuggestion['production_role']>
+    : getProductionRoleByDuration(duration)
+}
+
+function containsSensitiveCutLanguage(text: string) {
+  const normalized = normalizeTextForCaptionSearch(text)
+  return [
+    'oferta',
+    'manipulacao',
+    'nao e obediencia',
+    'nao se pede',
+    'desperdicio',
+    'judas',
+  ].some((term) => normalized.includes(term))
+}
+
+function normalizeSuggestedSmallerCut(
+  input: unknown,
+  parentCut: Pick<CutSuggestion, 'start' | 'end'>,
+  warnings: string[]
+) {
+  if (!input || typeof input !== 'object') return null
+
+  const value = input as {
+    start?: unknown
+    end?: unknown
+    title?: unknown
+    hook?: unknown
+    reason?: unknown
+  }
+  const start = Number(value.start)
+  const end = Number(value.end)
+  const duration = end - start
+  const insideParent = start >= parentCut.start - 1 && end <= parentCut.end + 1
+
+  if (
+    !Number.isFinite(start) ||
+    !Number.isFinite(end) ||
+    start < 0 ||
+    end <= start ||
+    duration < 10 ||
+    duration > 60 ||
+    !insideParent
+  ) {
+    warnings.push('Um recorte menor sugerido foi descartado por estar fora dos limites permitidos.')
+    return null
+  }
+
+  return {
+    start: Number(start.toFixed(2)),
+    end: Number(end.toFixed(2)),
+    title: cleanText(String(value.title || '')).slice(0, 120) || 'Recorte menor sugerido',
+    hook: cleanText(String(value.hook || '')).slice(0, 220) || 'Recorte menor sugerido pela IA forte.',
+    reason: cleanText(String(value.reason || '')).slice(0, 260) || 'Recorte menor dentro do bloco principal.',
+  }
+}
+
+function getIdealDurationDistance(cut: Pick<CutSuggestion, 'start' | 'end'>) {
+  const duration = cut.end - cut.start
+  if (duration >= 25 && duration <= 45) return 0
+  return Math.min(Math.abs(duration - 25), Math.abs(duration - 45))
+}
+
 function normalizeBestAiCuts(input: unknown, model: string): BestAiCutsResult {
   const parsed = input as {
     cuts?: unknown
@@ -854,6 +965,15 @@ function normalizeBestAiCuts(input: unknown, model: string): BestAiCutsResult {
         share_potential?: unknown
         fidelity_to_audio?: unknown
         risk?: unknown
+        production_priority?: unknown
+        production_label?: unknown
+        production_role?: unknown
+        editorial_alert_level?: unknown
+        editorial_alert?: unknown
+        format_recommendation?: unknown
+        should_publish_first?: unknown
+        needs_context_warning?: unknown
+        suggested_smaller_cut?: unknown
         caption_lines?: unknown
         suggested_caption_lines?: unknown
       }
@@ -881,6 +1001,14 @@ function normalizeBestAiCuts(input: unknown, model: string): BestAiCutsResult {
       const reason =
         cleanText(String(value.reason || '')).slice(0, 320) ||
         'Corte selecionado por potencial editorial e retencao.'
+      const priority = Number(value.production_priority)
+      const productionRole = normalizeProductionRole(value.production_role, duration)
+      const productionLabel =
+        cleanText(String(value.production_label || '')).slice(0, 80) ||
+        getProductionLabelByRole(productionRole)
+      const alertLevel = cleanText(String(value.editorial_alert_level || 'low'))
+      const safeAlertLevel = alertLevel === 'medium' || alertLevel === 'high' ? alertLevel : 'low'
+      const sensitiveLanguage = containsSensitiveCutLanguage(`${title} ${hook} ${reason}`)
 
       const cut: CutSuggestion = {
         title,
@@ -901,6 +1029,24 @@ function normalizeBestAiCuts(input: unknown, model: string): BestAiCutsResult {
         duration_label: profile.label,
         recommended_use: profile.recommendedUse,
         risk: cleanText(String(value.risk || '')).slice(0, 220) || 'Risco editorial nao informado.',
+        production_priority: Number.isFinite(priority) ? Math.max(1, Math.round(priority)) : rawCuts.indexOf(item) + 1,
+        production_label: productionLabel,
+        production_role: sensitiveLanguage && safeAlertLevel !== 'low' ? 'sensitive_topic' : productionRole,
+        editorial_alert_level: sensitiveLanguage && safeAlertLevel === 'low' ? 'medium' : safeAlertLevel,
+        editorial_alert:
+          cleanText(String(value.editorial_alert || '')).slice(0, 260) ||
+          (sensitiveLanguage
+            ? 'Tema sensivel. Confira se o corte nao fica mal interpretado fora do contexto.'
+            : 'Baixo risco. Corte claro, visual e fiel ao episodio.'),
+        format_recommendation:
+          cleanText(String(value.format_recommendation || '')).slice(0, 120) ||
+          profile.recommendedUse,
+        should_publish_first: value.should_publish_first === true,
+        needs_context_warning:
+          typeof value.needs_context_warning === 'boolean'
+            ? value.needs_context_warning
+            : sensitiveLanguage,
+        suggested_smaller_cut: normalizeSuggestedSmallerCut(value.suggested_smaller_cut, { start, end }, warnings),
         suggested_caption_lines: normalizeCaptionLines(value.caption_lines || value.suggested_caption_lines),
         cut_type: profile.cutType,
         needs_expansion: profile.needsExpansion,
@@ -916,7 +1062,13 @@ function normalizeBestAiCuts(input: unknown, model: string): BestAiCutsResult {
       return cut
     })
     .filter((cut): cut is CutSuggestion => Boolean(cut))
-    .sort((a, b) => (b.retention_score || 0) - (a.retention_score || 0))
+    .sort((a, b) => {
+      const priorityDiff = (a.production_priority || 99) - (b.production_priority || 99)
+      if (priorityDiff !== 0) return priorityDiff
+      const scoreDiff = (b.retention_score || 0) - (a.retention_score || 0)
+      if (scoreDiff !== 0) return scoreDiff
+      return getIdealDurationDistance(a) - getIdealDurationDistance(b)
+    })
     .slice(0, 7)
 
   if (!cuts.length) {
@@ -926,6 +1078,18 @@ function normalizeBestAiCuts(input: unknown, model: string): BestAiCutsResult {
   if (cuts.length > 5) {
     warnings.push('A IA retornou mais de 5 cortes; exibindo ate 7 para revisao editorial.')
   }
+
+  const firstPriority = Math.min(...cuts.map((cut) => cut.production_priority || 99))
+  cuts.forEach((cut, index) => {
+    cut.production_priority = index + 1
+    cut.should_publish_first = cut.should_publish_first || (cut.production_priority === 1 && firstPriority >= 1)
+    if (cut.should_publish_first && cut.production_priority !== 1) {
+      cut.should_publish_first = false
+    }
+    if (!cut.production_label) {
+      cut.production_label = getProductionLabelByRole(cut.production_role)
+    }
+  })
 
   return {
     mode: 'best_cuts_ai',
@@ -2394,6 +2558,21 @@ Tipos de corte:
 - Microdevocional: 61s-90s
 - Corte longo: acima de 90s, evitar
 
+Campos de producao:
+- production_priority: o corte mais publicavel deve ser 1.
+- production_role permitido: main_short, quick_teaser, extended_short, micro_devotional, sensitive_topic, backup_cut.
+- production_label permitido: Postar primeiro, Postar depois, Teaser curto, Microdevocional, Usar com cuidado, Reserva.
+- editorial_alert_level permitido: low, medium, high.
+- should_publish_first deve ser true apenas no melhor corte para comecar.
+- needs_context_warning deve ser true quando o corte pode ser mal interpretado fora do contexto.
+- Cortes de 15s a 25s podem ser quick_teaser.
+- Cortes de 26s a 45s devem ser main_short quando claros e fortes.
+- Cortes de 46s a 60s podem ser extended_short.
+- Cortes de 61s a 90s devem preferencialmente ser micro_devotional.
+- Cortes sensiveis devem receber sensitive_topic ou editorial_alert_level medium/high.
+- Temas com oferta, manipulacao, "nao e obediencia", "nao se pede", Judas ou desperdicio exigem cuidado editorial.
+- Se um corte tiver mais de 60s ou parecer longo demais para Short principal, sugira suggested_smaller_cut quando houver recorte menor confiavel dentro dele.
+
 EPISODIO: ${params.title}
 REFERENCIA: ${params.bibleReference || 'Nao informada'}
 DESCRICAO: ${params.description || 'Nao informada'}
@@ -2429,6 +2608,15 @@ Retorne SOMENTE JSON valido neste formato:
       "duration_label": "Short ideal",
       "recommended_use": "Short/Reels/TikTok principal",
       "risk": "Baixo. O trecho e claro e visual.",
+      "production_priority": 1,
+      "production_label": "Postar primeiro",
+      "production_role": "main_short",
+      "editorial_alert_level": "low",
+      "editorial_alert": "Baixo risco. Corte claro, visual e fiel ao episodio.",
+      "format_recommendation": "Short principal",
+      "should_publish_first": true,
+      "needs_context_warning": false,
+      "suggested_smaller_cut": null,
       "caption_lines": ["300 dias de trabalho", "um perfume derramado", "aos pes de Jesus"]
     }
   ],
