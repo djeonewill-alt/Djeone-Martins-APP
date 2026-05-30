@@ -1775,6 +1775,86 @@ export default function AdminContentStudioPage() {
     hasVisualPlan: false,
     hasPublishingPackage: false,
   })
+
+  function buildFinalShortPackage(cutKey: string) {
+    const cut = selectedCutKey === cutKey ? selectedCut : null
+
+    if (!cut) return null
+
+    const duration = getCutDuration(cut)
+    const durationProfile = getCutDurationProfile(duration)
+    const script = contentAssets?.short_script && shortScriptSourceKey === cutKey
+      ? contentAssets.short_script
+      : null
+    const reviewedCaptions = reviewedCaptionsByKey[cutKey] || null
+    const automaticCaptions = contentAssets?.synced_captions && syncedCaptionSourceKey === cutKey
+      ? contentAssets.synced_captions
+      : null
+    const finalCaptions = reviewedCaptions || automaticCaptions
+    const isReviewedCaption = Boolean(reviewedCaptions)
+    const title = cut.title || script?.title || 'Short sem titulo'
+    const hook = script?.hook_improved || script?.main_hook || cut.hook || cut.opening_line || 'Hook pendente.'
+    const openingLine = cut.opening_line || script?.suggested_opening_line || hook
+    const cta = script?.cta || 'Ouca o devocional completo no app.'
+    const captionsText = finalCaptions
+      ? finalCaptions.srt || finalCaptions.plain_text
+      : 'Legenda pendente.'
+    const copyText = [
+      'SHORT PRONTO',
+      '',
+      `Titulo: ${title}`,
+      `Tempo: ${formatSegmentTime(cut.start)} - ${formatSegmentTime(cut.end)}`,
+      `Tipo: ${durationProfile.label}`,
+      `Prioridade: ${cut.production_label || 'Nao definida'}`,
+      `Gancho: ${hook}`,
+      `Abertura: ${openingLine}`,
+      `CTA: ${cta}`,
+      '',
+      'ROTEIRO',
+      `Hook: ${hook}`,
+      script?.cliffhanger ? `Cliffhanger: ${script.cliffhanger}` : 'Cliffhanger: pendente',
+      script?.spiritual_point ? `Ponto espiritual: ${script.spiritual_point}` : 'Ponto espiritual: pendente',
+      `CTA: ${cta}`,
+      '',
+      'LEGENDAS',
+      isReviewedCaption ? 'Fonte: revisao IA' : finalCaptions ? 'Fonte: legenda automatica - revise antes de publicar.' : 'Fonte: pendente',
+      captionsText,
+      '',
+      'VISUAL',
+      'Status: pendente',
+      'Observacao: plano visual sera gerado em etapa futura.',
+      '',
+      'PUBLICACAO',
+      'Status: pendente',
+    ].join('\n')
+
+    return {
+      cutKey,
+      title,
+      timeRange: `${formatSegmentTime(cut.start)} - ${formatSegmentTime(cut.end)}`,
+      duration,
+      durationLabel: durationProfile.label,
+      productionLabel: cut.production_label || 'Nao definida',
+      productionRole: cut.production_role || '',
+      editorialAlert: cut.editorial_alert || '',
+      hook,
+      openingLine,
+      script,
+      finalCaptions,
+      finalCaptionsAreReviewed: isReviewedCaption,
+      cta,
+      visualStatus: 'pendente',
+      publishingStatus: 'pendente',
+      visualPlan: null,
+      publishingPackage: null,
+      hasVisualPlan: false,
+      hasPublishingPackage: false,
+      copyText,
+      isReady: Boolean(script && finalCaptions),
+    }
+  }
+
+  const finalShortPackage = selectedCutKey ? buildFinalShortPackage(selectedCutKey) : null
   const syncedCaptionVersion = contentAssets?.synced_captions?.algorithm_version || ''
   const shouldWarnOldCaptionVersion =
     Boolean(contentAssets?.synced_captions) &&
@@ -2764,70 +2844,154 @@ export default function AdminContentStudioPage() {
                           </p>
                         )}
 
-                        <div className="flex flex-wrap gap-2">
-                          {contentAssets.short_script && selectedCutPackageStatus.hasScript && (
-                            <CopyButton value={formatShortScriptForCopy(contentAssets.short_script)} label="Copiar roteiro" />
-                          )}
-                          {selectedFinalCaptions && (
-                            <>
-                              <CopyButton value={selectedFinalCaptions.srt} label={selectedFinalCaptionsAreReviewed ? 'Copiar SRT revisado' : 'Copiar SRT automatico'} />
-                              <CopyButton value={selectedFinalCaptions.plain_text} label={selectedFinalCaptionsAreReviewed ? 'Copiar texto revisado' : 'Copiar texto automatico'} />
-                            </>
-                          )}
-                          <CopyButton
-                            value={formatCutPackageForCopy(selectedCut, contentAssets)}
-                            label="Copiar pacote do corte"
-                          />
-                        </div>
-
-                        {contentAssets.short_script && selectedCutPackageStatus.hasScript && (
-                          <div className="rounded-xl border border-cyan-200/10 bg-slate-950/50 p-3">
-                            <h3 className="text-xs font-black text-cyan-50">Roteiro do Short</h3>
-                            <p className="mt-2 text-sm font-black text-white">{contentAssets.short_script.title}</p>
-                            <p className="mt-2 text-xs font-bold leading-5 text-cyan-50">{contentAssets.short_script.main_hook}</p>
-                          </div>
-                        )}
-
-                        {selectedFinalCaptions && (
-                          <div className={`rounded-xl border p-3 ${
-                            selectedFinalCaptionsAreReviewed
-                              ? 'border-emerald-300/20 bg-emerald-500/10'
-                              : 'border-amber-300/20 bg-amber-500/10'
-                          }`}>
+                        {finalShortPackage && (
+                          <div className="rounded-2xl border border-emerald-300/20 bg-emerald-500/10 p-4">
                             <div className="flex flex-wrap items-start justify-between gap-3">
                               <div>
-                                <h3 className="text-xs font-black text-white">
-                                  {selectedFinalCaptionsAreReviewed ? 'Legenda final revisada' : 'Legenda automatica'}
-                                </h3>
-                                {selectedFinalCaptionsAreReviewed && reviewedCaptionsForSelectedCut?.validation && (
-                                  <p className="mt-1 text-xs font-bold text-emerald-100/70">
-                                    {reviewedCaptionsForSelectedCut.model} | confianca {reviewedCaptionsForSelectedCut.confidence} | {reviewedCaptionsForSelectedCut.validation.original_line_count} para {reviewedCaptionsForSelectedCut.validation.reviewed_line_count} linhas | cobertura {Math.round(reviewedCaptionsForSelectedCut.validation.coverage_ratio * 100)}%
-                                  </p>
-                                )}
-                                {!selectedFinalCaptionsAreReviewed && (
-                                  <p className="mt-1 text-xs font-bold text-amber-100/80">
-                                    Legenda automatica - revise antes de publicar.
+                                <h3 className="text-sm font-black text-emerald-50">Short pronto final</h3>
+                                <p className="mt-1 text-xs font-bold text-emerald-100/70">
+                                  Pacote consolidado para producao deste corte.
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <CopyButton value={finalShortPackage.copyText} label="Copiar Short pronto" />
+                                <CopyButton
+                                  value={formatCutPackageForCopy(selectedCut, contentAssets)}
+                                  label="Copiar pacote do corte"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="mt-4 grid gap-3 md:grid-cols-2">
+                              <div className="rounded-xl border border-white/10 bg-slate-950/45 p-3">
+                                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100/70">Titulo final</p>
+                                <p className="mt-1 text-sm font-black text-white">{finalShortPackage.title}</p>
+                                <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100/70">Tempo / tipo</p>
+                                <p className="mt-1 text-xs font-bold leading-5 text-emerald-50">
+                                  {finalShortPackage.timeRange} | {formatDuration(finalShortPackage.duration)} | {finalShortPackage.durationLabel}
+                                </p>
+                                <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100/70">Prioridade</p>
+                                <p className="mt-1 text-xs font-bold leading-5 text-emerald-50">
+                                  {finalShortPackage.productionLabel}
+                                </p>
+                                {finalShortPackage.editorialAlert && (
+                                  <p className="mt-3 rounded-lg border border-amber-300/20 bg-amber-500/10 p-2 text-xs font-bold leading-5 text-amber-50">
+                                    {finalShortPackage.editorialAlert}
                                   </p>
                                 )}
                               </div>
-                              <button
-                                type="button"
-                                onClick={handleReviewSyncedCaptions}
-                                disabled={!syncedCaptionsMatchSelectedCut || generatingCaptionReviewKey === selectedCutKey}
-                                className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2 text-xs font-black text-white active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
-                              >
-                                {generatingCaptionReviewKey === selectedCutKey ? 'Revisando...' : 'Revisar novamente com IA'}
-                              </button>
+
+                              <div className="rounded-xl border border-white/10 bg-slate-950/45 p-3">
+                                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100/70">Hook final</p>
+                                <p className="mt-1 text-sm font-bold leading-6 text-white">{finalShortPackage.hook}</p>
+                                <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100/70">Abertura sugerida</p>
+                                <p className="mt-1 text-xs font-bold leading-5 text-emerald-50">{finalShortPackage.openingLine}</p>
+                                <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100/70">CTA</p>
+                                <p className="mt-1 text-xs font-bold leading-5 text-emerald-50">{finalShortPackage.cta}</p>
+                              </div>
                             </div>
-                            <div className="mt-3 grid gap-2">
-                              {selectedFinalCaptions.lines.map((line, index) => (
-                                <div key={`${line.start}-${line.end}-${index}`} className="rounded-lg border border-white/10 bg-slate-950/45 p-3">
-                                  <p className="text-[11px] font-black text-slate-300">
-                                    {line.start.toFixed(2)}s - {line.end.toFixed(2)}s
-                                  </p>
-                                  <p className="mt-1 text-sm font-bold leading-6 text-white">{line.text}</p>
+
+                            <div className="mt-3 grid gap-2 md:grid-cols-4">
+                              <InfoPill label={`Roteiro: ${finalShortPackage.script ? 'pronto' : 'pendente'}`} tone={finalShortPackage.script ? 'green' : 'slate'} />
+                              <InfoPill
+                                label={`Legenda: ${
+                                  finalShortPackage.finalCaptionsAreReviewed
+                                    ? 'revisada'
+                                    : finalShortPackage.finalCaptions
+                                      ? 'automatica'
+                                      : 'pendente'
+                                }`}
+                                tone={finalShortPackage.finalCaptionsAreReviewed ? 'green' : finalShortPackage.finalCaptions ? 'amber' : 'slate'}
+                              />
+                              <InfoPill label="Visual: pendente" tone="slate" />
+                              <InfoPill label="Publicacao: pendente" tone="slate" />
+                            </div>
+
+                            {finalShortPackage.script ? (
+                              <div className="mt-4 rounded-xl border border-cyan-200/10 bg-slate-950/50 p-3">
+                                <h4 className="text-xs font-black text-cyan-50">Roteiro final compacto</h4>
+                                <p className="mt-2 text-xs font-bold leading-5 text-cyan-50">Hook: {finalShortPackage.hook}</p>
+                                {finalShortPackage.script.cliffhanger && (
+                                  <p className="mt-2 text-xs font-bold leading-5 text-cyan-50">Cliffhanger: {finalShortPackage.script.cliffhanger}</p>
+                                )}
+                                {finalShortPackage.script.spiritual_point && (
+                                  <p className="mt-2 text-xs leading-5 text-cyan-50/85">Ponto espiritual: {finalShortPackage.script.spiritual_point}</p>
+                                )}
+                                <p className="mt-2 text-xs leading-5 text-cyan-50/85">CTA: {finalShortPackage.cta}</p>
+                                {finalShortPackage.script.timeline.length > 0 && (
+                                  <div className="mt-3 grid gap-2">
+                                    {finalShortPackage.script.timeline.map((item, index) => (
+                                      <p key={`${item.start}-${item.end}-${index}`} className="rounded-lg border border-white/10 bg-white/[0.04] p-2 text-xs leading-5 text-slate-300">
+                                        {item.start}s-{item.end}s | {item.purpose}: {item.narration_focus}
+                                      </p>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <p className="mt-4 rounded-xl border border-cyan-300/15 bg-cyan-500/10 p-3 text-xs font-bold text-cyan-50">
+                                Roteiro pendente. Clique em Gerar Short pronto para montar o pacote final.
+                              </p>
+                            )}
+
+                            {finalShortPackage.finalCaptions ? (
+                              <div className={`mt-4 rounded-xl border p-3 ${
+                                finalShortPackage.finalCaptionsAreReviewed
+                                  ? 'border-emerald-300/20 bg-emerald-500/10'
+                                  : 'border-amber-300/20 bg-amber-500/10'
+                              }`}>
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div>
+                                    <h4 className="text-xs font-black text-white">
+                                      {finalShortPackage.finalCaptionsAreReviewed ? 'Legenda final revisada' : 'Legenda automatica'}
+                                    </h4>
+                                    {finalShortPackage.finalCaptionsAreReviewed && reviewedCaptionsForSelectedCut?.validation && (
+                                      <p className="mt-1 text-xs font-bold text-emerald-100/70">
+                                        {reviewedCaptionsForSelectedCut.model} | confianca {reviewedCaptionsForSelectedCut.confidence} | cobertura {Math.round(reviewedCaptionsForSelectedCut.validation.coverage_ratio * 100)}%
+                                      </p>
+                                    )}
+                                    {!finalShortPackage.finalCaptionsAreReviewed && (
+                                      <p className="mt-1 text-xs font-bold text-amber-100/80">
+                                        Legenda automatica - revise antes de publicar.
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    <CopyButton value={finalShortPackage.finalCaptions.srt} label="Copiar SRT final" />
+                                    <CopyButton value={finalShortPackage.finalCaptions.plain_text} label="Copiar texto final" />
+                                    <CopyButton value={JSON.stringify(finalShortPackage.finalCaptions.json, null, 2)} label="Copiar JSON final" />
+                                  </div>
                                 </div>
-                              ))}
+                                <div className="mt-3 grid gap-2">
+                                  {finalShortPackage.finalCaptions.lines.map((line, index) => (
+                                    <div key={`${line.start}-${line.end}-${index}`} className="rounded-lg border border-white/10 bg-slate-950/45 p-3">
+                                      <p className="text-[11px] font-black text-slate-300">
+                                        {line.start.toFixed(2)}s - {line.end.toFixed(2)}s
+                                      </p>
+                                      <p className="mt-1 text-sm font-bold leading-6 text-white">{line.text}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="mt-4 rounded-xl border border-fuchsia-300/15 bg-fuchsia-500/10 p-3 text-xs font-bold text-fuchsia-50">
+                                Legenda final pendente. O pacote final usara a revisao IA assim que ela existir.
+                              </p>
+                            )}
+
+                            <div className="mt-4 grid gap-3 md:grid-cols-2">
+                              <div className="rounded-xl border border-white/10 bg-slate-950/45 p-3">
+                                <h4 className="text-xs font-black text-white">Visual</h4>
+                                <p className="mt-2 text-xs font-bold leading-5 text-slate-400">
+                                  Plano visual sera gerado em etapa futura.
+                                </p>
+                              </div>
+                              <div className="rounded-xl border border-white/10 bg-slate-950/45 p-3">
+                                <h4 className="text-xs font-black text-white">Publicacao</h4>
+                                <p className="mt-2 text-xs font-bold leading-5 text-slate-400">
+                                  Pacote de publicacao sera gerado em etapa futura.
+                                </p>
+                              </div>
                             </div>
                           </div>
                         )}
