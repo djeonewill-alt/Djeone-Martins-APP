@@ -244,6 +244,7 @@ type ContentStudioWorkspace = {
   contentAssets: ContentAssets | null
   manualCuts: CutSuggestion[]
   reviewedCaptionsByKey: Record<string, ReviewedCaptions>
+  shortScriptSourceKey: string
   expandedCutSourceKey: string
   syncedCaptionSourceKey: string
   selectedCutKey: string
@@ -599,6 +600,7 @@ function readStoredWorkspace(episodeId: string): ContentStudioWorkspace | null {
       contentAssets: parsed.contentAssets || null,
       manualCuts: Array.isArray(parsed.manualCuts) ? parsed.manualCuts as CutSuggestion[] : [],
       reviewedCaptionsByKey: parsed.reviewedCaptionsByKey || {},
+      shortScriptSourceKey: parsed.shortScriptSourceKey || '',
       expandedCutSourceKey: parsed.expandedCutSourceKey || '',
       syncedCaptionSourceKey: parsed.syncedCaptionSourceKey || '',
       selectedCutKey: parsed.selectedCutKey || '',
@@ -646,6 +648,10 @@ export default function AdminContentStudioPage() {
   const [reviewedCaptionsByKey, setReviewedCaptionsByKey] = useState<Record<string, ReviewedCaptions>>({})
   const [generatingMode, setGeneratingMode] = useState<GenerationMode | null>(null)
   const [generatingShortScriptKey, setGeneratingShortScriptKey] = useState('')
+  const [shortScriptSourceKey, setShortScriptSourceKey] = useState('')
+  const [generatingReadyShortKey, setGeneratingReadyShortKey] = useState('')
+  const [readyShortStep, setReadyShortStep] = useState('')
+  const [readyShortError, setReadyShortError] = useState('')
   const [generatingExpandedCutKey, setGeneratingExpandedCutKey] = useState('')
   const [generatingSyncedCaptionKey, setGeneratingSyncedCaptionKey] = useState('')
   const [generatingCaptionReviewKey, setGeneratingCaptionReviewKey] = useState('')
@@ -683,6 +689,7 @@ export default function AdminContentStudioPage() {
       Boolean(contentAssets) ||
       manualCuts.length > 0 ||
       Object.keys(reviewedCaptionsByKey).length > 0 ||
+      Boolean(shortScriptSourceKey) ||
       Boolean(expandedCutSourceKey) ||
       Boolean(syncedCaptionSourceKey) ||
       Boolean(selectedCutKey) ||
@@ -696,6 +703,7 @@ export default function AdminContentStudioPage() {
       contentAssets,
       manualCuts,
       reviewedCaptionsByKey,
+      shortScriptSourceKey,
       expandedCutSourceKey,
       syncedCaptionSourceKey,
       selectedCutKey,
@@ -710,6 +718,7 @@ export default function AdminContentStudioPage() {
     contentAssets,
     manualCuts,
     reviewedCaptionsByKey,
+    shortScriptSourceKey,
     expandedCutSourceKey,
     syncedCaptionSourceKey,
     selectedCutKey,
@@ -768,6 +777,7 @@ export default function AdminContentStudioPage() {
         setContentAssets(storedWorkspace.contentAssets)
         setManualCuts(storedWorkspace.manualCuts)
         setReviewedCaptionsByKey(storedWorkspace.reviewedCaptionsByKey)
+        setShortScriptSourceKey(storedWorkspace.shortScriptSourceKey)
         setExpandedCutSourceKey(storedWorkspace.expandedCutSourceKey)
         setSyncedCaptionSourceKey(storedWorkspace.syncedCaptionSourceKey)
         setSelectedCutKey(storedWorkspace.selectedCutKey)
@@ -779,6 +789,7 @@ export default function AdminContentStudioPage() {
         setContentAssets(null)
         setManualCuts([])
         setReviewedCaptionsByKey({})
+        setShortScriptSourceKey('')
         setExpandedCutSourceKey('')
         setSyncedCaptionSourceKey('')
         setSelectedCutKey('')
@@ -792,6 +803,8 @@ export default function AdminContentStudioPage() {
       setManualCutError('')
       setManualCutWarning('')
       setCaptionReviewError('')
+      setReadyShortError('')
+      setReadyShortStep('')
     } catch (error) {
       console.error('Erro ao carregar estudio de conteudo:', error)
       setErrorMessage('Nao foi possivel carregar este episodio.')
@@ -805,6 +818,7 @@ export default function AdminContentStudioPage() {
     setContentAssets(null)
     setManualCuts([])
     setReviewedCaptionsByKey({})
+    setShortScriptSourceKey('')
     setExpandedCutSourceKey('')
     setSyncedCaptionSourceKey('')
     setSelectedCutKey('')
@@ -815,6 +829,8 @@ export default function AdminContentStudioPage() {
     setManualCutError('')
     setManualCutWarning('')
     setCaptionReviewError('')
+    setReadyShortError('')
+    setReadyShortStep('')
   }
 
   function updateManualCutForm(field: keyof ManualCutFormState, value: string) {
@@ -981,6 +997,7 @@ export default function AdminContentStudioPage() {
           ...(payload.assets as Partial<ContentAssets>),
         }
       })
+      setShortScriptSourceKey(loadingKey)
     } catch (error) {
       console.error('Erro ao gerar roteiro do Short:', error)
       setContentAssetsError(
@@ -1193,6 +1210,222 @@ export default function AdminContentStudioPage() {
     }
   }
 
+  async function requestShortScriptForCut(cut: CutSuggestion, cutKey: string) {
+    if (!episode?.transcription_text?.trim()) {
+      throw new Error('Este episodio precisa de transcricao para gerar roteiro de Short.')
+    }
+
+    const response = await fetch('/api/ai/generate-content-assets', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        episodeId: episode.id,
+        title: episode.title,
+        bible_reference: episode.bible_reference,
+        description: episode.description,
+        transcription_text: episode.transcription_text,
+        transcription_segments: episode.transcription_segments,
+        daily_quote_suggestions: episode.daily_quote_suggestions,
+        mode: 'short_script',
+        selected_cut: cut,
+      }),
+    })
+    const payload = await response.json()
+
+    if (!response.ok || !payload.success) {
+      throw new Error(payload.error || 'Nao foi possivel gerar roteiro do Short.')
+    }
+
+    const assets = payload.assets as Partial<ContentAssets>
+    setContentAssets((current) => ({ ...(current || EMPTY_CONTENT_ASSETS), ...assets }))
+    setShortScriptSourceKey(cutKey)
+    return assets
+  }
+
+  async function requestSyncedCaptionsForCut(cut: CutSuggestion, cutKey: string) {
+    if (!episode) {
+      throw new Error('Episodio nao carregado.')
+    }
+
+    const hasReadyWords =
+      episode.transcription_words_status === 'ready' &&
+      Boolean(episode.transcription_words_url || episode.transcription_words_key)
+
+    if (!hasReadyWords) {
+      throw new Error('Gere timestamps avancados antes de sincronizar legendas.')
+    }
+
+    const response = await fetch('/api/ai/generate-content-assets', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        episodeId: episode.id,
+        mode: 'caption_sync',
+        selected_cut: {
+          title: cut.title,
+          start: cut.start,
+          end: cut.end,
+          hook: cut.hook,
+          source_excerpt: cut.source_excerpt,
+        },
+      }),
+    })
+    const payload = await response.json()
+
+    if (!response.ok || !payload.success) {
+      throw new Error(payload.error || 'Nao foi possivel sincronizar legendas.')
+    }
+
+    const assets = payload.assets as Partial<ContentAssets>
+    setContentAssets((current) => ({ ...(current || EMPTY_CONTENT_ASSETS), ...assets }))
+    setSyncedCaptionSourceKey(cutKey)
+    setReviewedCaptionsByKey((current) => {
+      const next = { ...current }
+      delete next[cutKey]
+      return next
+    })
+    return assets.synced_captions
+  }
+
+  async function requestCaptionReviewForCut(
+    cut: CutSuggestion,
+    cutKey: string,
+    syncedCaptions: SyncedCaptions
+  ) {
+    if (!episode) {
+      throw new Error('Episodio nao carregado.')
+    }
+
+    const response = await fetch('/api/ai/generate-content-assets', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        episodeId: episode.id,
+        title: episode.title,
+        bible_reference: episode.bible_reference,
+        description: episode.description,
+        transcription_text: episode.transcription_text,
+        transcription_segments: episode.transcription_segments,
+        mode: 'caption_ai_review',
+        selected_cut: {
+          title: cut.title,
+          start: cut.start,
+          end: cut.end,
+          hook: cut.hook,
+          source_excerpt: cut.source_excerpt,
+        },
+        synced_captions: syncedCaptions,
+      }),
+    })
+    const payload = await response.json()
+
+    if (!response.ok || !payload.success) {
+      throw new Error(payload.error || 'Nao foi possivel revisar a legenda com IA.')
+    }
+
+    const reviewedCaptions = (payload.reviewed_captions || payload.assets?.reviewed_captions) as ReviewedCaptions | undefined
+
+    if (!reviewedCaptions) {
+      throw new Error('A revisao nao retornou legendas validas.')
+    }
+
+    setReviewedCaptionsByKey((current) => ({
+      ...current,
+      [cutKey]: reviewedCaptions,
+    }))
+    return reviewedCaptions
+  }
+
+  async function handleGenerateReadyShort(cut: CutSuggestion, index: number) {
+    const cutKey = getCutKey(cut, index)
+    let workingAssets = contentAssets || EMPTY_CONTENT_ASSETS
+
+    try {
+      setSelectedCutKey(cutKey)
+      setGeneratingReadyShortKey(cutKey)
+      setReadyShortError('')
+      setCaptionReviewError('')
+      setContentAssetsError('')
+
+      if (!workingAssets.short_script || shortScriptSourceKey !== cutKey) {
+        setReadyShortStep('Gerando roteiro...')
+        setGeneratingShortScriptKey(cutKey)
+        const scriptAssets = await requestShortScriptForCut(cut, cutKey)
+        workingAssets = { ...workingAssets, ...scriptAssets }
+        setGeneratingShortScriptKey('')
+      }
+
+      let syncedCaptions = workingAssets.synced_captions
+
+      if (!syncedCaptions || syncedCaptionSourceKey !== cutKey) {
+        setReadyShortStep('Gerando legenda...')
+        setGeneratingSyncedCaptionKey(cutKey)
+        syncedCaptions = await requestSyncedCaptionsForCut(cut, cutKey)
+        workingAssets = { ...workingAssets, synced_captions: syncedCaptions }
+        setGeneratingSyncedCaptionKey('')
+      }
+
+      if (!syncedCaptions) {
+        throw new Error('Nao foi possivel preparar a legenda automatica para revisao.')
+      }
+
+      if (!reviewedCaptionsByKey[cutKey]) {
+        setReadyShortStep('Revisando legenda com IA...')
+        setGeneratingCaptionReviewKey(cutKey)
+        await requestCaptionReviewForCut(cut, cutKey, syncedCaptions)
+        setGeneratingCaptionReviewKey('')
+      }
+
+      setReadyShortStep('Finalizando pacote...')
+    } catch (error) {
+      console.error('Erro ao gerar Short pronto:', error)
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Nao foi possivel gerar o Short pronto.'
+
+      setReadyShortError(message)
+    } finally {
+      setGeneratingReadyShortKey('')
+      setGeneratingShortScriptKey('')
+      setGeneratingSyncedCaptionKey('')
+      setGeneratingCaptionReviewKey('')
+      setReadyShortStep('')
+    }
+  }
+
+  async function handleReviewCutAgain(cut: CutSuggestion, index: number) {
+    const cutKey = getCutKey(cut, index)
+
+    if (!contentAssets?.synced_captions || syncedCaptionSourceKey !== cutKey) {
+      setCaptionReviewError('Gere a legenda automatica deste corte antes de revisar com IA.')
+      setSelectedCutKey(cutKey)
+      return
+    }
+
+    try {
+      setSelectedCutKey(cutKey)
+      setGeneratingCaptionReviewKey(cutKey)
+      setCaptionReviewError('')
+      await requestCaptionReviewForCut(cut, cutKey, contentAssets.synced_captions)
+    } catch (error) {
+      console.error('Erro ao revisar legenda com IA:', error)
+      setCaptionReviewError(
+        error instanceof Error
+          ? error.message
+          : 'Nao foi possivel revisar a legenda com IA.'
+      )
+    } finally {
+      setGeneratingCaptionReviewKey('')
+    }
+  }
+
   async function handleGenerateWordTimestamps() {
     if (!episode) return
 
@@ -1307,6 +1540,24 @@ export default function AdminContentStudioPage() {
     : ''
   const reviewedCaptionsForSelectedCut = selectedCutKey ? reviewedCaptionsByKey[selectedCutKey] : null
   const syncedCaptionsMatchSelectedCut = Boolean(selectedCutKey && syncedCaptionSourceKey === selectedCutKey)
+  const selectedCutPackageStatus = {
+    hasScript: Boolean(selectedCutKey && contentAssets?.short_script && shortScriptSourceKey === selectedCutKey),
+    hasSyncedCaptions: Boolean(selectedCutKey && contentAssets?.synced_captions && syncedCaptionSourceKey === selectedCutKey),
+    hasReviewedCaptions: Boolean(selectedCutKey && reviewedCaptionsByKey[selectedCutKey]),
+    hasVisualPlan: false,
+    hasPublishingPackage: false,
+  }
+  const selectedFinalCaptions = reviewedCaptionsForSelectedCut || (
+    selectedCutPackageStatus.hasSyncedCaptions ? contentAssets?.synced_captions : null
+  )
+  const selectedFinalCaptionsAreReviewed = Boolean(reviewedCaptionsForSelectedCut)
+  const getCutPackageStatus = (cutKey: string) => ({
+    hasScript: Boolean(contentAssets?.short_script && shortScriptSourceKey === cutKey),
+    hasSyncedCaptions: Boolean(contentAssets?.synced_captions && syncedCaptionSourceKey === cutKey),
+    hasReviewedCaptions: Boolean(reviewedCaptionsByKey[cutKey]),
+    hasVisualPlan: false,
+    hasPublishingPackage: false,
+  })
   const syncedCaptionVersion = contentAssets?.synced_captions?.algorithm_version || ''
   const shouldWarnOldCaptionVersion =
     Boolean(contentAssets?.synced_captions) &&
@@ -1328,11 +1579,14 @@ export default function AdminContentStudioPage() {
     <article className="order-2 rounded-2xl border border-amber-300/15 bg-amber-500/10 p-4">
       <details>
         <summary className="cursor-pointer text-sm font-black text-amber-50">
-          Adicionar corte manual
+          Ferramentas avancadas
         </summary>
 
+        <h3 className="mt-4 text-xs font-black uppercase tracking-[0.14em] text-amber-100">
+          Adicionar corte manual
+        </h3>
         <p className="mt-3 text-xs font-bold leading-5 text-amber-100/75">
-          Use esta opcao quando quiser trabalhar um trecho especifico do audio, mesmo que a IA nao tenha sugerido.
+          Use quando quiser trabalhar um trecho exato que a IA nao sugeriu.
         </p>
 
         <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -1997,39 +2251,136 @@ export default function AdminContentStudioPage() {
                         </div>
 
                         <div className="grid gap-3 md:grid-cols-3">
-                          <div className="rounded-xl border border-emerald-300/15 bg-emerald-500/10 p-3">
+                          <div className="rounded-xl border border-cyan-300/15 bg-cyan-500/10 p-3">
                             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100">
-                              Corte expandido
+                              Roteiro
                             </p>
                             <p className="mt-2 text-xs font-bold leading-5 text-emerald-50/80">
-                              {contentAssets.expanded_cut
-                                ? `${formatSegmentTime(contentAssets.expanded_cut.start)} - ${formatSegmentTime(contentAssets.expanded_cut.end)}`
-                                : 'Ainda nao gerado para este workspace.'}
-                            </p>
-                          </div>
-
-                          <div className="rounded-xl border border-cyan-300/15 bg-cyan-500/10 p-3">
-                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100">
-                              Roteiro do Short
-                            </p>
-                            <p className="mt-2 text-xs font-bold leading-5 text-cyan-50/80">
-                              {contentAssets.short_script
-                                ? contentAssets.short_script.title
-                                : 'Ainda nao gerado.'}
+                              {selectedCutPackageStatus.hasScript ? 'pronto' : 'pendente'}
                             </p>
                           </div>
 
                           <div className="rounded-xl border border-fuchsia-300/15 bg-fuchsia-500/10 p-3">
+                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100">
+                              Legenda revisada
+                            </p>
+                            <p className="mt-2 text-xs font-bold leading-5 text-cyan-50/80">
+                              {selectedCutPackageStatus.hasReviewedCaptions
+                                ? 'pronta'
+                                : selectedCutPackageStatus.hasSyncedCaptions
+                                  ? 'automatica pronta'
+                                  : 'pendente'}
+                            </p>
+                          </div>
+
+                          <div className="rounded-xl border border-white/10 bg-slate-950/50 p-3">
                             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-fuchsia-100">
-                              Legendas sincronizadas
+                              Visual / Publicacao
                             </p>
                             <p className="mt-2 text-xs font-bold leading-5 text-fuchsia-50/80">
-                              {contentAssets.synced_captions
-                                ? `${contentAssets.synced_captions.lines.length} linhas prontas`
-                                : 'Ainda nao geradas.'}
+                              pendente
                             </p>
                           </div>
                         </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleGenerateReadyShort(
+                              selectedCut,
+                              selectedCutKey.startsWith('manual:')
+                                ? 0
+                                : orderedCutSuggestions.findIndex((candidate, candidateIndex) => getCutKey(candidate, candidateIndex) === selectedCutKey)
+                            )}
+                            disabled={generatingReadyShortKey === selectedCutKey}
+                            className="rounded-xl bg-blue-600 px-4 py-3 text-xs font-black text-white shadow-lg shadow-blue-950/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                          >
+                            {generatingReadyShortKey === selectedCutKey ? 'Gerando Short pronto...' : 'Gerar Short pronto'}
+                          </button>
+                          <span className="text-xs font-bold text-blue-100/65">
+                            O grosso e gerado por algoritmo; a IA forte entra so no acabamento.
+                          </span>
+                        </div>
+
+                        {readyShortStep && generatingReadyShortKey === selectedCutKey && (
+                          <p className="rounded-xl border border-blue-300/20 bg-blue-500/10 p-3 text-xs font-black text-blue-100">
+                            {readyShortStep}
+                          </p>
+                        )}
+
+                        {readyShortError && (
+                          <p className="rounded-xl border border-rose-300/20 bg-rose-500/10 p-3 text-xs font-bold leading-5 text-rose-100">
+                            {readyShortError}
+                          </p>
+                        )}
+
+                        <div className="flex flex-wrap gap-2">
+                          {contentAssets.short_script && selectedCutPackageStatus.hasScript && (
+                            <CopyButton value={formatShortScriptForCopy(contentAssets.short_script)} label="Copiar roteiro" />
+                          )}
+                          {selectedFinalCaptions && (
+                            <>
+                              <CopyButton value={selectedFinalCaptions.srt} label={selectedFinalCaptionsAreReviewed ? 'Copiar SRT revisado' : 'Copiar SRT automatico'} />
+                              <CopyButton value={selectedFinalCaptions.plain_text} label={selectedFinalCaptionsAreReviewed ? 'Copiar texto revisado' : 'Copiar texto automatico'} />
+                            </>
+                          )}
+                          <CopyButton
+                            value={formatCutPackageForCopy(selectedCut, contentAssets)}
+                            label="Copiar pacote do corte"
+                          />
+                        </div>
+
+                        {contentAssets.short_script && selectedCutPackageStatus.hasScript && (
+                          <div className="rounded-xl border border-cyan-200/10 bg-slate-950/50 p-3">
+                            <h3 className="text-xs font-black text-cyan-50">Roteiro do Short</h3>
+                            <p className="mt-2 text-sm font-black text-white">{contentAssets.short_script.title}</p>
+                            <p className="mt-2 text-xs font-bold leading-5 text-cyan-50">{contentAssets.short_script.main_hook}</p>
+                          </div>
+                        )}
+
+                        {selectedFinalCaptions && (
+                          <div className={`rounded-xl border p-3 ${
+                            selectedFinalCaptionsAreReviewed
+                              ? 'border-emerald-300/20 bg-emerald-500/10'
+                              : 'border-amber-300/20 bg-amber-500/10'
+                          }`}>
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <h3 className="text-xs font-black text-white">
+                                  {selectedFinalCaptionsAreReviewed ? 'Legenda final revisada' : 'Legenda automatica'}
+                                </h3>
+                                {selectedFinalCaptionsAreReviewed && reviewedCaptionsForSelectedCut?.validation && (
+                                  <p className="mt-1 text-xs font-bold text-emerald-100/70">
+                                    {reviewedCaptionsForSelectedCut.model} | confianca {reviewedCaptionsForSelectedCut.confidence} | {reviewedCaptionsForSelectedCut.validation.original_line_count} para {reviewedCaptionsForSelectedCut.validation.reviewed_line_count} linhas | cobertura {Math.round(reviewedCaptionsForSelectedCut.validation.coverage_ratio * 100)}%
+                                  </p>
+                                )}
+                                {!selectedFinalCaptionsAreReviewed && (
+                                  <p className="mt-1 text-xs font-bold text-amber-100/80">
+                                    Legenda automatica - revise antes de publicar.
+                                  </p>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={handleReviewSyncedCaptions}
+                                disabled={!syncedCaptionsMatchSelectedCut || generatingCaptionReviewKey === selectedCutKey}
+                                className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2 text-xs font-black text-white active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                              >
+                                {generatingCaptionReviewKey === selectedCutKey ? 'Revisando...' : 'Revisar novamente com IA'}
+                              </button>
+                            </div>
+                            <div className="mt-3 grid gap-2">
+                              {selectedFinalCaptions.lines.map((line, index) => (
+                                <div key={`${line.start}-${line.end}-${index}`} className="rounded-lg border border-white/10 bg-slate-950/45 p-3">
+                                  <p className="text-[11px] font-black text-slate-300">
+                                    {line.start.toFixed(2)}s - {line.end.toFixed(2)}s
+                                  </p>
+                                  <p className="mt-1 text-sm font-bold leading-6 text-white">{line.text}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <p className="mt-4 rounded-xl border border-dashed border-white/10 bg-slate-950/40 p-3 text-xs font-bold leading-5 text-slate-400">
@@ -2156,8 +2507,11 @@ export default function AdminContentStudioPage() {
                   )}
 
                   {contentAssets.short_script && (
-                  <article className="rounded-2xl border border-cyan-300/15 bg-cyan-500/10 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
+                  <details className="rounded-2xl border border-cyan-300/15 bg-cyan-500/10 p-4">
+                    <summary className="cursor-pointer text-sm font-black text-cyan-50">
+                      Roteiro completo / avancado
+                    </summary>
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <h2 className="text-sm font-black text-cyan-50">Roteiro do Short</h2>
                         <p className="mt-1 text-xs font-bold text-cyan-100/70">
@@ -2361,12 +2715,15 @@ export default function AdminContentStudioPage() {
                         </div>
                       </div>
                     </div>
-                  </article>
+                  </details>
                   )}
 
                   {contentAssets.synced_captions && (
-                  <article className="rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/10 p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
+                  <details className="rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/10 p-4">
+                    <summary className="cursor-pointer text-sm font-black text-fuchsia-50">
+                      Avancado / diagnostico
+                    </summary>
+                    <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <h2 className="text-sm font-black text-fuchsia-50">Legendas sincronizadas</h2>
                         <p className="mt-1 text-xs font-bold text-fuchsia-100/70">
@@ -2612,7 +2969,7 @@ export default function AdminContentStudioPage() {
                         </div>
                       ))}
                     </div>
-                  </article>
+                  </details>
                   )}
 
                   {contentAssets.expanded_cut && (
@@ -2625,6 +2982,16 @@ export default function AdminContentStudioPage() {
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleGenerateReadyShort(contentAssets.expanded_cut as CutSuggestion, -1)}
+                          disabled={generatingReadyShortKey === getCutKey(contentAssets.expanded_cut, -1)}
+                          className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-black text-white shadow-lg shadow-blue-950/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                        >
+                          {generatingReadyShortKey === getCutKey(contentAssets.expanded_cut, -1)
+                            ? 'Gerando Short pronto...'
+                            : 'Gerar Short pronto'}
+                        </button>
                         <button
                           type="button"
                           onClick={() => handleGenerateShortScript(contentAssets.expanded_cut as CutSuggestion, -1)}
@@ -2755,25 +3122,49 @@ export default function AdminContentStudioPage() {
                               <div className="mt-4 flex flex-wrap gap-2">
                                 <button
                                   type="button"
+                                  onClick={() => handleGenerateReadyShort(cut, 0)}
+                                  disabled={generatingReadyShortKey === manualKey}
+                                  className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-black text-white shadow-lg shadow-blue-950/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                                >
+                                  {generatingReadyShortKey === manualKey
+                                    ? 'Gerando Short pronto...'
+                                    : 'Gerar Short pronto'}
+                                </button>
+                                <button
+                                  type="button"
                                   onClick={() => handleGenerateShortScript(cut, 0)}
                                   disabled={generatingShortScriptKey === manualKey}
-                                  className="rounded-xl border border-cyan-300/20 bg-cyan-500/10 px-3 py-2 text-xs font-black text-cyan-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                                  className="rounded-xl border border-cyan-300/20 bg-slate-950/40 px-3 py-2 text-xs font-black text-cyan-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
                                 >
                                   {generatingShortScriptKey === manualKey
                                     ? 'Gerando roteiro...'
-                                    : 'Gerar roteiro do Short'}
+                                    : 'Gerar roteiro'}
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => handleGenerateSyncedCaptions(cut, 0)}
                                   disabled={generatingSyncedCaptionKey === manualKey}
-                                  className="rounded-xl border border-fuchsia-300/20 bg-fuchsia-500/10 px-3 py-2 text-xs font-black text-fuchsia-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                                  className="rounded-xl border border-fuchsia-300/20 bg-slate-950/40 px-3 py-2 text-xs font-black text-fuchsia-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
                                 >
                                   {generatingSyncedCaptionKey === manualKey
                                     ? 'Sincronizando...'
-                                    : 'Gerar legendas sincronizadas'}
+                                    : 'Gerar legenda'}
                                 </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleReviewCutAgain(cut, 0)}
+                                  disabled={generatingCaptionReviewKey === manualKey || syncedCaptionSourceKey !== manualKey}
+                                  className="rounded-xl border border-emerald-300/20 bg-slate-950/40 px-3 py-2 text-xs font-black text-emerald-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                                >
+                                  {generatingCaptionReviewKey === manualKey
+                                    ? 'Revisando...'
+                                    : 'Revisar legenda'}
+                                </button>
+                                <CopyButton value={formatCutPackageForCopy(cut, contentAssets)} label="Copiar pacote" />
                               </div>
+                              <p className="mt-2 text-xs font-bold text-blue-100/55">
+                                Usa IA forte apenas na revisao final da legenda.
+                              </p>
                               {syncedCaptionErrorByKey[manualKey] && (
                                 <p className="mt-3 rounded-xl border border-rose-300/20 bg-rose-500/10 p-3 text-xs font-bold leading-5 text-rose-100">
                                   {syncedCaptionErrorByKey[manualKey]}
@@ -2878,25 +3269,51 @@ export default function AdminContentStudioPage() {
                               <div className="mt-4 flex flex-wrap gap-2">
                                 <button
                                   type="button"
+                                  onClick={() => handleGenerateReadyShort(cut, index)}
+                                  disabled={generatingReadyShortKey === getCutKey(cut, index)}
+                                  className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-black text-white shadow-lg shadow-blue-950/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                                >
+                                  {generatingReadyShortKey === getCutKey(cut, index)
+                                    ? 'Gerando Short pronto...'
+                                    : 'Gerar Short pronto'}
+                                </button>
+                                <button
+                                  type="button"
                                   onClick={() => handleGenerateShortScript(cut, index)}
                                   disabled={generatingShortScriptKey === getCutKey(cut, index)}
-                                  className="rounded-xl border border-cyan-300/20 bg-cyan-500/10 px-3 py-2 text-xs font-black text-cyan-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                                  className="rounded-xl border border-cyan-300/20 bg-slate-950/40 px-3 py-2 text-xs font-black text-cyan-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
                                 >
                                   {generatingShortScriptKey === getCutKey(cut, index)
                                     ? 'Gerando roteiro...'
-                                    : 'Gerar roteiro do Short'}
+                                    : 'Gerar roteiro'}
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => handleGenerateSyncedCaptions(cut, index)}
                                   disabled={generatingSyncedCaptionKey === getCutKey(cut, index)}
-                                  className="rounded-xl border border-fuchsia-300/20 bg-fuchsia-500/10 px-3 py-2 text-xs font-black text-fuchsia-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                                  className="rounded-xl border border-fuchsia-300/20 bg-slate-950/40 px-3 py-2 text-xs font-black text-fuchsia-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
                                 >
                                   {generatingSyncedCaptionKey === getCutKey(cut, index)
                                     ? 'Sincronizando...'
-                                    : 'Gerar legendas sincronizadas'}
+                                    : 'Gerar legenda'}
                                 </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleReviewCutAgain(cut, index)}
+                                  disabled={generatingCaptionReviewKey === getCutKey(cut, index) || syncedCaptionSourceKey !== getCutKey(cut, index)}
+                                  className="rounded-xl border border-emerald-300/20 bg-slate-950/40 px-3 py-2 text-xs font-black text-emerald-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                                >
+                                  {generatingCaptionReviewKey === getCutKey(cut, index)
+                                    ? 'Revisando...'
+                                    : 'Revisar legenda'}
+                                </button>
+                                <CopyButton value={formatCutPackageForCopy(cut, contentAssets)} label="Copiar pacote" />
                               </div>
+                            )}
+                            {!isHookCut(cut) && (
+                              <p className="mt-2 text-xs font-bold text-blue-100/55">
+                                Usa IA forte apenas na revisao final da legenda.
+                              </p>
                             )}
                             {expandedCutErrorByKey[getCutKey(cut, index)] && (
                               <p className="mt-3 rounded-xl border border-rose-300/20 bg-rose-500/10 p-3 text-xs font-bold leading-5 text-rose-100">
