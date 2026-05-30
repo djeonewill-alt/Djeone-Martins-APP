@@ -408,6 +408,129 @@ function getCutDuration(cut: CutSuggestion) {
   return Math.max(0, Math.round(cut.end - cut.start))
 }
 
+function getCutDurationProfile(durationSeconds: number) {
+  if (durationSeconds <= 14) {
+    return {
+      type: 'hook' as const,
+      label: 'Gancho curto',
+      description: 'Trecho curto, bom para abrir atencao ou servir como gancho.',
+      retentionAdvice: 'Pode funcionar bem como abertura, mas talvez precise ser expandido para entregar valor.',
+      severity: 'warning' as const,
+      recommendedUse: 'Gancho / teaser',
+      targetRange: '15s-25s',
+    }
+  }
+
+  if (durationSeconds <= 25) {
+    return {
+      type: 'hook' as const,
+      label: 'Gancho forte',
+      description: 'Trecho curto e direto, bom para chamar atencao.',
+      retentionAdvice: 'Ideal para cortes rapidos, desde que tenha uma ideia completa.',
+      severity: 'good' as const,
+      recommendedUse: 'Short rapido / teaser',
+      targetRange: '15s-25s',
+    }
+  }
+
+  if (durationSeconds <= 45) {
+    return {
+      type: 'ideal_short' as const,
+      label: 'Short ideal',
+      description: 'Duracao ideal para Shorts/Reels/TikTok com boa chance de retencao.',
+      retentionAdvice: 'Boa faixa para testar alcance e retencao.',
+      severity: 'good' as const,
+      recommendedUse: 'Short/Reels/TikTok principal',
+      targetRange: '25s-45s',
+    }
+  }
+
+  if (durationSeconds <= 60) {
+    return {
+      type: 'extended_short' as const,
+      label: 'Short estendido',
+      description: 'Ainda pode funcionar como Short, mas precisa de hook forte e ritmo bom.',
+      retentionAdvice: 'Atencao a retencao. O inicio precisa ser muito forte.',
+      severity: 'warning' as const,
+      recommendedUse: 'Short explicativo / corte estendido',
+      targetRange: '45s-60s',
+    }
+  }
+
+  if (durationSeconds <= 90) {
+    return {
+      type: 'micro_devotional' as const,
+      label: 'Microdevocional',
+      description: 'Corte mais longo, melhor tratado como microdevocional do que como Short de retencao rapida.',
+      retentionAdvice: 'Pode funcionar, mas a retencao tende a cair se nao houver tensao clara nos primeiros segundos.',
+      severity: 'caution' as const,
+      recommendedUse: 'Microdevocional / video curto explicativo',
+      targetRange: '60s-90s',
+    }
+  }
+
+  return {
+    type: 'long_cut' as const,
+    label: 'Corte longo',
+    description: 'Trecho longo para Shorts. Melhor considerar como video especial ou dividir em cortes menores.',
+    retentionAdvice: 'Considere dividir em 2 ou 3 cortes menores para melhorar retencao.',
+    severity: 'caution' as const,
+    recommendedUse: 'Video curto especial / dividir em partes',
+    targetRange: '90s+',
+  }
+}
+
+function getCutProductionDefaults(durationProfile: ReturnType<typeof getCutDurationProfile>) {
+  if (durationProfile.type === 'hook' || durationProfile.type === 'ideal_short') {
+    return {
+      recommendedCaptionMode: 'short' as const,
+      recommendedVisualBlocks: 4,
+      recommendedHookPriority: 'very_high' as const,
+      recommendedPublishingLabel: 'Short/Reels/TikTok',
+    }
+  }
+
+  if (durationProfile.type === 'extended_short') {
+    return {
+      recommendedCaptionMode: 'short' as const,
+      recommendedVisualBlocks: 6,
+      recommendedHookPriority: 'very_high' as const,
+      recommendedPublishingLabel: 'Short explicativo',
+    }
+  }
+
+  if (durationProfile.type === 'micro_devotional') {
+    return {
+      recommendedCaptionMode: 'micro_devotional' as const,
+      recommendedVisualBlocks: 7,
+      recommendedHookPriority: 'high' as const,
+      recommendedPublishingLabel: 'Microdevocional',
+    }
+  }
+
+  return {
+    recommendedCaptionMode: 'micro_devotional' as const,
+    recommendedVisualBlocks: 8,
+    recommendedHookPriority: 'high' as const,
+    recommendedPublishingLabel: 'Dividir em partes',
+  }
+}
+
+function CutDurationBadge({ duration }: { duration: number }) {
+  const profile = getCutDurationProfile(duration)
+  const classNameBySeverity = {
+    good: 'border-emerald-300/20 bg-emerald-500/10 text-emerald-100',
+    warning: 'border-amber-300/25 bg-amber-500/10 text-amber-100',
+    caution: 'border-rose-300/25 bg-rose-500/10 text-rose-100',
+  }
+
+  return (
+    <span className={`rounded-full border px-2 py-1 text-[11px] font-black ${classNameBySeverity[profile.severity]}`}>
+      {profile.label}
+    </span>
+  )
+}
+
 function parseTimeToSeconds(value: string): number | null {
   const normalized = value.trim().replace(',', '.')
   if (!normalized) return null
@@ -1538,6 +1661,9 @@ export default function AdminContentStudioPage() {
   const selectedCutLabel = selectedCut
     ? `${formatSegmentTime(selectedCut.start)} - ${formatSegmentTime(selectedCut.end)}`
     : ''
+  const selectedCutDuration = selectedCut ? getCutDuration(selectedCut) : 0
+  const selectedCutDurationProfile = getCutDurationProfile(selectedCutDuration)
+  const selectedCutProductionDefaults = getCutProductionDefaults(selectedCutDurationProfile)
   const reviewedCaptionsForSelectedCut = selectedCutKey ? reviewedCaptionsByKey[selectedCutKey] : null
   const syncedCaptionsMatchSelectedCut = Boolean(selectedCutKey && syncedCaptionSourceKey === selectedCutKey)
   const selectedCutPackageStatus = {
@@ -2156,6 +2282,7 @@ export default function AdminContentStudioPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <InfoPill label="Em trabalho" tone="blue" />
                     <span className="text-xs font-black text-blue-100">{selectedCutLabel}</span>
+                    <CutDurationBadge duration={getCutDuration(selectedCut)} />
                   </div>
                   <p className="mt-3 text-sm font-black leading-5 text-white">{selectedCut.title}</p>
                   <p className="mt-2 line-clamp-4 text-xs font-bold leading-5 text-slate-300">{selectedCut.hook}</p>
@@ -2242,12 +2369,37 @@ export default function AdminContentStudioPage() {
                         <div className="rounded-xl border border-white/10 bg-slate-950/50 p-3">
                           <div className="flex flex-wrap items-center gap-2">
                             <InfoPill label="Em trabalho" tone="blue" />
+                            <CutDurationBadge duration={selectedCutDuration} />
                             <span className="text-xs font-black text-blue-200">
-                              {selectedCutLabel} | {formatDuration(getCutDuration(selectedCut))}
+                              {selectedCutLabel} | {formatDuration(selectedCutDuration)}
                             </span>
                           </div>
                           <p className="mt-3 text-sm font-black text-white">{selectedCut.title}</p>
                           <p className="mt-2 text-xs font-bold leading-5 text-slate-300">{selectedCut.hook}</p>
+                        </div>
+
+                        <div className={`rounded-xl border p-3 ${
+                          selectedCutDurationProfile.severity === 'good'
+                            ? 'border-emerald-300/15 bg-emerald-500/10'
+                            : selectedCutDurationProfile.severity === 'warning'
+                              ? 'border-amber-300/20 bg-amber-500/10'
+                              : 'border-rose-300/20 bg-rose-500/10'
+                        }`}>
+                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-200">
+                            Classificacao do corte
+                          </p>
+                          <p className="mt-2 text-sm font-black text-white">
+                            {selectedCutDurationProfile.label} · {formatDuration(selectedCutDuration)}
+                          </p>
+                          <p className="mt-1 text-xs font-bold leading-5 text-slate-200">
+                            {selectedCutDurationProfile.recommendedUse} · alvo {selectedCutDurationProfile.targetRange}
+                          </p>
+                          <p className="mt-2 text-xs font-bold leading-5 text-slate-300">
+                            {selectedCutDurationProfile.retentionAdvice}
+                          </p>
+                          <p className="mt-2 text-xs font-bold leading-5 text-slate-400">
+                            {selectedCutProductionDefaults.recommendedPublishingLabel} · {selectedCutProductionDefaults.recommendedVisualBlocks} blocos visuais sugeridos.
+                          </p>
                         </div>
 
                         <div className="grid gap-3 md:grid-cols-3">
@@ -2298,7 +2450,11 @@ export default function AdminContentStudioPage() {
                             {generatingReadyShortKey === selectedCutKey ? 'Gerando Short pronto...' : 'Gerar Short pronto'}
                           </button>
                           <span className="text-xs font-bold text-blue-100/65">
-                            O grosso e gerado por algoritmo; a IA forte entra so no acabamento.
+                            {selectedCutDuration > 90
+                              ? 'Corte longo: considere dividir antes de publicar como Short.'
+                              : selectedCutDuration > 60
+                                ? 'Corte longo: sera tratado como microdevocional.'
+                                : 'O grosso e gerado por algoritmo; a IA forte entra so no acabamento.'}
                           </span>
                         </div>
 
@@ -2980,6 +3136,9 @@ export default function AdminContentStudioPage() {
                         <p className="mt-1 text-xs font-bold text-emerald-100/70">
                           {formatSegmentTime(contentAssets.expanded_cut.start)} - {formatSegmentTime(contentAssets.expanded_cut.end)} | {formatDuration(getCutDuration(contentAssets.expanded_cut))}
                         </p>
+                        <div className="mt-2">
+                          <CutDurationBadge duration={getCutDuration(contentAssets.expanded_cut)} />
+                        </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <button
@@ -3094,6 +3253,7 @@ export default function AdminContentStudioPage() {
                                 <span className="rounded-full border border-white/10 bg-slate-950 px-2 py-1 text-[11px] font-black text-slate-300">
                                   {formatDuration(getCutDuration(cut))}
                                 </span>
+                                <CutDurationBadge duration={getCutDuration(cut)} />
                               </div>
                               <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Titulo</p>
                               <p className="mt-1 text-sm font-black text-white">{cut.title}</p>
@@ -3163,7 +3323,11 @@ export default function AdminContentStudioPage() {
                                 <CopyButton value={formatCutPackageForCopy(cut, contentAssets)} label="Copiar pacote" />
                               </div>
                               <p className="mt-2 text-xs font-bold text-blue-100/55">
-                                Usa IA forte apenas na revisao final da legenda.
+                                {getCutDuration(cut) > 90
+                                  ? 'Corte longo: considere dividir antes de publicar como Short.'
+                                  : getCutDuration(cut) > 60
+                                    ? 'Corte longo: sera tratado como microdevocional.'
+                                    : 'Usa IA forte apenas na revisao final da legenda.'}
                               </p>
                               {syncedCaptionErrorByKey[manualKey] && (
                                 <p className="mt-3 rounded-xl border border-rose-300/20 bg-rose-500/10 p-3 text-xs font-bold leading-5 text-rose-100">
@@ -3201,6 +3365,7 @@ export default function AdminContentStudioPage() {
                               <span className="rounded-full border border-white/10 bg-slate-950 px-2 py-1 text-[11px] font-black text-slate-300">
                                 {formatDuration(getCutDuration(cut))}
                               </span>
+                              <CutDurationBadge duration={getCutDuration(cut)} />
                               {getCutDuration(cut) < 20 && (
                                 <span className="rounded-full border border-amber-300/20 bg-amber-500/10 px-2 py-1 text-[11px] font-black text-amber-100">
                                   Trecho curto / usar como gancho
@@ -3312,7 +3477,11 @@ export default function AdminContentStudioPage() {
                             )}
                             {!isHookCut(cut) && (
                               <p className="mt-2 text-xs font-bold text-blue-100/55">
-                                Usa IA forte apenas na revisao final da legenda.
+                                {getCutDuration(cut) > 90
+                                  ? 'Corte longo: considere dividir antes de publicar como Short.'
+                                  : getCutDuration(cut) > 60
+                                    ? 'Corte longo: sera tratado como microdevocional.'
+                                    : 'Usa IA forte apenas na revisao final da legenda.'}
                               </p>
                             )}
                             {expandedCutErrorByKey[getCutKey(cut, index)] && (
@@ -3333,10 +3502,13 @@ export default function AdminContentStudioPage() {
                                 <p className="mt-2 text-xs font-bold text-emerald-50">
                                   Expandido a partir de: {formatSegmentTime(cut.start)} - {formatSegmentTime(cut.end)}
                                 </p>
-                                <p className="mt-1 text-xs font-bold text-emerald-50">
-                                  Novo corte: {formatSegmentTime(contentAssets.expanded_cut.start)} - {formatSegmentTime(contentAssets.expanded_cut.end)} | {formatDuration(getCutDuration(contentAssets.expanded_cut))}
-                                </p>
-                                <p className="mt-3 text-sm font-black text-white">{contentAssets.expanded_cut.title}</p>
+                        <p className="mt-1 text-xs font-bold text-emerald-50">
+                          Novo corte: {formatSegmentTime(contentAssets.expanded_cut.start)} - {formatSegmentTime(contentAssets.expanded_cut.end)} | {formatDuration(getCutDuration(contentAssets.expanded_cut))}
+                        </p>
+                        <div className="mt-2">
+                          <CutDurationBadge duration={getCutDuration(contentAssets.expanded_cut)} />
+                        </div>
+                        <p className="mt-3 text-sm font-black text-white">{contentAssets.expanded_cut.title}</p>
                                 <p className="mt-2 text-xs font-bold leading-5 text-emerald-50">{contentAssets.expanded_cut.hook}</p>
                                 {contentAssets.expanded_cut.source_excerpt && (
                                   <p className="mt-3 border-l-2 border-emerald-300/30 pl-3 text-xs leading-5 text-emerald-50/80">
