@@ -37,6 +37,27 @@ type SyncedCaptions = {
   plain_text: string
   json: SyncedCaptionLine[]
   caption_quality_warnings?: string[]
+  algorithm_version?: string
+  debug?: {
+    cut_start: number
+    cut_end: number
+    raw_words_count: number
+    raw_text: string
+    raw_words: Array<{
+      word: string
+      start: number
+      end: number
+    }>
+    contains_terms: {
+      cerca: boolean
+      pes: boolean
+      jesus: boolean
+      oleo: boolean
+      perfume: boolean
+      cabelos: boolean
+      trezentos_ou_300: boolean
+    }
+  }
 }
 
 type ShortIdea = {
@@ -199,6 +220,7 @@ const EMPTY_CONTENT_ASSETS: ContentAssets = {
   short_ideas: [],
   cut_suggestions: [],
 }
+const CURRENT_CAPTION_SYNC_VERSION = 'cc-l1.1-debug'
 
 type EpisodeStudioRow = {
   id: string
@@ -459,6 +481,21 @@ function formatCutPackageForCopy(cut: CutSuggestion, assets: ContentAssets | nul
   }
 
   return blocks.join('\n\n---\n\n')
+}
+
+function formatCaptionDiagnosisForCopy(captions: SyncedCaptions) {
+  return [
+    `algorithm_version: ${captions.algorithm_version || 'sem versao'}`,
+    '',
+    'raw_text:',
+    captions.debug?.raw_text || 'Sem diagnostico de palavras.',
+    '',
+    'contains_terms:',
+    JSON.stringify(captions.debug?.contains_terms || {}, null, 2),
+    '',
+    'SRT atual:',
+    captions.srt,
+  ].join('\n')
 }
 
 function isHookCut(cut: CutSuggestion) {
@@ -2179,13 +2216,30 @@ export default function AdminContentStudioPage() {
                         <p className="mt-1 text-xs font-bold text-fuchsia-100/60">
                           {contentAssets.synced_captions.cut_title} · {contentAssets.synced_captions.words_count} palavras
                         </p>
+                        <p className="mt-1 text-xs font-bold text-fuchsia-100/60">
+                          Versao: {contentAssets.synced_captions.algorithm_version || 'sem versao'}
+                        </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <CopyButton value={contentAssets.synced_captions.srt} label="Copiar SRT" />
                         <CopyButton value={contentAssets.synced_captions.plain_text} label="Copiar texto" />
                         <CopyButton value={JSON.stringify(contentAssets.synced_captions.json, null, 2)} label="Copiar JSON" />
+                        <CopyButton value={formatCaptionDiagnosisForCopy(contentAssets.synced_captions)} label="Copiar diagnostico" />
                       </div>
                     </div>
+
+                    {!contentAssets.synced_captions.algorithm_version && (
+                      <p className="mt-4 rounded-xl border border-amber-300/20 bg-amber-500/10 p-3 text-xs font-bold leading-5 text-amber-50">
+                        Legenda restaurada de versao antiga. Regenere para testar o algoritmo atual.
+                      </p>
+                    )}
+
+                    {contentAssets.synced_captions.algorithm_version &&
+                      contentAssets.synced_captions.algorithm_version !== CURRENT_CAPTION_SYNC_VERSION && (
+                      <p className="mt-4 rounded-xl border border-amber-300/20 bg-amber-500/10 p-3 text-xs font-bold leading-5 text-amber-50">
+                        Esta legenda foi gerada com uma versao anterior do algoritmo.
+                      </p>
+                    )}
 
                     {contentAssets.synced_captions.caption_quality_warnings?.length ? (
                       <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-500/10 p-3">
@@ -2197,6 +2251,40 @@ export default function AdminContentStudioPage() {
                         </ul>
                       </div>
                     ) : null}
+
+                    {contentAssets.synced_captions.debug && (
+                      <div className="mt-4 rounded-xl border border-fuchsia-300/15 bg-slate-950/50 p-3">
+                        <p className="text-xs font-black text-fuchsia-50">Diagnostico das palavras</p>
+                        <p className="mt-1 text-xs font-bold text-fuchsia-100/60">
+                          Palavras no corte: {contentAssets.synced_captions.debug.raw_words_count}
+                        </p>
+                        <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-fuchsia-100/70">
+                          Texto bruto do words.json
+                        </p>
+                        <p className="mt-2 max-h-36 overflow-y-auto rounded-lg border border-white/10 bg-white/[0.04] p-3 text-xs font-bold leading-5 text-fuchsia-50/85">
+                          {contentAssets.synced_captions.debug.raw_text}
+                        </p>
+                        <div className="mt-3 grid gap-2 text-xs font-bold text-fuchsia-50/85 sm:grid-cols-2 lg:grid-cols-4">
+                          {([
+                            ['cerca', contentAssets.synced_captions.debug.contains_terms.cerca],
+                            ['pes', contentAssets.synced_captions.debug.contains_terms.pes],
+                            ['Jesus', contentAssets.synced_captions.debug.contains_terms.jesus],
+                            ['oleo', contentAssets.synced_captions.debug.contains_terms.oleo],
+                            ['perfume', contentAssets.synced_captions.debug.contains_terms.perfume],
+                            ['cabelos', contentAssets.synced_captions.debug.contains_terms.cabelos],
+                            ['300/trezentos', contentAssets.synced_captions.debug.contains_terms.trezentos_ou_300],
+                          ] as Array<[string, boolean]>).map(([label, found]) => (
+                            <p key={label} className={`rounded-lg border px-3 py-2 ${
+                              found
+                                ? 'border-emerald-300/20 bg-emerald-500/10 text-emerald-100'
+                                : 'border-rose-300/20 bg-rose-500/10 text-rose-100'
+                            }`}>
+                              {label}: {found ? 'sim' : 'nao'}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     <div className="mt-4 grid gap-2">
                       {contentAssets.synced_captions.lines.map((line, index) => (

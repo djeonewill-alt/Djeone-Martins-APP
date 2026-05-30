@@ -44,6 +44,25 @@ type SyncedCaptions = {
   plain_text: string
   json: SyncedCaptionLine[]
   caption_quality_warnings?: string[]
+  algorithm_version: string
+  debug?: CaptionSyncDebug
+}
+
+type CaptionSyncDebug = {
+  cut_start: number
+  cut_end: number
+  raw_words_count: number
+  raw_text: string
+  raw_words: WordTimestamp[]
+  contains_terms: {
+    cerca: boolean
+    pes: boolean
+    jesus: boolean
+    oleo: boolean
+    perfume: boolean
+    cabelos: boolean
+    trezentos_ou_300: boolean
+  }
 }
 
 type ShortIdea = {
@@ -186,6 +205,7 @@ const SOFT_MIN_CUT_SECONDS = 25
 const MAX_CUT_SECONDS = 75
 const MISSING_TIMESTAMPS_NOTE =
   'Este episodio nao possui segmentos com timestamps. Gere uma transcricao com timestamps para cortes precisos.'
+const CAPTION_SYNC_ALGORITHM_VERSION = 'cc-l1.1-debug'
 
 const GENERATION_MODES: GenerationMode[] = [
   'all',
@@ -1246,24 +1266,28 @@ function getCaptionGroupDuration(group: WordTimestamp[]) {
 }
 
 function canMergeCaptionGroups(left: WordTimestamp[], right: WordTimestamp[]) {
-  return left.length + right.length <= 9 && getCaptionGroupDuration([...left, ...right]) <= 4.4
+  return left.length + right.length <= 7 && getCaptionGroupDuration([...left, ...right]) <= 4.2
 }
 
-function splitLongCaptionGroup(group: WordTimestamp[]) {
-  if (group.length <= 7 && getCaptionGroupDuration(group) <= 3.8) return [group]
+function splitLongCaptionGroup(group: WordTimestamp[]): WordTimestamp[][] {
+  if (group.length <= 7 && getCaptionGroupDuration(group) <= 4.2) return [group]
 
   const minLeft = 3
-  const maxLeft = Math.min(6, group.length - 3)
+  const maxLeft = Math.min(7, group.length - 1)
   let bestIndex = 0
   let bestScore = Number.NEGATIVE_INFINITY
 
   for (let index = minLeft; index <= maxLeft; index += 1) {
     const left = group.slice(0, index)
     const right = group.slice(index)
+    if (!left.length || !right.length) continue
+
     const leftLast = left[left.length - 1]?.word || ''
     const rightFirst = right[0]?.word || ''
     let score = 20 - Math.abs(left.length - 5) - Math.abs(right.length - 5)
 
+    if (left.length > 7 || getCaptionGroupDuration(left) > 4.2) score -= 20
+    if (right.length > 7 || getCaptionGroupDuration(right) > 4.2) score -= 20
     if (isWeakCaptionLineEnding(leftLast)) score -= 8
     if (isWeakCaptionLineOpening(rightFirst)) score -= 6
 
@@ -1278,10 +1302,13 @@ function splitLongCaptionGroup(group: WordTimestamp[]) {
 
   if (!bestIndex) return [group]
 
-  return [group.slice(0, bestIndex), group.slice(bestIndex)]
+  return [
+    ...splitLongCaptionGroup(group.slice(0, bestIndex)),
+    ...splitLongCaptionGroup(group.slice(bestIndex)),
+  ]
 }
 
-function refineCaptionGroups(groups: WordTimestamp[][]) {
+function refineCaptionGroups(groups: WordTimestamp[][]): WordTimestamp[][] {
   const refined = [...groups]
 
   for (let index = 0; index < refined.length - 1; index += 1) {
@@ -1341,6 +1368,33 @@ function buildCaptionQualityWarnings(lines: SyncedCaptionLine[]) {
   }
 
   return warnings
+}
+
+function buildCaptionSyncDebug(words: WordTimestamp[], cut: CaptionSyncCut): CaptionSyncDebug {
+  const rawWords = words.map((word) => ({
+    word: word.word,
+    start: roundCaptionTime(word.start - cut.start),
+    end: roundCaptionTime(word.end - cut.start),
+  }))
+  const normalizedWords = words.map((word) => normalizeCaptionTokenForGrouping(word.word))
+  const contains = (term: string) => normalizedWords.includes(term)
+
+  return {
+    cut_start: cut.start,
+    cut_end: cut.end,
+    raw_words_count: rawWords.length,
+    raw_text: cleanText(rawWords.map((word) => word.word).join(' ')),
+    raw_words: rawWords,
+    contains_terms: {
+      cerca: contains('cerca'),
+      pes: contains('pes'),
+      jesus: contains('jesus'),
+      oleo: contains('oleo'),
+      perfume: contains('perfume'),
+      cabelos: contains('cabelos'),
+      trezentos_ou_300: contains('300') || contains('trezentos'),
+    },
+  }
 }
 
 function groupCaptionWords(words: WordTimestamp[], cut: CaptionSyncCut): SyncedCaptionLine[] {
@@ -1484,6 +1538,7 @@ async function buildSyncedCaptions(params: {
   }
 
   const captionQualityWarnings = buildCaptionQualityWarnings(lines)
+  const debug = buildCaptionSyncDebug(cutWords, cut)
 
   return {
     source: 'word_timestamps',
@@ -1497,6 +1552,8 @@ async function buildSyncedCaptions(params: {
     plain_text: lines.map((line) => line.text).join('\n'),
     json: lines,
     caption_quality_warnings: captionQualityWarnings,
+    algorithm_version: CAPTION_SYNC_ALGORITHM_VERSION,
+    debug,
   }
 }
 
