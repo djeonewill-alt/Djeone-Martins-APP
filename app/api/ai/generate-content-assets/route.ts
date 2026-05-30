@@ -30,10 +30,19 @@ type SyncedCaptionLine = {
   end: number
   text: string
   words_count: number
+  timing_mode?: 'word_timestamps' | 'approximate_from_words'
+}
+
+type SyncedCaptionVersion = {
+  lines: SyncedCaptionLine[]
+  srt: string
+  plain_text: string
+  json: SyncedCaptionLine[]
 }
 
 type SyncedCaptions = {
   source: 'word_timestamps'
+  mode: 'hybrid' | 'word_only'
   cut_title: string
   cut_start: number
   cut_end: number
@@ -46,6 +55,8 @@ type SyncedCaptions = {
   caption_quality_warnings?: string[]
   algorithm_version: string
   debug?: CaptionSyncDebug
+  word_only?: SyncedCaptionVersion
+  hybrid_debug?: CaptionHybridDebug
 }
 
 type CaptionSyncDebug = {
@@ -63,6 +74,15 @@ type CaptionSyncDebug = {
     cabelos: boolean
     trezentos_ou_300: boolean
   }
+}
+
+type CaptionHybridDebug = {
+  raw_word_text: string
+  segment_text: string
+  used_hybrid_text: boolean
+  missing_terms_from_words: string[]
+  confidence: 'high' | 'medium' | 'low'
+  reason: string
 }
 
 type ShortIdea = {
@@ -205,7 +225,7 @@ const SOFT_MIN_CUT_SECONDS = 25
 const MAX_CUT_SECONDS = 75
 const MISSING_TIMESTAMPS_NOTE =
   'Este episodio nao possui segmentos com timestamps. Gere uma transcricao com timestamps para cortes precisos.'
-const CAPTION_SYNC_ALGORITHM_VERSION = 'cc-l1.1-debug'
+const CAPTION_SYNC_ALGORITHM_VERSION = 'cc-l1.2-hybrid'
 
 const GENERATION_MODES: GenerationMode[] = [
   'all',
@@ -1397,6 +1417,139 @@ function buildCaptionSyncDebug(words: WordTimestamp[], cut: CaptionSyncCut): Cap
   }
 }
 
+const HYBRID_IMPORTANT_TERMS = [
+  'cerca',
+  'pes',
+  'aos',
+  'puro',
+  'nardo',
+  'maria',
+  'jesus',
+  'perfume',
+  'oleo',
+  'cabelos',
+  '300',
+  'trezentos',
+]
+
+function normalizeTextForCaptionSearch(text: string) {
+  return cleanText(text)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+function textHasCaptionTerm(text: string, term: string) {
+  const normalized = normalizeTextForCaptionSearch(text)
+  const safeTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+  return new RegExp(`(^|\\s)${safeTerm}(\\s|$)`, 'i').test(normalized)
+}
+
+function getSegmentTextForCut(params: {
+  segments: TranscriptionSegment[]
+  transcriptionText: string
+  cutStart: number
+  cutEnd: number
+}): { text: string; confidence: 'high' | 'medium' | 'low'; reason: string } {
+  const matchingSegments = params.segments
+    .filter((segment) => segment.end >= params.cutStart && segment.start <= params.cutEnd)
+    .sort((a, b) => a.start - b.start)
+  const segmentText = cleanText(matchingSegments.map((segment) => segment.text).join(' '))
+
+  if (segmentText) {
+    const overlapCount = matchingSegments.filter((segment) => {
+      return segment.start >= params.cutStart - 2 && segment.end <= params.cutEnd + 2
+    }).length
+
+    return {
+      text: segmentText.slice(0, 1800),
+      confidence: overlapCount > 0 ? 'high' : 'medium',
+      reason: 'Texto obtido a partir dos segmentos da transcricao que intersectam o corte.',
+    }
+  }
+
+  if (params.transcriptionText) {
+    return {
+      text: cleanText(params.transcriptionText).slice(0, 1800),
+      confidence: 'low',
+      reason: 'Sem segmentos com timestamp para o corte; usando transcricao completa como fallback.',
+    }
+  }
+
+  return {
+    text: '',
+    confidence: 'low',
+    reason: 'Nenhum texto de segmento ou transcricao disponivel para modo hibrido.',
+  }
+}
+
+function buildCaptionHybridDebug(params: {
+  rawText: string
+  segmentText: string
+  confidence: 'high' | 'medium' | 'low'
+  reason: string
+}): CaptionHybridDebug {
+  const missingTerms = HYBRID_IMPORTANT_TERMS.filter((term) => {
+    return textHasCaptionTerm(params.segmentText, term) && !textHasCaptionTerm(params.rawText, term)
+  })
+
+  return {
+    raw_word_text: params.rawText,
+    segment_text: params.segmentText,
+    used_hybrid_text: Boolean(params.segmentText) && params.confidence !== 'low' && missingTerms.length > 0,
+    missing_terms_from_words: missingTerms,
+    confidence: params.confidence,
+    reason: missingTerms.length > 0
+      ? `${params.reason} Termos presentes na transcricao nao apareceram no words.json.`
+      : `${params.reason} Nenhum termo importante ausente foi detectado no words.json.`,
+  }
+}
+
+function buildCaptionVersion(lines: SyncedCaptionLine[]): SyncedCaptionVersion {
+  return {
+    lines,
+    srt: buildSrt(lines),
+    plain_text: lines.map((line) => line.text).join('\n'),
+    json: lines,
+  }
+}
+
+function buildHybridCaptionLines(params: {
+  hybridText: string
+  rawWords: WordTimestamp[]
+  cut: CaptionSyncCut
+}): SyncedCaptionLine[] {
+  const textWords = cleanText(params.hybridText)
+    .split(/\s+/)
+    .map(cleanCaptionWord)
+    .filter(Boolean)
+
+  if (textWords.length < 3) return []
+
+  const timingStart = params.rawWords[0]?.start ?? params.cut.start
+  const timingEnd = params.rawWords[params.rawWords.length - 1]?.end ?? params.cut.end
+  const usableStart = Math.max(params.cut.start, timingStart)
+  const usableEnd = Math.min(params.cut.end, Math.max(timingEnd, usableStart + 1))
+  const totalDuration = Math.max(1, usableEnd - usableStart)
+  const secondsPerWord = totalDuration / textWords.length
+  const pseudoWords = textWords.map((word, index) => {
+    const start = usableStart + index * secondsPerWord
+    const end = index === textWords.length - 1 ? usableEnd : usableStart + (index + 1) * secondsPerWord
+
+    return {
+      word,
+      start,
+      end: Math.max(start + 0.05, end),
+    }
+  })
+
+  return groupCaptionWords(pseudoWords, params.cut).map((line) => ({
+    ...line,
+    timing_mode: 'approximate_from_words',
+  }))
+}
+
 function groupCaptionWords(words: WordTimestamp[], cut: CaptionSyncCut): SyncedCaptionLine[] {
   const usableWords = words
     .map((word) => ({
@@ -1447,6 +1600,7 @@ function groupCaptionWords(words: WordTimestamp[], cut: CaptionSyncCut): SyncedC
         end: roundCaptionTime(group[group.length - 1].end - cut.start),
         text,
         words_count: group.length,
+        timing_mode: 'word_timestamps' as const,
       }
     })
 
@@ -1494,7 +1648,7 @@ async function buildSyncedCaptions(params: {
   const supabase = await createSupabaseServerClient()
   const { data: episode, error } = await supabase
     .from('episodes')
-    .select('id, title, transcription_words_url, transcription_words_key, transcription_words_status, transcription_words_count')
+    .select('id, title, transcription_text, transcription_segments, transcription_words_url, transcription_words_key, transcription_words_status, transcription_words_count')
     .eq('id', params.episodeId)
     .single()
 
@@ -1531,29 +1685,59 @@ async function buildSyncedCaptions(params: {
     throw new Error('Nao ha palavras suficientes neste intervalo para gerar legendas sincronizadas.')
   }
 
-  const lines = groupCaptionWords(cutWords, cut)
+  const wordOnlyLines = groupCaptionWords(cutWords, cut)
 
-  if (!lines.length) {
+  if (!wordOnlyLines.length) {
     throw new Error('Nao foi possivel agrupar palavras em legendas sincronizadas.')
   }
 
-  const captionQualityWarnings = buildCaptionQualityWarnings(lines)
+  const wordOnly = buildCaptionVersion(wordOnlyLines)
   const debug = buildCaptionSyncDebug(cutWords, cut)
+  const segmentSource = getSegmentTextForCut({
+    segments: normalizeSegments(episode.transcription_segments),
+    transcriptionText: cleanText(String(episode.transcription_text || '')),
+    cutStart: cut.start,
+    cutEnd: cut.end,
+  })
+  const hybridDebug = buildCaptionHybridDebug({
+    rawText: debug.raw_text,
+    segmentText: segmentSource.text,
+    confidence: segmentSource.confidence,
+    reason: segmentSource.reason,
+  })
+  const hybridLines = hybridDebug.used_hybrid_text
+    ? buildHybridCaptionLines({
+        hybridText: segmentSource.text,
+        rawWords: cutWords,
+        cut,
+      })
+    : []
+  const useHybrid = hybridDebug.used_hybrid_text && hybridLines.length > 0
+  const primaryLines = useHybrid ? hybridLines : wordOnlyLines
+  const primaryVersion = buildCaptionVersion(primaryLines)
+  const captionQualityWarnings = buildCaptionQualityWarnings(primaryLines)
+
+  if (useHybrid) {
+    captionQualityWarnings.unshift('Legenda revisada usando a transcricao do segmento. Tempos aproximados com base nos word timestamps.')
+  }
 
   return {
     source: 'word_timestamps',
+    mode: useHybrid ? 'hybrid' : 'word_only',
     cut_title: cut.title || episode.title || 'Corte selecionado',
     cut_start: cut.start,
     cut_end: cut.end,
     duration_seconds: Math.round(cut.end - cut.start),
     words_count: cutWords.length,
-    lines,
-    srt: buildSrt(lines),
-    plain_text: lines.map((line) => line.text).join('\n'),
-    json: lines,
+    lines: primaryVersion.lines,
+    srt: primaryVersion.srt,
+    plain_text: primaryVersion.plain_text,
+    json: primaryVersion.json,
     caption_quality_warnings: captionQualityWarnings,
     algorithm_version: CAPTION_SYNC_ALGORITHM_VERSION,
     debug,
+    word_only: wordOnly,
+    hybrid_debug: hybridDebug,
   }
 }
 

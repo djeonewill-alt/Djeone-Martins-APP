@@ -23,10 +23,19 @@ type SyncedCaptionLine = {
   end: number
   text: string
   words_count: number
+  timing_mode?: 'word_timestamps' | 'approximate_from_words'
+}
+
+type SyncedCaptionVersion = {
+  lines: SyncedCaptionLine[]
+  srt: string
+  plain_text: string
+  json: SyncedCaptionLine[]
 }
 
 type SyncedCaptions = {
   source: 'word_timestamps'
+  mode?: 'hybrid' | 'word_only'
   cut_title: string
   cut_start: number
   cut_end: number
@@ -38,6 +47,15 @@ type SyncedCaptions = {
   json: SyncedCaptionLine[]
   caption_quality_warnings?: string[]
   algorithm_version?: string
+  word_only?: SyncedCaptionVersion
+  hybrid_debug?: {
+    raw_word_text: string
+    segment_text: string
+    used_hybrid_text: boolean
+    missing_terms_from_words: string[]
+    confidence: 'high' | 'medium' | 'low'
+    reason: string
+  }
   debug?: {
     cut_start: number
     cut_end: number
@@ -220,7 +238,7 @@ const EMPTY_CONTENT_ASSETS: ContentAssets = {
   short_ideas: [],
   cut_suggestions: [],
 }
-const CURRENT_CAPTION_SYNC_VERSION = 'cc-l1.1-debug'
+const CURRENT_CAPTION_SYNC_VERSION = 'cc-l1.2-hybrid'
 
 type EpisodeStudioRow = {
   id: string
@@ -492,6 +510,9 @@ function formatCaptionDiagnosisForCopy(captions: SyncedCaptions) {
     '',
     'contains_terms:',
     JSON.stringify(captions.debug?.contains_terms || {}, null, 2),
+    '',
+    'hybrid_debug:',
+    JSON.stringify(captions.hybrid_debug || {}, null, 2),
     '',
     'SRT atual:',
     captions.srt,
@@ -2219,14 +2240,26 @@ export default function AdminContentStudioPage() {
                         <p className="mt-1 text-xs font-bold text-fuchsia-100/60">
                           Versao: {contentAssets.synced_captions.algorithm_version || 'sem versao'}
                         </p>
+                        <p className="mt-1 text-xs font-bold text-fuchsia-100/60">
+                          Modo: {contentAssets.synced_captions.mode === 'hybrid' ? 'hibrido' : 'word timestamps'}
+                        </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <CopyButton value={contentAssets.synced_captions.srt} label="Copiar SRT" />
                         <CopyButton value={contentAssets.synced_captions.plain_text} label="Copiar texto" />
                         <CopyButton value={JSON.stringify(contentAssets.synced_captions.json, null, 2)} label="Copiar JSON" />
+                        {contentAssets.synced_captions.word_only && (
+                          <CopyButton value={contentAssets.synced_captions.word_only.srt} label="Copiar versao bruta" />
+                        )}
                         <CopyButton value={formatCaptionDiagnosisForCopy(contentAssets.synced_captions)} label="Copiar diagnostico" />
                       </div>
                     </div>
+
+                    {contentAssets.synced_captions.mode === 'hybrid' && (
+                      <p className="mt-4 rounded-xl border border-fuchsia-300/20 bg-fuchsia-500/10 p-3 text-xs font-bold leading-5 text-fuchsia-50">
+                        Texto revisado com base na transcricao do segmento. Tempos aproximados.
+                      </p>
+                    )}
 
                     {!contentAssets.synced_captions.algorithm_version && (
                       <p className="mt-4 rounded-xl border border-amber-300/20 bg-amber-500/10 p-3 text-xs font-bold leading-5 text-amber-50">
@@ -2251,6 +2284,32 @@ export default function AdminContentStudioPage() {
                         </ul>
                       </div>
                     ) : null}
+
+                    {contentAssets.synced_captions.hybrid_debug && (
+                      <div className="mt-4 rounded-xl border border-blue-300/15 bg-blue-500/10 p-3">
+                        <p className="text-xs font-black text-blue-50">Diagnostico hibrido</p>
+                        <p className="mt-2 text-xs font-bold leading-5 text-blue-50/80">
+                          {contentAssets.synced_captions.hybrid_debug.reason}
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <span className="rounded-full border border-blue-300/20 bg-slate-950/40 px-3 py-1 text-[11px] font-black text-blue-100">
+                            confianca: {contentAssets.synced_captions.hybrid_debug.confidence}
+                          </span>
+                          <span className="rounded-full border border-blue-300/20 bg-slate-950/40 px-3 py-1 text-[11px] font-black text-blue-100">
+                            usado: {contentAssets.synced_captions.hybrid_debug.used_hybrid_text ? 'sim' : 'nao'}
+                          </span>
+                        </div>
+                        {contentAssets.synced_captions.hybrid_debug.missing_terms_from_words.length > 0 && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {contentAssets.synced_captions.hybrid_debug.missing_terms_from_words.map((term) => (
+                              <span key={term} className="rounded-full border border-amber-300/20 bg-amber-500/10 px-3 py-1 text-[11px] font-black text-amber-100">
+                                ausente no words: {term}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {contentAssets.synced_captions.debug && (
                       <div className="mt-4 rounded-xl border border-fuchsia-300/15 bg-slate-950/50 p-3">
