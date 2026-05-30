@@ -148,10 +148,22 @@ type CutSuggestion = {
   duration?: number
   reason: string
   hook: string
+  opening_line?: string
   source_excerpt?: string
+  base_excerpt?: string
   suggested_caption_lines?: string[]
   strength_score?: number
   strength_reason?: string
+  retention_score?: number
+  biblical_specificity?: number
+  visual_potential?: number
+  emotional_tension?: number
+  share_potential?: number
+  fidelity_to_audio?: number
+  duration_type?: string
+  duration_label?: string
+  recommended_use?: string
+  risk?: string
   cut_type?: 'hook' | 'full_cut'
   needs_expansion?: boolean
   original_hook_start?: number
@@ -250,7 +262,17 @@ type ContentAssets = {
   expanded_cut?: CutSuggestion
   short_script?: ShortScript
   synced_captions?: SyncedCaptions
+  best_ai_cuts?: BestAiCutsResult
   metadata?: ContentAssetsMetadata
+}
+
+type BestAiCutsResult = {
+  mode: 'best_cuts_ai'
+  model: string
+  generated_at: string
+  cuts: CutSuggestion[]
+  editorial_summary: string
+  warnings: string[]
 }
 
 type GenerationMode =
@@ -265,6 +287,7 @@ type GenerationMode =
   | 'expand_cut'
   | 'caption_sync'
   | 'caption_ai_review'
+  | 'best_cuts_ai'
 
 const MAX_TRANSCRIPTION_CHARS = 28000
 const MAX_SEGMENTS = 160
@@ -289,6 +312,7 @@ const GENERATION_MODES: GenerationMode[] = [
   'expand_cut',
   'caption_sync',
   'caption_ai_review',
+  'best_cuts_ai',
 ]
 
 function cleanText(text: string) {
@@ -732,6 +756,187 @@ function normalizeCutSuggestions(
   const hooks = deduped.filter((cut) => cut.cut_type === 'hook').slice(0, 3)
 
   return [...fullCuts, ...hooks].slice(0, 6)
+}
+
+function getBackendCutDurationProfile(durationSeconds: number) {
+  if (durationSeconds <= 14) {
+    return {
+      type: 'hook',
+      label: 'Gancho curto',
+      recommendedUse: 'Gancho / teaser',
+      cutType: 'hook' as const,
+      needsExpansion: true,
+    }
+  }
+
+  if (durationSeconds <= 25) {
+    return {
+      type: 'hook',
+      label: 'Gancho forte',
+      recommendedUse: 'Short rapido / teaser',
+      cutType: 'hook' as const,
+      needsExpansion: true,
+    }
+  }
+
+  if (durationSeconds <= 45) {
+    return {
+      type: 'ideal_short',
+      label: 'Short ideal',
+      recommendedUse: 'Short/Reels/TikTok principal',
+      cutType: 'full_cut' as const,
+      needsExpansion: false,
+    }
+  }
+
+  if (durationSeconds <= 60) {
+    return {
+      type: 'extended_short',
+      label: 'Short estendido',
+      recommendedUse: 'Short explicativo / corte estendido',
+      cutType: 'full_cut' as const,
+      needsExpansion: false,
+    }
+  }
+
+  if (durationSeconds <= 90) {
+    return {
+      type: 'micro_devotional',
+      label: 'Microdevocional',
+      recommendedUse: 'Microdevocional / video curto explicativo',
+      cutType: 'full_cut' as const,
+      needsExpansion: false,
+    }
+  }
+
+  return {
+    type: 'long_cut',
+    label: 'Corte longo',
+    recommendedUse: 'Video curto especial / dividir em partes',
+    cutType: 'full_cut' as const,
+    needsExpansion: true,
+  }
+}
+
+function normalizeScore(value: unknown, fallback = 8) {
+  const score = Number(value)
+  return Number.isFinite(score) ? Math.max(1, Math.min(10, Math.round(score))) : fallback
+}
+
+function normalizeBestAiCuts(input: unknown, model: string): BestAiCutsResult {
+  const parsed = input as {
+    cuts?: unknown
+    editorial_summary?: unknown
+    warnings?: unknown
+  }
+  const rawCuts = Array.isArray(parsed.cuts) ? parsed.cuts : []
+  const warnings: string[] = []
+
+  if (!rawCuts.length) {
+    throw new Error('A IA forte nao retornou cortes validos.')
+  }
+
+  const cuts = rawCuts
+    .map((item): CutSuggestion | null => {
+      const value = item as {
+        start?: unknown
+        end?: unknown
+        title?: unknown
+        hook?: unknown
+        opening_line?: unknown
+        base_excerpt?: unknown
+        source_excerpt?: unknown
+        reason?: unknown
+        retention_score?: unknown
+        biblical_specificity?: unknown
+        visual_potential?: unknown
+        emotional_tension?: unknown
+        share_potential?: unknown
+        fidelity_to_audio?: unknown
+        risk?: unknown
+        caption_lines?: unknown
+        suggested_caption_lines?: unknown
+      }
+      const start = Number(value.start)
+      const end = Number(value.end)
+      const duration = Math.round(end - start)
+
+      if (
+        !Number.isFinite(start) ||
+        !Number.isFinite(end) ||
+        start < 0 ||
+        end <= start ||
+        duration < 10 ||
+        duration > 120
+      ) {
+        return null
+      }
+
+      const profile = getBackendCutDurationProfile(duration)
+      const retentionScore = normalizeScore(value.retention_score)
+      const title = cleanText(String(value.title || '')).slice(0, 120) || profile.label
+      const hook = cleanText(String(value.hook || '')).slice(0, 240) || 'Corte selecionado pela IA forte.'
+      const baseExcerpt =
+        cleanText(String(value.base_excerpt || value.source_excerpt || '')).slice(0, 420) || undefined
+      const reason =
+        cleanText(String(value.reason || '')).slice(0, 320) ||
+        'Corte selecionado por potencial editorial e retencao.'
+
+      const cut: CutSuggestion = {
+        title,
+        start,
+        end,
+        duration,
+        hook,
+        reason,
+        strength_score: retentionScore,
+        strength_reason: reason,
+        retention_score: retentionScore,
+        biblical_specificity: normalizeScore(value.biblical_specificity),
+        visual_potential: normalizeScore(value.visual_potential),
+        emotional_tension: normalizeScore(value.emotional_tension),
+        share_potential: normalizeScore(value.share_potential),
+        fidelity_to_audio: normalizeScore(value.fidelity_to_audio, 9),
+        duration_type: profile.type,
+        duration_label: profile.label,
+        recommended_use: profile.recommendedUse,
+        risk: cleanText(String(value.risk || '')).slice(0, 220) || 'Risco editorial nao informado.',
+        suggested_caption_lines: normalizeCaptionLines(value.caption_lines || value.suggested_caption_lines),
+        cut_type: profile.cutType,
+        needs_expansion: profile.needsExpansion,
+      }
+
+      const openingLine = cleanText(String(value.opening_line || '')).slice(0, 220)
+      if (openingLine) cut.opening_line = openingLine
+      if (baseExcerpt) {
+        cut.source_excerpt = baseExcerpt
+        cut.base_excerpt = baseExcerpt
+      }
+
+      return cut
+    })
+    .filter((cut): cut is CutSuggestion => Boolean(cut))
+    .sort((a, b) => (b.retention_score || 0) - (a.retention_score || 0))
+    .slice(0, 7)
+
+  if (!cuts.length) {
+    throw new Error('A IA forte retornou cortes fora dos limites de duracao permitidos.')
+  }
+
+  if (cuts.length > 5) {
+    warnings.push('A IA retornou mais de 5 cortes; exibindo ate 7 para revisao editorial.')
+  }
+
+  return {
+    mode: 'best_cuts_ai',
+    model,
+    generated_at: new Date().toISOString(),
+    cuts,
+    editorial_summary:
+      cleanText(String(parsed.editorial_summary || '')).slice(0, 500) ||
+      'Cortes selecionados por potencial de retencao, clareza e fidelidade ao episodio.',
+    warnings: [...warnings, ...normalizeStringArray(parsed.warnings, 4, 180)],
+  }
 }
 
 function normalizeSelectedCut(input: unknown): CutSuggestion | null {
@@ -2136,6 +2341,168 @@ Responda SOMENTE JSON valido neste formato:
 `.trim()
 }
 
+function buildBestCutsAiPrompt(params: {
+  title: string
+  bibleReference: string
+  description: string
+  transcriptionText: string
+  transcriptionSegments: TranscriptionSegment[]
+  dailyQuoteSuggestions: unknown
+}) {
+  const segmentsText = params.transcriptionSegments.length
+    ? params.transcriptionSegments
+        .slice(0, MAX_SEGMENTS)
+        .map((segment) => `${segment.start.toFixed(1)}-${segment.end.toFixed(1)}s: ${segment.text}`)
+        .join('\n')
+    : 'Sem segmentos com timestamp.'
+
+  return `
+Voce e um editor de Shorts/Reels/TikTok para conteudo devocional biblico.
+Sua tarefa e escolher os melhores cortes do episodio para gerar conteudo curto com alto potencial de retencao.
+
+Priorize:
+1. Cortes de 25s a 45s como Short ideal.
+2. Cortes de 15s a 25s apenas se forem ganchos muito fortes.
+3. Cortes de 46s a 60s como Short estendido.
+4. Cortes de 61s a 90s somente se forem realmente bons, marcados como Microdevocional.
+5. Evite cortes acima de 90s, exceto se houver motivo editorial muito forte.
+
+Evite cortes que:
+- comecam sem contexto;
+- terminam no meio da ideia;
+- dependem demais do que foi dito antes;
+- tem muita introducao antes da frase forte;
+- sao longos sem tensao;
+- tem titulo generico;
+- sao apenas explicacao sem gancho.
+
+Avalie:
+- forca do hook nos primeiros 3 segundos;
+- clareza biblica;
+- tensao espiritual;
+- imagem visual concreta;
+- potencial de retencao;
+- possibilidade de gerar legenda forte;
+- possibilidade de visual/B-roll;
+- fidelidade ao episodio;
+- CTA para ouvir o devocional completo.
+
+Tipos de corte:
+- Gancho forte: 15s-25s
+- Short ideal: 26s-45s
+- Short estendido: 46s-60s
+- Microdevocional: 61s-90s
+- Corte longo: acima de 90s, evitar
+
+EPISODIO: ${params.title}
+REFERENCIA: ${params.bibleReference || 'Nao informada'}
+DESCRICAO: ${params.description || 'Nao informada'}
+
+FRASES/IDEIAS JA GERADAS:
+${JSON.stringify(params.dailyQuoteSuggestions || [], null, 2).slice(0, 3500)}
+
+TRANSCRICAO COM TIMESTAMPS:
+${segmentsText}
+
+TRANSCRICAO COMPLETA:
+${params.transcriptionText.slice(0, MAX_TRANSCRIPTION_CHARS)}
+
+Retorne de 3 a 5 cortes principais quando houver material suficiente.
+Retorne SOMENTE JSON valido neste formato:
+{
+  "cuts": [
+    {
+      "start": 293,
+      "end": 318,
+      "title": "O Valor da Adoracao",
+      "hook": "Maria derramou um perfume que custava 300 dias de trabalho.",
+      "opening_line": "Voce sabe quanto custava o perfume que Maria derramou aos pes de Jesus?",
+      "base_excerpt": "Significa entao que esse perfume de Maria equivalia a cerca de 300 dias de trabalho...",
+      "reason": "Esse trecho tem numero concreto, tensao espiritual e imagem visual forte.",
+      "retention_score": 9,
+      "biblical_specificity": 9,
+      "visual_potential": 9,
+      "emotional_tension": 8,
+      "share_potential": 8,
+      "fidelity_to_audio": 10,
+      "duration_type": "ideal_short",
+      "duration_label": "Short ideal",
+      "recommended_use": "Short/Reels/TikTok principal",
+      "risk": "Baixo. O trecho e claro e visual.",
+      "caption_lines": ["300 dias de trabalho", "um perfume derramado", "aos pes de Jesus"]
+    }
+  ],
+  "editorial_summary": "Resumo editorial dos melhores cortes.",
+  "warnings": []
+}
+`.trim()
+}
+
+async function generateBestCutsWithOpenAI(params: {
+  title: string
+  bibleReference: string
+  description: string
+  transcriptionText: string
+  transcriptionSegments: TranscriptionSegment[]
+  dailyQuoteSuggestions: unknown
+}): Promise<BestAiCutsResult> {
+  const apiKey = process.env.OPENAI_API_KEY
+
+  if (!apiKey) {
+    throw new Error('OPENAI_API_KEY ausente.')
+  }
+
+  if (!params.transcriptionText && !params.transcriptionSegments.length) {
+    throw new Error('Este episodio precisa de transcricao para gerar melhores cortes com IA forte.')
+  }
+
+  const model =
+    process.env.OPENAI_RESPONSE_STRONG_MODEL ||
+    process.env.OPENAI_RESPONSE_MODEL ||
+    process.env.OPENAI_CONTENT_ASSETS_MODEL ||
+    process.env.OPENAI_MODEL ||
+    'gpt-4o-mini'
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.25,
+      response_format: {
+        type: 'json_object',
+      },
+      messages: [
+        {
+          role: 'system',
+          content: 'Voce e um editor senior de cortes devocionais. Responda somente JSON valido.',
+        },
+        {
+          role: 'user',
+          content: buildBestCutsAiPrompt(params),
+        },
+      ],
+    }),
+  })
+  const data = await response.json()
+
+  if (!response.ok) {
+    console.error('Erro OpenAI best cuts:', data)
+    throw new Error(data?.error?.message || 'Erro ao gerar melhores cortes com IA forte.')
+  }
+
+  const content = data?.choices?.[0]?.message?.content
+
+  if (!content) {
+    throw new Error('A OpenAI nao retornou cortes.')
+  }
+
+  return normalizeBestAiCuts(extractJsonFromText(content), model)
+}
+
 function normalizeAiReviewedLineText(text: string) {
   return cleanText(text)
     .replace(/([,.!?;:])\1+/g, '$1')
@@ -3152,6 +3519,9 @@ Este modo e local. Nao chame IA para caption_sync.
     caption_ai_review: `
 Este modo revisa legendas sincronizadas ja geradas. Use somente o fluxo dedicado de revisao.
 `.trim(),
+    best_cuts_ai: `
+Este modo usa IA forte para selecionar e lapidar os melhores cortes editoriais.
+`.trim(),
   }
 
   return contracts[mode]
@@ -3490,6 +3860,27 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'Envie o ID do episódio.' },
         { status: 400 }
       )
+    }
+
+    if (mode === 'best_cuts_ai') {
+      const bestAiCuts = await generateBestCutsWithOpenAI({
+        title,
+        bibleReference,
+        description,
+        transcriptionText,
+        transcriptionSegments,
+        dailyQuoteSuggestions: body.daily_quote_suggestions,
+      })
+
+      return NextResponse.json({
+        success: true,
+        provider: 'openai',
+        model: bestAiCuts.model,
+        mode,
+        assets: {
+          best_ai_cuts: bestAiCuts,
+        },
+      })
     }
 
     if (mode === 'caption_ai_review') {

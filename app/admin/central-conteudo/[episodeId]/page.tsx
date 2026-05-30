@@ -139,10 +139,22 @@ type CutSuggestion = {
   duration?: number
   reason: string
   hook: string
+  opening_line?: string
   source_excerpt?: string
+  base_excerpt?: string
   suggested_caption_lines?: string[]
   strength_score?: number
   strength_reason?: string
+  retention_score?: number
+  biblical_specificity?: number
+  visual_potential?: number
+  emotional_tension?: number
+  share_potential?: number
+  fidelity_to_audio?: number
+  duration_type?: string
+  duration_label?: string
+  recommended_use?: string
+  risk?: string
   cut_type?: 'hook' | 'full_cut'
   needs_expansion?: boolean
   original_hook_start?: number
@@ -238,6 +250,14 @@ type ContentAssets = {
   expanded_cut?: CutSuggestion
   short_script?: ShortScript
   synced_captions?: SyncedCaptions
+  best_ai_cuts?: {
+    mode: 'best_cuts_ai'
+    model: string
+    generated_at: string
+    cuts: CutSuggestion[]
+    editorial_summary: string
+    warnings: string[]
+  }
 }
 
 type ContentStudioWorkspace = {
@@ -266,6 +286,7 @@ type GenerationMode =
   | 'expand_cut'
   | 'caption_sync'
   | 'caption_ai_review'
+  | 'best_cuts_ai'
 
 type StudioTab = 'studio' | 'episode' | 'transcription' | 'phrases' | 'publishing'
 
@@ -581,6 +602,7 @@ const generatingLabels: Record<GenerationMode, string> = {
   expand_cut: 'Expandindo corte...',
   caption_sync: 'Sincronizando legendas...',
   caption_ai_review: 'Revisando legenda...',
+  best_cuts_ai: 'Analisando melhores cortes com IA forte...',
 }
 
 function formatShortScriptForCopy(script: ShortScript) {
@@ -1649,10 +1671,12 @@ export default function AdminContentStudioPage() {
   const fullCutSuggestions = contentAssets?.cut_suggestions.filter((cut) => !isHookCut(cut)) || []
   const hookSuggestions = contentAssets?.cut_suggestions.filter((cut) => isHookCut(cut)) || []
   const orderedCutSuggestions = [...fullCutSuggestions, ...hookSuggestions]
+  const bestAiCutSuggestions = contentAssets?.best_ai_cuts?.cuts || []
   const manualCutSuggestions = manualCuts
   const selectedCut =
     (selectedCutKey
       ? manualCutSuggestions.find((cut) => getCutKey(cut, 0) === selectedCutKey) ||
+        bestAiCutSuggestions.find((cut, index) => getCutKey(cut, index) === selectedCutKey) ||
         orderedCutSuggestions.find((cut, index) => getCutKey(cut, index) === selectedCutKey)
       : null) ||
     (contentAssets?.expanded_cut && getCutKey(contentAssets.expanded_cut, -1) === selectedCutKey
@@ -1661,6 +1685,11 @@ export default function AdminContentStudioPage() {
   const selectedCutLabel = selectedCut
     ? `${formatSegmentTime(selectedCut.start)} - ${formatSegmentTime(selectedCut.end)}`
     : ''
+  const selectedCutActionIndex = selectedCutKey.startsWith('manual:')
+    ? 0
+    : bestAiCutSuggestions.findIndex((cut, index) => getCutKey(cut, index) === selectedCutKey) >= 0
+      ? bestAiCutSuggestions.findIndex((cut, index) => getCutKey(cut, index) === selectedCutKey)
+      : orderedCutSuggestions.findIndex((cut, index) => getCutKey(cut, index) === selectedCutKey)
   const selectedCutDuration = selectedCut ? getCutDuration(selectedCut) : 0
   const selectedCutDurationProfile = getCutDurationProfile(selectedCutDuration)
   const selectedCutProductionDefaults = getCutProductionDefaults(selectedCutDurationProfile)
@@ -2254,6 +2283,7 @@ export default function AdminContentStudioPage() {
                   ['instagram', 'Gerar Instagram'],
                   ['short_ideas', 'Gerar ideias'],
                   ['cuts', contentAssets?.cut_suggestions.length ? 'Regenerar cortes' : 'Gerar cortes'],
+                  ['best_cuts_ai', 'Gerar melhores cortes com IA forte'],
                 ] as Array<[GenerationMode, string]>).map(([mode, label]) => (
                   <button
                     key={mode}
@@ -2269,6 +2299,9 @@ export default function AdminContentStudioPage() {
 
               <p className="mt-3 rounded-xl border border-amber-300/15 bg-amber-500/10 p-3 text-xs font-bold leading-5 text-amber-50/80">
                 Regenerar cortes substitui a lista atual nesta tela.
+              </p>
+              <p className="mt-3 rounded-xl border border-blue-300/15 bg-blue-500/10 p-3 text-xs font-bold leading-5 text-blue-50/80">
+                Esta analise usa IA forte e deve ser usada apenas quando voce quiser escolher cortes finais para producao.
               </p>
             </section>
             )}
@@ -2440,9 +2473,7 @@ export default function AdminContentStudioPage() {
                             type="button"
                             onClick={() => handleGenerateReadyShort(
                               selectedCut,
-                              selectedCutKey.startsWith('manual:')
-                                ? 0
-                                : orderedCutSuggestions.findIndex((candidate, candidateIndex) => getCutKey(candidate, candidateIndex) === selectedCutKey)
+                              selectedCutActionIndex
                             )}
                             disabled={generatingReadyShortKey === selectedCutKey}
                             className="rounded-xl bg-blue-600 px-4 py-3 text-xs font-black text-white shadow-lg shadow-blue-950/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
@@ -3202,6 +3233,156 @@ export default function AdminContentStudioPage() {
                           {syncedCaptionErrorByKey[getCutKey(contentAssets.expanded_cut, -1)]}
                         </p>
                       )}
+                    </div>
+                  </article>
+                  )}
+
+                  {contentAssets.best_ai_cuts && bestAiCutSuggestions.length > 0 && (
+                  <article className="order-2 rounded-2xl border border-emerald-300/15 bg-emerald-500/10 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h2 className="text-sm font-black text-emerald-50">Melhores cortes com IA forte</h2>
+                        <p className="mt-1 text-xs font-bold leading-5 text-emerald-100/70">
+                          {contentAssets.best_ai_cuts.editorial_summary}
+                        </p>
+                        <p className="mt-1 text-xs font-bold text-emerald-100/55">
+                          Modelo: {contentAssets.best_ai_cuts.model}
+                        </p>
+                      </div>
+                      <InfoPill label="IA forte" tone="green" />
+                    </div>
+
+                    {contentAssets.best_ai_cuts.warnings.length > 0 && (
+                      <div className="mt-3 rounded-xl border border-amber-300/20 bg-amber-500/10 p-3">
+                        <p className="text-xs font-black text-amber-50">Avisos editoriais</p>
+                        <ul className="mt-2 list-disc space-y-1 pl-4 text-xs font-bold leading-5 text-amber-50/80">
+                          {contentAssets.best_ai_cuts.warnings.map((warning) => (
+                            <li key={warning}>{warning}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    <div className="mt-4 grid gap-3">
+                      {bestAiCutSuggestions.map((cut, index) => {
+                        const cutKey = getCutKey(cut, index)
+
+                        return (
+                          <div key={`best-${cutKey}`} className={`rounded-xl border p-3 ${
+                            cutKey === selectedCutKey
+                              ? 'border-blue-300/35 bg-blue-500/10'
+                              : 'border-emerald-300/20 bg-slate-950/35'
+                          }`}>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <InfoPill label="IA forte" tone="green" />
+                              {cutKey === selectedCutKey && <InfoPill label="Em trabalho" tone="blue" />}
+                              <span className="text-xs font-black text-blue-200">
+                                {formatSegmentTime(cut.start)} - {formatSegmentTime(cut.end)}
+                              </span>
+                              <span className="rounded-full border border-white/10 bg-slate-950 px-2 py-1 text-[11px] font-black text-slate-300">
+                                {formatDuration(getCutDuration(cut))}
+                              </span>
+                              <CutDurationBadge duration={getCutDuration(cut)} />
+                            </div>
+
+                            <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100/70">Titulo</p>
+                            <p className="mt-1 text-sm font-black text-white">{cut.title}</p>
+                            <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100/70">Gancho</p>
+                            <p className="mt-1 text-xs font-bold leading-5 text-emerald-50">{cut.hook}</p>
+
+                            {cut.opening_line && (
+                              <>
+                                <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100/70">Abertura sugerida</p>
+                                <p className="mt-1 rounded-lg border border-emerald-300/15 bg-emerald-500/10 p-2 text-xs font-bold leading-5 text-emerald-50">
+                                  {cut.opening_line}
+                                </p>
+                              </>
+                            )}
+
+                            {(cut.source_excerpt || cut.base_excerpt) && (
+                              <>
+                                <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100/70">Trecho-base</p>
+                                <p className="mt-1 border-l-2 border-emerald-300/30 pl-3 text-xs leading-5 text-slate-300">
+                                  {cut.source_excerpt || cut.base_excerpt}
+                                </p>
+                              </>
+                            )}
+
+                            <div className="mt-3 grid gap-2 md:grid-cols-4">
+                              <div className="rounded-lg border border-white/10 bg-white/[0.04] p-2">
+                                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Retencao</p>
+                                <p className="mt-1 text-sm font-black text-emerald-50">{cut.retention_score || cut.strength_score || 8}/10</p>
+                              </div>
+                              <div className="rounded-lg border border-white/10 bg-white/[0.04] p-2">
+                                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Biblico</p>
+                                <p className="mt-1 text-sm font-black text-emerald-50">{cut.biblical_specificity || 8}/10</p>
+                              </div>
+                              <div className="rounded-lg border border-white/10 bg-white/[0.04] p-2">
+                                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Visual</p>
+                                <p className="mt-1 text-sm font-black text-emerald-50">{cut.visual_potential || 8}/10</p>
+                              </div>
+                              <div className="rounded-lg border border-white/10 bg-white/[0.04] p-2">
+                                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Uso</p>
+                                <p className="mt-1 text-xs font-black text-emerald-50">{cut.recommended_use || getCutDurationProfile(getCutDuration(cut)).recommendedUse}</p>
+                              </div>
+                            </div>
+
+                            <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100/70">Motivo</p>
+                            <p className="mt-1 text-xs leading-5 text-slate-300">{cut.reason}</p>
+                            {cut.risk && (
+                              <p className="mt-3 rounded-xl border border-amber-300/15 bg-amber-500/10 p-3 text-xs font-bold leading-5 text-amber-50/80">
+                                Risco editorial: {cut.risk}
+                              </p>
+                            )}
+
+                            {cut.suggested_caption_lines && cut.suggested_caption_lines.length > 0 && (
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {cut.suggested_caption_lines.map((line, lineIndex) => (
+                                  <span key={`${line}-${lineIndex}`} className="rounded-full border border-blue-300/20 bg-blue-500/10 px-2 py-1 text-[11px] font-bold text-blue-100">
+                                    {line}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleGenerateReadyShort(cut, index)}
+                                disabled={generatingReadyShortKey === cutKey}
+                                className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-black text-white shadow-lg shadow-blue-950/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                              >
+                                {generatingReadyShortKey === cutKey ? 'Gerando Short pronto...' : 'Gerar Short pronto'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleGenerateShortScript(cut, index)}
+                                disabled={generatingShortScriptKey === cutKey}
+                                className="rounded-xl border border-cyan-300/20 bg-slate-950/40 px-3 py-2 text-xs font-black text-cyan-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                              >
+                                {generatingShortScriptKey === cutKey ? 'Gerando roteiro...' : 'Gerar roteiro'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleGenerateSyncedCaptions(cut, index)}
+                                disabled={generatingSyncedCaptionKey === cutKey}
+                                className="rounded-xl border border-fuchsia-300/20 bg-slate-950/40 px-3 py-2 text-xs font-black text-fuchsia-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                              >
+                                {generatingSyncedCaptionKey === cutKey ? 'Sincronizando...' : 'Gerar legenda'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleReviewCutAgain(cut, index)}
+                                disabled={generatingCaptionReviewKey === cutKey || syncedCaptionSourceKey !== cutKey}
+                                className="rounded-xl border border-emerald-300/20 bg-slate-950/40 px-3 py-2 text-xs font-black text-emerald-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                              >
+                                {generatingCaptionReviewKey === cutKey ? 'Revisando...' : 'Revisar legenda'}
+                              </button>
+                              <CopyButton value={formatCutPackageForCopy(cut, contentAssets)} label="Copiar pacote" />
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
                   </article>
                   )}
