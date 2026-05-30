@@ -33,6 +33,19 @@ type SyncedCaptionVersion = {
   json: SyncedCaptionLine[]
 }
 
+type ReviewedCaptions = {
+  mode: 'ai_review'
+  algorithm_version: 'cc-l2-ai-review'
+  base_algorithm_version?: string
+  lines: SyncedCaptionLine[]
+  plain_text: string
+  srt: string
+  json: SyncedCaptionLine[]
+  review_notes: string[]
+  confidence: 'high' | 'medium' | 'low'
+  model: string
+}
+
 type SyncedCaptions = {
   source: 'word_timestamps'
   mode?: 'hybrid' | 'word_only'
@@ -222,6 +235,7 @@ type ContentAssets = {
 type ContentStudioWorkspace = {
   contentAssets: ContentAssets | null
   manualCuts: CutSuggestion[]
+  reviewedCaptionsByKey: Record<string, ReviewedCaptions>
   expandedCutSourceKey: string
   syncedCaptionSourceKey: string
   selectedCutKey: string
@@ -242,6 +256,7 @@ type GenerationMode =
   | 'short_script'
   | 'expand_cut'
   | 'caption_sync'
+  | 'caption_ai_review'
 
 type StudioTab = 'studio' | 'episode' | 'transcription' | 'phrases' | 'publishing'
 
@@ -264,6 +279,7 @@ const EMPTY_CONTENT_ASSETS: ContentAssets = {
   cut_suggestions: [],
 }
 const CURRENT_CAPTION_SYNC_VERSION = 'cc-l1.5-hybrid-safe'
+const ACCEPTED_CAPTION_ALGORITHM_VERSIONS = [CURRENT_CAPTION_SYNC_VERSION, 'cc-l2-ai-review']
 
 type EpisodeStudioRow = {
   id: string
@@ -432,6 +448,7 @@ const generatingLabels: Record<GenerationMode, string> = {
   short_script: 'Gerando roteiro...',
   expand_cut: 'Expandindo corte...',
   caption_sync: 'Sincronizando legendas...',
+  caption_ai_review: 'Revisando legenda...',
 }
 
 function formatShortScriptForCopy(script: ShortScript) {
@@ -573,6 +590,7 @@ function readStoredWorkspace(episodeId: string): ContentStudioWorkspace | null {
     return {
       contentAssets: parsed.contentAssets || null,
       manualCuts: Array.isArray(parsed.manualCuts) ? parsed.manualCuts as CutSuggestion[] : [],
+      reviewedCaptionsByKey: parsed.reviewedCaptionsByKey || {},
       expandedCutSourceKey: parsed.expandedCutSourceKey || '',
       syncedCaptionSourceKey: parsed.syncedCaptionSourceKey || '',
       selectedCutKey: parsed.selectedCutKey || '',
@@ -617,15 +635,18 @@ export default function AdminContentStudioPage() {
   const [errorMessage, setErrorMessage] = useState('')
   const [contentAssets, setContentAssets] = useState<ContentAssets | null>(null)
   const [manualCuts, setManualCuts] = useState<CutSuggestion[]>([])
+  const [reviewedCaptionsByKey, setReviewedCaptionsByKey] = useState<Record<string, ReviewedCaptions>>({})
   const [generatingMode, setGeneratingMode] = useState<GenerationMode | null>(null)
   const [generatingShortScriptKey, setGeneratingShortScriptKey] = useState('')
   const [generatingExpandedCutKey, setGeneratingExpandedCutKey] = useState('')
   const [generatingSyncedCaptionKey, setGeneratingSyncedCaptionKey] = useState('')
+  const [generatingCaptionReviewKey, setGeneratingCaptionReviewKey] = useState('')
   const [syncedCaptionSourceKey, setSyncedCaptionSourceKey] = useState('')
   const [expandedCutSourceKey, setExpandedCutSourceKey] = useState('')
   const [expandedCutErrorByKey, setExpandedCutErrorByKey] = useState<Record<string, string>>({})
   const [syncedCaptionErrorByKey, setSyncedCaptionErrorByKey] = useState<Record<string, string>>({})
   const [contentAssetsError, setContentAssetsError] = useState('')
+  const [captionReviewError, setCaptionReviewError] = useState('')
   const [generatingWordTimestamps, setGeneratingWordTimestamps] = useState(false)
   const [wordTimestampsError, setWordTimestampsError] = useState('')
   const [selectedCutKey, setSelectedCutKey] = useState('')
@@ -653,6 +674,7 @@ export default function AdminContentStudioPage() {
     const hasWorkspace =
       Boolean(contentAssets) ||
       manualCuts.length > 0 ||
+      Object.keys(reviewedCaptionsByKey).length > 0 ||
       Boolean(expandedCutSourceKey) ||
       Boolean(syncedCaptionSourceKey) ||
       Boolean(selectedCutKey) ||
@@ -665,6 +687,7 @@ export default function AdminContentStudioPage() {
     writeStoredWorkspace(episodeId, {
       contentAssets,
       manualCuts,
+      reviewedCaptionsByKey,
       expandedCutSourceKey,
       syncedCaptionSourceKey,
       selectedCutKey,
@@ -678,6 +701,7 @@ export default function AdminContentStudioPage() {
     loading,
     contentAssets,
     manualCuts,
+    reviewedCaptionsByKey,
     expandedCutSourceKey,
     syncedCaptionSourceKey,
     selectedCutKey,
@@ -735,6 +759,7 @@ export default function AdminContentStudioPage() {
       if (storedWorkspace) {
         setContentAssets(storedWorkspace.contentAssets)
         setManualCuts(storedWorkspace.manualCuts)
+        setReviewedCaptionsByKey(storedWorkspace.reviewedCaptionsByKey)
         setExpandedCutSourceKey(storedWorkspace.expandedCutSourceKey)
         setSyncedCaptionSourceKey(storedWorkspace.syncedCaptionSourceKey)
         setSelectedCutKey(storedWorkspace.selectedCutKey)
@@ -745,6 +770,7 @@ export default function AdminContentStudioPage() {
       } else {
         setContentAssets(null)
         setManualCuts([])
+        setReviewedCaptionsByKey({})
         setExpandedCutSourceKey('')
         setSyncedCaptionSourceKey('')
         setSelectedCutKey('')
@@ -757,6 +783,7 @@ export default function AdminContentStudioPage() {
       setWordTimestampsError('')
       setManualCutError('')
       setManualCutWarning('')
+      setCaptionReviewError('')
     } catch (error) {
       console.error('Erro ao carregar estudio de conteudo:', error)
       setErrorMessage('Nao foi possivel carregar este episodio.')
@@ -769,6 +796,7 @@ export default function AdminContentStudioPage() {
     removeStoredWorkspace(episodeId)
     setContentAssets(null)
     setManualCuts([])
+    setReviewedCaptionsByKey({})
     setExpandedCutSourceKey('')
     setSyncedCaptionSourceKey('')
     setSelectedCutKey('')
@@ -778,6 +806,7 @@ export default function AdminContentStudioPage() {
     setWorkspaceRestored(false)
     setManualCutError('')
     setManualCutWarning('')
+    setCaptionReviewError('')
   }
 
   function updateManualCutForm(field: keyof ManualCutFormState, value: string) {
@@ -1076,6 +1105,11 @@ export default function AdminContentStudioPage() {
           ...(payload.assets as Partial<ContentAssets>),
         }
       })
+      setReviewedCaptionsByKey((current) => {
+        const next = { ...current }
+        delete next[loadingKey]
+        return next
+      })
     } catch (error) {
       console.error('Erro ao sincronizar legendas:', error)
       const message =
@@ -1086,6 +1120,68 @@ export default function AdminContentStudioPage() {
       setSyncedCaptionErrorByKey((current) => ({ ...current, [loadingKey]: message }))
     } finally {
       setGeneratingSyncedCaptionKey('')
+    }
+  }
+
+  async function handleReviewSyncedCaptions() {
+    if (!episode || !selectedCut || !contentAssets?.synced_captions || !selectedCutKey) return
+    if (syncedCaptionSourceKey !== selectedCutKey) {
+      setCaptionReviewError('Selecione o corte que gerou estas legendas antes de revisar com IA.')
+      return
+    }
+
+    try {
+      setGeneratingCaptionReviewKey(selectedCutKey)
+      setCaptionReviewError('')
+
+      const response = await fetch('/api/ai/generate-content-assets', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          episodeId: episode.id,
+          title: episode.title,
+          bible_reference: episode.bible_reference,
+          description: episode.description,
+          transcription_text: episode.transcription_text,
+          transcription_segments: episode.transcription_segments,
+          mode: 'caption_ai_review',
+          selected_cut: {
+            title: selectedCut.title,
+            start: selectedCut.start,
+            end: selectedCut.end,
+            hook: selectedCut.hook,
+            source_excerpt: selectedCut.source_excerpt,
+          },
+          synced_captions: contentAssets.synced_captions,
+        }),
+      })
+      const payload = await response.json()
+
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error || 'Nao foi possivel revisar a legenda com IA.')
+      }
+
+      const reviewedCaptions = (payload.reviewed_captions || payload.assets?.reviewed_captions) as ReviewedCaptions | undefined
+
+      if (!reviewedCaptions) {
+        throw new Error('A revisao nao retornou legendas validas.')
+      }
+
+      setReviewedCaptionsByKey((current) => ({
+        ...current,
+        [selectedCutKey]: reviewedCaptions,
+      }))
+    } catch (error) {
+      console.error('Erro ao revisar legenda com IA:', error)
+      setCaptionReviewError(
+        error instanceof Error
+          ? error.message
+          : 'Nao foi possivel revisar a legenda com IA.'
+      )
+    } finally {
+      setGeneratingCaptionReviewKey('')
     }
   }
 
@@ -1201,6 +1297,15 @@ export default function AdminContentStudioPage() {
   const selectedCutLabel = selectedCut
     ? `${formatSegmentTime(selectedCut.start)} - ${formatSegmentTime(selectedCut.end)}`
     : ''
+  const reviewedCaptionsForSelectedCut = selectedCutKey ? reviewedCaptionsByKey[selectedCutKey] : null
+  const syncedCaptionsMatchSelectedCut = Boolean(selectedCutKey && syncedCaptionSourceKey === selectedCutKey)
+  const syncedCaptionVersion = contentAssets?.synced_captions?.algorithm_version || ''
+  const shouldWarnOldCaptionVersion =
+    Boolean(contentAssets?.synced_captions) &&
+    Boolean(syncedCaptionVersion) &&
+    !ACCEPTED_CAPTION_ALGORITHM_VERSIONS.includes(syncedCaptionVersion) &&
+    !syncedCaptionVersion.startsWith('cc-l1.5') &&
+    !syncedCaptionVersion.startsWith('cc-l2')
   const wordTimestampStatus =
     episode.transcription_words_status ||
     (episode.transcription_words_url ? 'ready' : 'missing')
@@ -2277,8 +2382,28 @@ export default function AdminContentStudioPage() {
                           <CopyButton value={contentAssets.synced_captions.word_only.srt} label="Copiar versao bruta" />
                         )}
                         <CopyButton value={formatCaptionDiagnosisForCopy(contentAssets.synced_captions)} label="Copiar diagnostico" />
+                        <button
+                          type="button"
+                          onClick={handleReviewSyncedCaptions}
+                          disabled={!syncedCaptionsMatchSelectedCut || generatingCaptionReviewKey === selectedCutKey}
+                          className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black text-fuchsia-50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                        >
+                          {generatingCaptionReviewKey === selectedCutKey
+                            ? 'Revisando legenda com IA...'
+                            : 'Revisar legenda com IA'}
+                        </button>
                       </div>
                     </div>
+
+                    <p className="mt-3 text-xs font-bold text-fuchsia-100/60">
+                      Usa IA forte apenas neste corte.
+                    </p>
+
+                    {captionReviewError && (
+                      <p className="mt-4 rounded-xl border border-rose-300/20 bg-rose-500/10 p-3 text-xs font-bold leading-5 text-rose-100">
+                        {captionReviewError}
+                      </p>
+                    )}
 
                     {contentAssets.synced_captions.mode === 'hybrid' && (
                       <p className="mt-4 rounded-xl border border-fuchsia-300/20 bg-fuchsia-500/10 p-3 text-xs font-bold leading-5 text-fuchsia-50">
@@ -2292,11 +2417,68 @@ export default function AdminContentStudioPage() {
                       </p>
                     )}
 
-                    {contentAssets.synced_captions.algorithm_version &&
-                      contentAssets.synced_captions.algorithm_version !== CURRENT_CAPTION_SYNC_VERSION && (
+                    {shouldWarnOldCaptionVersion && (
                       <p className="mt-4 rounded-xl border border-amber-300/20 bg-amber-500/10 p-3 text-xs font-bold leading-5 text-amber-50">
                         Esta legenda foi gerada com uma versao anterior do algoritmo.
                       </p>
+                    )}
+
+                    {reviewedCaptionsForSelectedCut && (
+                      <div className="mt-4 rounded-xl border border-emerald-300/20 bg-emerald-500/10 p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <h3 className="text-xs font-black text-emerald-50">Legenda revisada por IA</h3>
+                            <p className="mt-1 text-xs font-bold text-emerald-100/70">
+                              Modelo: {reviewedCaptionsForSelectedCut.model} | confianca: {reviewedCaptionsForSelectedCut.confidence}
+                            </p>
+                            <p className="mt-1 text-xs font-bold text-emerald-100/60">
+                              Base: {reviewedCaptionsForSelectedCut.base_algorithm_version || 'sem versao'} | versao: {reviewedCaptionsForSelectedCut.algorithm_version}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <CopyButton value={reviewedCaptionsForSelectedCut.srt} label="Copiar SRT revisado" />
+                            <CopyButton value={reviewedCaptionsForSelectedCut.plain_text} label="Copiar texto revisado" />
+                            <CopyButton value={JSON.stringify(reviewedCaptionsForSelectedCut.json, null, 2)} label="Copiar JSON revisado" />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!selectedCutKey) return
+                                setReviewedCaptionsByKey((current) => {
+                                  const next = { ...current }
+                                  delete next[selectedCutKey]
+                                  return next
+                                })
+                              }}
+                              className="rounded-xl border border-emerald-300/20 bg-slate-950/50 px-3 py-2 text-xs font-black text-emerald-100 active:scale-[0.98]"
+                            >
+                              Restaurar automatico
+                            </button>
+                          </div>
+                        </div>
+
+                        {reviewedCaptionsForSelectedCut.review_notes.length > 0 && (
+                          <ul className="mt-3 list-disc space-y-1 pl-4 text-xs font-bold leading-5 text-emerald-50/80">
+                            {reviewedCaptionsForSelectedCut.review_notes.map((note, index) => (
+                              <li key={`${note}-${index}`}>{note}</li>
+                            ))}
+                          </ul>
+                        )}
+
+                        <div className="mt-3 grid gap-2">
+                          {reviewedCaptionsForSelectedCut.lines.map((line, index) => (
+                            <div key={`${line.start}-${line.end}-${index}`} className="rounded-xl border border-emerald-200/10 bg-slate-950/45 p-3">
+                              <p className="text-[11px] font-black text-emerald-200">
+                                {line.start.toFixed(2)}s - {line.end.toFixed(2)}s
+                              </p>
+                              <p className="mt-2 text-sm font-bold leading-6 text-emerald-50">{line.text}</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        <p className="mt-3 text-xs font-bold text-emerald-100/65">
+                          A versao automatica e o diagnostico continuam disponiveis abaixo.
+                        </p>
+                      </div>
                     )}
 
                     {contentAssets.synced_captions.caption_quality_warnings?.length ? (

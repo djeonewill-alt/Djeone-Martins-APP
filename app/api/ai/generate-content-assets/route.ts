@@ -65,6 +65,19 @@ type SyncedCaptions = {
   hybrid_debug?: CaptionHybridDebug
 }
 
+type ReviewedCaptions = {
+  mode: 'ai_review'
+  algorithm_version: 'cc-l2-ai-review'
+  base_algorithm_version?: string
+  lines: SyncedCaptionLine[]
+  plain_text: string
+  srt: string
+  json: SyncedCaptionLine[]
+  review_notes: string[]
+  confidence: 'high' | 'medium' | 'low'
+  model: string
+}
+
 type CaptionSyncDebug = {
   cut_start: number
   cut_end: number
@@ -243,6 +256,7 @@ type GenerationMode =
   | 'short_script'
   | 'expand_cut'
   | 'caption_sync'
+  | 'caption_ai_review'
 
 const MAX_TRANSCRIPTION_CHARS = 28000
 const MAX_SEGMENTS = 160
@@ -253,6 +267,7 @@ const MAX_CUT_SECONDS = 75
 const MISSING_TIMESTAMPS_NOTE =
   'Este episodio nao possui segmentos com timestamps. Gere uma transcricao com timestamps para cortes precisos.'
 const CAPTION_SYNC_ALGORITHM_VERSION = 'cc-l1.5-hybrid-safe'
+const CAPTION_AI_REVIEW_ALGORITHM_VERSION = 'cc-l2-ai-review'
 
 const GENERATION_MODES: GenerationMode[] = [
   'all',
@@ -265,6 +280,7 @@ const GENERATION_MODES: GenerationMode[] = [
   'short_script',
   'expand_cut',
   'caption_sync',
+  'caption_ai_review',
 ]
 
 function cleanText(text: string) {
@@ -1657,6 +1673,59 @@ function buildCaptionVersion(lines: SyncedCaptionLine[]): SyncedCaptionVersion {
   }
 }
 
+function normalizeCaptionReviewInput(input: unknown): SyncedCaptions | null {
+  const value = input as Partial<SyncedCaptions> | null
+
+  if (!value || !Array.isArray(value.lines) || !value.lines.length) return null
+
+  const lines = value.lines
+    .map((line): SyncedCaptionLine | null => {
+      const candidate = line as Partial<SyncedCaptionLine>
+      const start = Number(candidate.start)
+      const end = Number(candidate.end)
+      const text = cleanText(String(candidate.text || ''))
+
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || !text) {
+        return null
+      }
+
+      const normalizedLine: SyncedCaptionLine = {
+        start,
+        end,
+        text,
+        words_count: Number(candidate.words_count) || text.split(/\s+/).filter(Boolean).length,
+      }
+
+      if (candidate.timing_mode) {
+        normalizedLine.timing_mode = candidate.timing_mode
+      }
+
+      return normalizedLine
+    })
+    .filter((line): line is SyncedCaptionLine => Boolean(line))
+
+  if (!lines.length) return null
+
+  return {
+    source: 'word_timestamps',
+    mode: value.mode || 'word_only',
+    cut_title: cleanText(String(value.cut_title || 'Corte selecionado')),
+    cut_start: Number(value.cut_start) || 0,
+    cut_end: Number(value.cut_end) || 0,
+    duration_seconds: Number(value.duration_seconds) || 0,
+    words_count: Number(value.words_count) || 0,
+    lines,
+    srt: cleanText(String(value.srt || '')),
+    plain_text: cleanText(String(value.plain_text || '')),
+    json: lines,
+    caption_quality_warnings: Array.isArray(value.caption_quality_warnings) ? value.caption_quality_warnings : [],
+    algorithm_version: cleanText(String(value.algorithm_version || '')),
+    debug: value.debug,
+    word_only: value.word_only,
+    hybrid_debug: value.hybrid_debug,
+  }
+}
+
 function tokenizeForCoverage(text: string) {
   return normalizeTextForCaptionSearch(text)
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
@@ -1981,6 +2050,184 @@ function buildSafeHybridCaptionLines(params: {
     rawWords: params.rawWords,
     cut: params.cut,
   }))
+}
+
+function buildCaptionAiReviewPrompt(params: {
+  title: string
+  bibleReference: string
+  selectedCut: CaptionSyncCut | null
+  syncedCaptions: SyncedCaptions
+  transcriptionText: string
+  transcriptionSegments: TranscriptionSegment[]
+}) {
+  const lines = params.syncedCaptions.lines.map((line, index) => ({
+    index,
+    start: line.start,
+    end: line.end,
+    text: line.text,
+  }))
+  const segmentText = params.transcriptionSegments
+    .filter((segment) => {
+      if (!params.selectedCut) return true
+      return segment.end >= params.selectedCut.start && segment.start <= params.selectedCut.end
+    })
+    .map((segment) => segment.text)
+    .join(' ')
+    .slice(0, 4000)
+
+  return `
+Voce e um revisor de legendas para Shorts/Reels/TikTok.
+Sua tarefa e melhorar fluidez e legibilidade das legendas, mantendo fidelidade ao audio/transcricao.
+
+REGRAS OBRIGATORIAS:
+1. Nao invente conteudo novo.
+2. Nao transforme em resumo.
+3. Nao mude a mensagem teologica/devocional.
+4. Preserve a ordem das ideias.
+5. Preserve os timestamps recebidos.
+6. Mantenha o mesmo numero de linhas/blocos: ${lines.length}.
+7. Corrija quebras ruins: linha terminando com "E", "que", "com", "de"; linha com conectivo solto; duplicacoes como "que que" e "e e"; frases incompletas.
+8. Se uma palavra necessaria aparece na transcricao/segmento, pode restaura-la.
+9. Se nao tiver certeza, preserve o texto original.
+
+EPISODIO: ${params.title}
+REFERENCIA: ${params.bibleReference || 'Nao informada'}
+CORTE: ${params.selectedCut ? `${params.selectedCut.start}s - ${params.selectedCut.end}s | ${params.selectedCut.title || ''}` : 'Nao informado'}
+
+TRANSCRICAO/SEGMENTOS DO TRECHO:
+${segmentText || params.transcriptionText.slice(0, 4000) || 'Nao enviada'}
+
+DIAGNOSTICO RAW WORDS:
+${params.syncedCaptions.debug?.raw_text || 'Nao disponivel'}
+
+DIAGNOSTICO HIBRIDO:
+${JSON.stringify(params.syncedCaptions.hybrid_debug || {}, null, 2)}
+
+LINHAS ATUAIS:
+${JSON.stringify(lines, null, 2)}
+
+Responda SOMENTE JSON valido neste formato:
+{
+  "reviewed_lines": [
+    { "start": 0.62, "end": 3.27, "text": "texto revisado" }
+  ],
+  "review_notes": ["nota curta"],
+  "confidence": "high"
+}
+`.trim()
+}
+
+function normalizeReviewedCaptions(params: {
+  input: unknown
+  syncedCaptions: SyncedCaptions
+  model: string
+}): ReviewedCaptions {
+  const parsed = params.input as {
+    reviewed_lines?: Array<{ text?: unknown; start?: unknown; end?: unknown }>
+    review_notes?: unknown
+    confidence?: unknown
+  }
+  const reviewedLines = Array.isArray(parsed.reviewed_lines) ? parsed.reviewed_lines : []
+
+  if (reviewedLines.length !== params.syncedCaptions.lines.length) {
+    throw new Error('A IA retornou quantidade diferente de linhas. Tente revisar novamente.')
+  }
+
+  const lines = params.syncedCaptions.lines.map((originalLine, index) => {
+    const reviewedText = cleanText(String(reviewedLines[index]?.text || ''))
+
+    if (!reviewedText) {
+      throw new Error('A IA retornou uma linha revisada vazia.')
+    }
+
+    return {
+      ...originalLine,
+      start: originalLine.start,
+      end: originalLine.end,
+      text: reviewedText,
+      words_count: reviewedText.split(/\s+/).filter(Boolean).length,
+    }
+  })
+  const version = buildCaptionVersion(lines)
+  const confidence = cleanText(String(parsed.confidence || 'medium'))
+
+  return {
+    mode: 'ai_review',
+    algorithm_version: CAPTION_AI_REVIEW_ALGORITHM_VERSION,
+    base_algorithm_version: params.syncedCaptions.algorithm_version,
+    lines: version.lines,
+    plain_text: version.plain_text,
+    srt: version.srt,
+    json: version.json,
+    review_notes: normalizeStringArray(parsed.review_notes, 8, 180),
+    confidence: confidence === 'high' || confidence === 'low' ? confidence : 'medium',
+    model: params.model,
+  }
+}
+
+async function reviewCaptionsWithOpenAI(params: {
+  title: string
+  bibleReference: string
+  transcriptionText: string
+  transcriptionSegments: TranscriptionSegment[]
+  selectedCut: CaptionSyncCut | null
+  syncedCaptions: SyncedCaptions
+}): Promise<ReviewedCaptions> {
+  const apiKey = process.env.OPENAI_API_KEY
+
+  if (!apiKey) {
+    throw new Error('OPENAI_API_KEY ausente.')
+  }
+
+  const model =
+    process.env.OPENAI_RESPONSE_STRONG_MODEL ||
+    process.env.OPENAI_RESPONSE_MODEL ||
+    process.env.OPENAI_CONTENT_ASSETS_MODEL ||
+    process.env.OPENAI_MODEL ||
+    'gpt-4o-mini'
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.2,
+      response_format: {
+        type: 'json_object',
+      },
+      messages: [
+        {
+          role: 'system',
+          content: 'Voce e um revisor editorial de legendas curtas. Responda somente JSON valido.',
+        },
+        {
+          role: 'user',
+          content: buildCaptionAiReviewPrompt(params),
+        },
+      ],
+    }),
+  })
+  const data = await response.json()
+
+  if (!response.ok) {
+    console.error('Erro OpenAI caption review:', data)
+    throw new Error(data?.error?.message || 'Erro ao revisar legendas com IA.')
+  }
+
+  const content = data?.choices?.[0]?.message?.content
+
+  if (!content) {
+    throw new Error('A OpenAI nao retornou revisao de legendas.')
+  }
+
+  return normalizeReviewedCaptions({
+    input: extractJsonFromText(content),
+    syncedCaptions: params.syncedCaptions,
+    model,
+  })
 }
 
 function buildHybridCaptionLines(params: {
@@ -2808,6 +3055,9 @@ Gere somente expanded_cut a partir do selected_cut informado e dos segmentos pro
     caption_sync: `
 Este modo e local. Nao chame IA para caption_sync.
 `.trim(),
+    caption_ai_review: `
+Este modo revisa legendas sincronizadas ja geradas. Use somente o fluxo dedicado de revisao.
+`.trim(),
   }
 
   return contracts[mode]
@@ -3146,6 +3396,40 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'Envie o ID do episódio.' },
         { status: 400 }
       )
+    }
+
+    if (mode === 'caption_ai_review') {
+      const syncedCaptions = normalizeCaptionReviewInput(body.synced_captions)
+
+      if (!syncedCaptions) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Envie legendas sincronizadas validas para revisar.',
+          },
+          { status: 400 }
+        )
+      }
+
+      const reviewedCaptions = await reviewCaptionsWithOpenAI({
+        title,
+        bibleReference,
+        transcriptionText,
+        transcriptionSegments,
+        selectedCut: captionSyncCut,
+        syncedCaptions,
+      })
+
+      return NextResponse.json({
+        success: true,
+        provider: 'openai',
+        model: reviewedCaptions.model,
+        mode,
+        reviewed_captions: reviewedCaptions,
+        assets: {
+          reviewed_captions: reviewedCaptions,
+        },
+      })
     }
 
     if (mode === 'caption_sync') {
