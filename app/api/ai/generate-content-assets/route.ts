@@ -98,6 +98,18 @@ type CaptionHybridDebug = {
     used_alignment: boolean
   }
   editorial_split?: EditorialSplitDebug
+  final_validation?: {
+    coverage_ratio: number
+    missing_important_tokens: string[]
+    missing_protected_phrases: string[]
+    fallback_used: boolean
+    fallback_coverage_ratio?: number
+    passed: boolean
+    final_lines_count?: number
+    final_words_count?: number
+    protected_phrases_required?: string[]
+    protected_phrases_preserved?: string[]
+  }
 }
 
 type ShortIdea = {
@@ -240,7 +252,7 @@ const SOFT_MIN_CUT_SECONDS = 25
 const MAX_CUT_SECONDS = 75
 const MISSING_TIMESTAMPS_NOTE =
   'Este episodio nao possui segmentos com timestamps. Gere uma transcricao com timestamps para cortes precisos.'
-const CAPTION_SYNC_ALGORITHM_VERSION = 'cc-l1.4-hybrid-editorial'
+const CAPTION_SYNC_ALGORITHM_VERSION = 'cc-l1.5-hybrid-safe'
 
 const GENERATION_MODES: GenerationMode[] = [
   'all',
@@ -1645,6 +1657,119 @@ function buildCaptionVersion(lines: SyncedCaptionLine[]): SyncedCaptionVersion {
   }
 }
 
+function tokenizeForCoverage(text: string) {
+  return normalizeTextForCaptionSearch(text)
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+}
+
+function validateCaptionCoverage(params: {
+  sourceText: string
+  finalLines: SyncedCaptionLine[]
+  protectedPhrases: string[]
+}) {
+  const sourceTokens = tokenizeForCoverage(params.sourceText).filter((token) => !COVERAGE_WEAK_TOKENS.has(token))
+  const outputText = params.finalLines.map((line) => line.text).join(' ')
+  const outputTokens = new Set(tokenizeForCoverage(outputText).filter((token) => !COVERAGE_WEAK_TOKENS.has(token)))
+  const uniqueSourceTokens = [...new Set(sourceTokens)]
+  const missingImportantTokens = uniqueSourceTokens.filter((token) => !outputTokens.has(token)).slice(0, 20)
+  const coveredCount = uniqueSourceTokens.length - missingImportantTokens.length
+  const coverageRatio = uniqueSourceTokens.length ? coveredCount / uniqueSourceTokens.length : 1
+  const normalizedSource = normalizeTextForCaptionSearch(params.sourceText)
+  const normalizedOutput = normalizeTextForCaptionSearch(outputText)
+  const requiredProtectedPhrases = params.protectedPhrases.filter((phrase) => normalizedSource.includes(phrase))
+  const missingProtectedPhrases = requiredProtectedPhrases.filter((phrase) => !normalizedOutput.includes(phrase))
+  const threshold = uniqueSourceTokens.length < 18 ? 0.82 : 0.88
+
+  return {
+    coverageRatio: Number(coverageRatio.toFixed(2)),
+    missingImportantTokens,
+    missingProtectedPhrases,
+    protectedPhrasesRequired: requiredProtectedPhrases,
+    protectedPhrasesPreserved: requiredProtectedPhrases.filter((phrase) => normalizedOutput.includes(phrase)),
+    passed: coverageRatio >= threshold && missingProtectedPhrases.length === 0,
+  }
+}
+
+function distributeCaptionTextsToTimedLines(params: {
+  captionTexts: string[]
+  rawWords: WordTimestamp[]
+  cut: CaptionSyncCut
+}): SyncedCaptionLine[] {
+  const cleanedTexts = params.captionTexts.map(cleanText).filter(Boolean)
+  const lineWordCounts = cleanedTexts.map((line) => line.split(/\s+/).filter(Boolean).length)
+  const totalWords = lineWordCounts.reduce((sum, count) => sum + count, 0)
+
+  if (totalWords < 3) return []
+
+  const timingStart = params.rawWords[0]?.start ?? params.cut.start
+  const timingEnd = params.rawWords[params.rawWords.length - 1]?.end ?? params.cut.end
+  const usableStart = Math.max(params.cut.start, timingStart)
+  const usableEnd = Math.min(params.cut.end, Math.max(timingEnd, usableStart + 1))
+  const totalDuration = Math.max(1, usableEnd - usableStart)
+  let cursor = usableStart
+
+  return cleanedTexts.map((text, index) => {
+    const wordsCount = lineWordCounts[index]
+    const isLast = index === cleanedTexts.length - 1
+    const weightedDuration = totalDuration * (wordsCount / Math.max(totalWords, 1))
+    const duration = isLast
+      ? Math.max(1, usableEnd - cursor)
+      : Math.min(4.8, Math.max(1, weightedDuration))
+    const start = cursor
+    const end = isLast ? usableEnd : Math.min(usableEnd, start + duration)
+    cursor = Math.max(end, start + 0.2)
+
+    return {
+      start: roundCaptionTime(start - params.cut.start),
+      end: roundCaptionTime(Math.max(end, start + 0.8) - params.cut.start),
+      text,
+      words_count: wordsCount,
+      timing_mode: 'approximate_from_words' as const,
+    }
+  }).filter((line) => line.end > line.start)
+}
+
+function finalPolishCaptionLines(lines: SyncedCaptionLine[]) {
+  const polished = lines.map((line) => ({ ...line }))
+
+  for (let index = 0; index < polished.length - 1; index += 1) {
+    const currentWords = polished[index].text.split(/\s+/).filter(Boolean)
+    const nextWords = polished[index + 1].text.split(/\s+/).filter(Boolean)
+    const lastWord = currentWords[currentWords.length - 1] || ''
+    const firstNext = nextWords[0] || ''
+
+    if (lastWord && nextWords.length && /^(e|mas|que|com|de|para|entao)$/i.test(normalizeCaptionTokenForGrouping(lastWord))) {
+      if (currentWords.length > 2) {
+        nextWords.unshift(currentWords.pop() as string)
+      } else if (currentWords.length + nextWords.length <= 8) {
+        currentWords.push(...nextWords)
+        nextWords.length = 0
+      } else {
+        currentWords.push(nextWords.shift() as string)
+      }
+    }
+
+    if (
+      currentWords.length &&
+      nextWords.length &&
+      normalizeCaptionTokenForGrouping(currentWords[currentWords.length - 1]) === normalizeCaptionTokenForGrouping(nextWords[0]) &&
+      /^(que|e|entao)$/i.test(normalizeCaptionTokenForGrouping(nextWords[0]))
+    ) {
+      nextWords.shift()
+    }
+
+    polished[index].text = cleanSyncedCaptionLineText(currentWords)
+    polished[index].words_count = currentWords.length
+    polished[index + 1].text = cleanSyncedCaptionLineText(nextWords)
+    polished[index + 1].words_count = nextWords.length
+  }
+
+  return polished.filter((line) => line.text && line.words_count > 0)
+}
+
 const HYBRID_PROTECTED_PHRASES = [
   '300 dias de trabalho',
   'pes de jesus',
@@ -1656,7 +1781,40 @@ const HYBRID_PROTECTED_PHRASES = [
   'nardo puro',
   'adoracao extravagante',
   'de todo o coracao',
+  'terra firme',
+  'centuriao',
+  'paulo',
+  'navio',
+  'naufragio',
+  'grao de trigo',
+  'fruto',
+  'betania',
+  'lazaro',
+  'marta',
+  'judas',
+  'desperdicio',
+  'honra para jesus',
 ]
+
+const COVERAGE_WEAK_TOKENS = new Set([
+  'a',
+  'o',
+  'e',
+  'de',
+  'do',
+  'da',
+  'dos',
+  'das',
+  'em',
+  'com',
+  'que',
+  'para',
+  'por',
+  'um',
+  'uma',
+  'os',
+  'as',
+])
 
 function splitSentenceLikeHybridText(text: string) {
   return cleanText(text)
@@ -1786,43 +1944,55 @@ function splitHybridTextIntoCaptionLines(text: string) {
     .filter(Boolean)
 }
 
+function buildSafeHybridCaptionLines(params: {
+  text: string
+  rawWords: WordTimestamp[]
+  cut: CaptionSyncCut
+}): SyncedCaptionLine[] {
+  const words = cleanText(params.text).split(/\s+/).map(cleanCaptionWord).filter(Boolean)
+  const lines: string[] = []
+  let current: string[] = []
+
+  function pushCurrent() {
+    if (!current.length) return
+
+    lines.push(cleanSyncedCaptionLineText(current))
+    current = []
+  }
+
+  words.forEach((word, index) => {
+    current.push(word)
+    const nextWord = words[index + 1]
+    const reachedMax = current.length >= 7
+    const reachedIdeal = current.length >= 5
+    const weakEnd = isWeakCaptionLineEnding(word)
+
+    if ((reachedMax || reachedIdeal) && !weakEnd) {
+      pushCurrent()
+    } else if (reachedMax && weakEnd && nextWord) {
+      current.push(nextWord)
+    }
+  })
+
+  pushCurrent()
+
+  return finalPolishCaptionLines(distributeCaptionTextsToTimedLines({
+    captionTexts: mergeTinyCaptionChunks(lines),
+    rawWords: params.rawWords,
+    cut: params.cut,
+  }))
+}
+
 function buildHybridCaptionLines(params: {
   hybridText: string
   rawWords: WordTimestamp[]
   cut: CaptionSyncCut
 }): SyncedCaptionLine[] {
-  const captionTexts = splitHybridTextIntoCaptionLines(params.hybridText)
-  const lineWordCounts = captionTexts.map((line) => line.split(/\s+/).filter(Boolean).length)
-  const totalWords = lineWordCounts.reduce((sum, count) => sum + count, 0)
-
-  if (totalWords < 3) return []
-
-  const timingStart = params.rawWords[0]?.start ?? params.cut.start
-  const timingEnd = params.rawWords[params.rawWords.length - 1]?.end ?? params.cut.end
-  const usableStart = Math.max(params.cut.start, timingStart)
-  const usableEnd = Math.min(params.cut.end, Math.max(timingEnd, usableStart + 1))
-  const totalDuration = Math.max(1, usableEnd - usableStart)
-  let cursor = usableStart
-
-  return captionTexts.map((text, index) => {
-    const wordsCount = lineWordCounts[index]
-    const isLast = index === captionTexts.length - 1
-    const weightedDuration = totalDuration * (wordsCount / Math.max(totalWords, 1))
-    const duration = isLast
-      ? Math.max(1, usableEnd - cursor)
-      : Math.min(4.8, Math.max(1, weightedDuration))
-    const start = cursor
-    const end = isLast ? usableEnd : Math.min(usableEnd, start + duration)
-    cursor = Math.max(end, start + 0.2)
-
-    return {
-      start: roundCaptionTime(start - params.cut.start),
-      end: roundCaptionTime(Math.max(end, start + 0.8) - params.cut.start),
-      text,
-      words_count: wordsCount,
-      timing_mode: 'approximate_from_words' as const,
-    }
-  }).filter((line) => line.end > line.start)
+  return finalPolishCaptionLines(distributeCaptionTextsToTimedLines({
+    captionTexts: splitHybridTextIntoCaptionLines(params.hybridText),
+    rawWords: params.rawWords,
+    cut: params.cut,
+  }))
 }
 
 function groupCaptionWords(words: WordTimestamp[], cut: CaptionSyncCut): SyncedCaptionLine[] {
@@ -2000,13 +2170,55 @@ async function buildSyncedCaptions(params: {
         cut,
       })
     : []
-  const useHybrid = hybridDebug.used_hybrid_text && hybridLines.length > 0
-  const primaryLines = useHybrid ? hybridLines : wordOnlyLines
+  let finalHybridLines = hybridLines
+  let fallbackUsed = false
+  let validation = validateCaptionCoverage({
+    sourceText: alignedHybridText,
+    finalLines: finalHybridLines,
+    protectedPhrases: HYBRID_PROTECTED_PHRASES,
+  })
+  let fallbackCoverageRatio: number | undefined
+
+  if (hybridDebug.used_hybrid_text && finalHybridLines.length > 0 && !validation.passed) {
+    fallbackUsed = true
+    finalHybridLines = buildSafeHybridCaptionLines({
+      text: alignedHybridText,
+      rawWords: cutWords,
+      cut,
+    })
+    const fallbackValidation = validateCaptionCoverage({
+      sourceText: alignedHybridText,
+      finalLines: finalHybridLines,
+      protectedPhrases: HYBRID_PROTECTED_PHRASES,
+    })
+    fallbackCoverageRatio = fallbackValidation.coverageRatio
+    validation = fallbackValidation
+  }
+
+  const useHybrid = hybridDebug.used_hybrid_text && finalHybridLines.length > 0
+  const primaryLines = useHybrid ? finalHybridLines : wordOnlyLines
   const primaryVersion = buildCaptionVersion(primaryLines)
   const captionQualityWarnings = buildCaptionQualityWarnings(primaryLines)
 
   if (useHybrid) {
     captionQualityWarnings.unshift('Legenda revisada usando a transcricao do segmento. Tempos aproximados com base nos word timestamps.')
+  }
+
+  if (useHybrid && fallbackUsed) {
+    captionQualityWarnings.push('A quebra editorial perdeu parte do conteudo. Foi usado modo seguro de legenda.')
+  }
+
+  hybridDebug.final_validation = {
+    coverage_ratio: validation.coverageRatio,
+    missing_important_tokens: validation.missingImportantTokens,
+    missing_protected_phrases: validation.missingProtectedPhrases,
+    fallback_used: fallbackUsed,
+    fallback_coverage_ratio: fallbackCoverageRatio,
+    passed: validation.passed,
+    final_lines_count: primaryLines.length,
+    final_words_count: primaryLines.reduce((sum, line) => sum + line.words_count, 0),
+    protected_phrases_required: validation.protectedPhrasesRequired,
+    protected_phrases_preserved: validation.protectedPhrasesPreserved,
   }
 
   return {

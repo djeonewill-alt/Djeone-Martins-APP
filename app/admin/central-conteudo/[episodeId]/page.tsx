@@ -68,6 +68,18 @@ type SyncedCaptions = {
       lines_count: number
       protected_phrases_found: string[]
     }
+    final_validation?: {
+      coverage_ratio: number
+      missing_important_tokens: string[]
+      missing_protected_phrases: string[]
+      fallback_used: boolean
+      fallback_coverage_ratio?: number
+      passed: boolean
+      final_lines_count?: number
+      final_words_count?: number
+      protected_phrases_required?: string[]
+      protected_phrases_preserved?: string[]
+    }
   }
   debug?: {
     cut_start: number
@@ -251,7 +263,7 @@ const EMPTY_CONTENT_ASSETS: ContentAssets = {
   short_ideas: [],
   cut_suggestions: [],
 }
-const CURRENT_CAPTION_SYNC_VERSION = 'cc-l1.4-hybrid-editorial'
+const CURRENT_CAPTION_SYNC_VERSION = 'cc-l1.5-hybrid-safe'
 
 type EpisodeStudioRow = {
   id: string
@@ -2316,7 +2328,26 @@ export default function AdminContentStudioPage() {
                               alinhamento: {Math.round(contentAssets.synced_captions.hybrid_debug.alignment.matched_ratio * 100)}%
                             </span>
                           )}
+                          {contentAssets.synced_captions.hybrid_debug.final_validation && (
+                            <>
+                              <span className="rounded-full border border-blue-300/20 bg-slate-950/40 px-3 py-1 text-[11px] font-black text-blue-100">
+                                cobertura final: {Math.round(contentAssets.synced_captions.hybrid_debug.final_validation.coverage_ratio * 100)}%
+                              </span>
+                              <span className="rounded-full border border-blue-300/20 bg-slate-950/40 px-3 py-1 text-[11px] font-black text-blue-100">
+                                modo seguro: {contentAssets.synced_captions.hybrid_debug.final_validation.fallback_used ? 'sim' : 'nao'}
+                              </span>
+                            </>
+                          )}
                         </div>
+                        {contentAssets.synced_captions.hybrid_debug.final_validation?.missing_protected_phrases.length ? (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {contentAssets.synced_captions.hybrid_debug.final_validation.missing_protected_phrases.map((phrase) => (
+                              <span key={phrase} className="rounded-full border border-rose-300/20 bg-rose-500/10 px-3 py-1 text-[11px] font-black text-rose-100">
+                                faltando: {phrase}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
                         {contentAssets.synced_captions.hybrid_debug.missing_terms_from_words.length > 0 && (
                           <div className="mt-3 flex flex-wrap gap-2">
                             {contentAssets.synced_captions.hybrid_debug.missing_terms_from_words.map((term) => (
