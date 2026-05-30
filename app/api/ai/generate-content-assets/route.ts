@@ -172,6 +172,10 @@ type CutSuggestion = {
   format_recommendation?: string
   should_publish_first?: boolean
   needs_context_warning?: boolean
+  safe_first_score?: number
+  safe_first_reason?: string[]
+  safe_title_suggestion?: string
+  priority_adjusted_by_backend?: boolean
   suggested_smaller_cut?: {
     start: number
     end: number
@@ -879,12 +883,127 @@ function containsSensitiveCutLanguage(text: string) {
   const normalized = normalizeTextForCaptionSearch(text)
   return [
     'oferta',
+    'dinheiro',
+    'financeiro',
+    'pastor',
+    'pulpito',
     'manipulacao',
     'nao e obediencia',
     'nao se pede',
+    'foi pedida',
     'desperdicio',
     'judas',
   ].some((term) => normalized.includes(term))
+}
+
+function containsAnyNormalizedTerm(text: string, terms: string[]) {
+  const normalized = normalizeTextForCaptionSearch(text)
+  return terms.some((term) => normalized.includes(normalizeTextForCaptionSearch(term)))
+}
+
+function calculateSafeFirstPostScore(cut: CutSuggestion) {
+  const duration = cut.end - cut.start
+  const searchText = [
+    cut.title,
+    cut.hook,
+    cut.opening_line,
+    cut.source_excerpt,
+    cut.base_excerpt,
+    cut.reason,
+    cut.risk,
+    cut.editorial_alert,
+  ].filter(Boolean).join(' ')
+  const reasons: string[] = []
+  let score = 0
+
+  if (cut.editorial_alert_level === 'low') {
+    score += 30
+    reasons.push('baixo risco editorial')
+  }
+  if (duration >= 25 && duration <= 45) {
+    score += 20
+    reasons.push('duracao na faixa ideal')
+  }
+  if ((cut.retention_score || 0) >= 9) {
+    score += 15
+    reasons.push('retencao alta')
+  }
+  if ((cut.visual_potential || 0) >= 8) {
+    score += 15
+    reasons.push('imagem visual forte')
+  }
+  if ((cut.biblical_specificity || 0) >= 8) {
+    score += 10
+    reasons.push('clareza biblica')
+  }
+  if (containsAnyNormalizedTerm(searchText, ['300', 'dias de trabalho', 'gramas', 'valor', 'denario'])) {
+    score += 20
+    reasons.push('numero concreto ou valor memoravel')
+  }
+  if (
+    containsAnyNormalizedTerm(searchText, [
+      'perfume',
+      'nardo',
+      'pes de Jesus',
+      'oleo',
+      'cabelos',
+      'derramou',
+      'mesa',
+      'ceia',
+      'navio',
+      'naufragio',
+      'terra firme',
+    ])
+  ) {
+    score += 15
+    reasons.push('imagem concreta facil de visualizar')
+  }
+
+  if (cut.editorial_alert_level === 'medium') {
+    score -= 30
+    reasons.push('risco editorial medio')
+  }
+  if (cut.editorial_alert_level === 'high') {
+    score -= 60
+    reasons.push('risco editorial alto')
+  }
+  if (cut.needs_context_warning) {
+    score -= 35
+    reasons.push('depende de contexto')
+  }
+  if (cut.production_role === 'sensitive_topic') {
+    score -= 35
+    reasons.push('tema sensivel')
+  }
+  if (cut.duration_type === 'micro_devotional') {
+    score -= 25
+    reasons.push('melhor como microdevocional')
+  }
+  if (duration > 60) {
+    score -= 40
+    reasons.push('mais longo que um short principal')
+  }
+  if (
+    containsAnyNormalizedTerm(searchText, [
+      'oferta',
+      'dinheiro',
+      'financeiro',
+      'pastor',
+      'pulpito',
+      'manipulacao',
+      'nao e obediencia',
+      'nao se pede',
+      'foi pedida',
+    ])
+  ) {
+    score -= 25
+    reasons.push('linguagem com chance de interpretacao sensivel')
+  }
+
+  return {
+    safe_first_score: score,
+    safe_first_reason: reasons,
+  }
 }
 
 function normalizeSuggestedSmallerCut(
@@ -973,6 +1092,7 @@ function normalizeBestAiCuts(input: unknown, model: string): BestAiCutsResult {
         format_recommendation?: unknown
         should_publish_first?: unknown
         needs_context_warning?: unknown
+        safe_title_suggestion?: unknown
         suggested_smaller_cut?: unknown
         caption_lines?: unknown
         suggested_caption_lines?: unknown
@@ -1008,7 +1128,22 @@ function normalizeBestAiCuts(input: unknown, model: string): BestAiCutsResult {
         getProductionLabelByRole(productionRole)
       const alertLevel = cleanText(String(value.editorial_alert_level || 'low'))
       const safeAlertLevel = alertLevel === 'medium' || alertLevel === 'high' ? alertLevel : 'low'
-      const sensitiveLanguage = containsSensitiveCutLanguage(`${title} ${hook} ${reason}`)
+      const safeTitleSuggestion = cleanText(String(value.safe_title_suggestion || '')).slice(0, 140)
+      const sensitiveLanguage = containsSensitiveCutLanguage(`${title} ${hook} ${reason} ${baseExcerpt || ''}`)
+      const finalAlertLevel = sensitiveLanguage && safeAlertLevel === 'low' ? 'medium' : safeAlertLevel
+      const needsContextWarning =
+        typeof value.needs_context_warning === 'boolean'
+          ? value.needs_context_warning
+          : sensitiveLanguage
+      let finalProductionRole = sensitiveLanguage && finalAlertLevel !== 'low' ? 'sensitive_topic' : productionRole
+      let finalProductionLabel = productionLabel
+
+      if (finalAlertLevel === 'high') {
+        finalProductionRole = 'sensitive_topic'
+        finalProductionLabel = 'Usar com cuidado'
+      } else if (finalAlertLevel === 'medium' && needsContextWarning && finalProductionLabel === 'Postar primeiro') {
+        finalProductionLabel = 'Usar com cuidado'
+      }
 
       const cut: CutSuggestion = {
         title,
@@ -1030,9 +1165,9 @@ function normalizeBestAiCuts(input: unknown, model: string): BestAiCutsResult {
         recommended_use: profile.recommendedUse,
         risk: cleanText(String(value.risk || '')).slice(0, 220) || 'Risco editorial nao informado.',
         production_priority: Number.isFinite(priority) ? Math.max(1, Math.round(priority)) : rawCuts.indexOf(item) + 1,
-        production_label: productionLabel,
-        production_role: sensitiveLanguage && safeAlertLevel !== 'low' ? 'sensitive_topic' : productionRole,
-        editorial_alert_level: sensitiveLanguage && safeAlertLevel === 'low' ? 'medium' : safeAlertLevel,
+        production_label: finalProductionLabel,
+        production_role: finalProductionRole,
+        editorial_alert_level: finalAlertLevel,
         editorial_alert:
           cleanText(String(value.editorial_alert || '')).slice(0, 260) ||
           (sensitiveLanguage
@@ -1042,10 +1177,9 @@ function normalizeBestAiCuts(input: unknown, model: string): BestAiCutsResult {
           cleanText(String(value.format_recommendation || '')).slice(0, 120) ||
           profile.recommendedUse,
         should_publish_first: value.should_publish_first === true,
-        needs_context_warning:
-          typeof value.needs_context_warning === 'boolean'
-            ? value.needs_context_warning
-            : sensitiveLanguage,
+        needs_context_warning: needsContextWarning,
+        safe_title_suggestion: safeTitleSuggestion || undefined,
+        priority_adjusted_by_backend: false,
         suggested_smaller_cut: normalizeSuggestedSmallerCut(value.suggested_smaller_cut, { start, end }, warnings),
         suggested_caption_lines: normalizeCaptionLines(value.caption_lines || value.suggested_caption_lines),
         cut_type: profile.cutType,
@@ -1079,15 +1213,84 @@ function normalizeBestAiCuts(input: unknown, model: string): BestAiCutsResult {
     warnings.push('A IA retornou mais de 5 cortes; exibindo ate 7 para revisao editorial.')
   }
 
-  const firstPriority = Math.min(...cuts.map((cut) => cut.production_priority || 99))
+  cuts.forEach((cut) => {
+    const safeScore = calculateSafeFirstPostScore(cut)
+    cut.safe_first_score = safeScore.safe_first_score
+    cut.safe_first_reason = safeScore.safe_first_reason
+
+    if (cut.editorial_alert_level === 'high') {
+      cut.production_role = 'sensitive_topic'
+      cut.production_label = 'Usar com cuidado'
+    } else if (
+      cut.editorial_alert_level === 'medium' &&
+      cut.needs_context_warning &&
+      cut.production_label === 'Postar primeiro'
+    ) {
+      cut.production_label = 'Usar com cuidado'
+      cut.production_role = 'sensitive_topic'
+    }
+  })
+
+  const originalFirstCut = cuts[0]
+  const safeLowRiskCandidates = cuts.filter((cut) => cut.editorial_alert_level === 'low')
+  const bestSafeCandidate = [...cuts].sort((a, b) => {
+    const safeDiff = (b.safe_first_score || 0) - (a.safe_first_score || 0)
+    if (safeDiff !== 0) return safeDiff
+    const retentionDiff = (b.retention_score || 0) - (a.retention_score || 0)
+    if (retentionDiff !== 0) return retentionDiff
+    return getIdealDurationDistance(a) - getIdealDurationDistance(b)
+  })[0]
+  const bestLowRiskCandidate = safeLowRiskCandidates.sort((a, b) => {
+    const safeDiff = (b.safe_first_score || 0) - (a.safe_first_score || 0)
+    if (safeDiff !== 0) return safeDiff
+    const retentionDiff = (b.retention_score || 0) - (a.retention_score || 0)
+    if (retentionDiff !== 0) return retentionDiff
+    return getIdealDurationDistance(a) - getIdealDurationDistance(b)
+  })[0]
+  const firstPostCut = bestLowRiskCandidate || bestSafeCandidate
+
+  if (!bestLowRiskCandidate) {
+    warnings.push('Nenhum corte de baixo risco foi encontrado para primeiro post.')
+  }
+
+  if (firstPostCut) {
+    cuts.sort((a, b) => {
+      if (a === firstPostCut) return -1
+      if (b === firstPostCut) return 1
+      const priorityDiff = (a.production_priority || 99) - (b.production_priority || 99)
+      if (priorityDiff !== 0) return priorityDiff
+      const safeDiff = (b.safe_first_score || 0) - (a.safe_first_score || 0)
+      if (safeDiff !== 0) return safeDiff
+      return getIdealDurationDistance(a) - getIdealDurationDistance(b)
+    })
+  }
+
+  const priorityAdjusted = Boolean(originalFirstCut && firstPostCut && originalFirstCut !== firstPostCut)
+  if (priorityAdjusted) {
+    warnings.push('A prioridade dos cortes foi ajustada localmente para favorecer primeiro post seguro, concreto e visual.')
+  }
+
   cuts.forEach((cut, index) => {
     cut.production_priority = index + 1
-    cut.should_publish_first = cut.should_publish_first || (cut.production_priority === 1 && firstPriority >= 1)
-    if (cut.should_publish_first && cut.production_priority !== 1) {
-      cut.should_publish_first = false
-    }
-    if (!cut.production_label) {
+    cut.should_publish_first = index === 0
+    cut.priority_adjusted_by_backend = priorityAdjusted && cut === firstPostCut
+
+    if (index === 0 && cut.editorial_alert_level === 'low') {
+      cut.production_label = 'Postar primeiro'
+      if (cut.production_role !== 'quick_teaser' && cut.production_role !== 'micro_devotional') {
+        cut.production_role = 'main_short'
+      }
+    } else if (cut.editorial_alert_level === 'high') {
+      cut.production_label = 'Usar com cuidado'
+      cut.production_role = 'sensitive_topic'
+    } else if (cut.editorial_alert_level === 'medium' && cut.needs_context_warning) {
+      cut.production_label = 'Usar com cuidado'
+      cut.production_role = 'sensitive_topic'
+    } else if (cut.production_label === 'Postar primeiro') {
       cut.production_label = getProductionLabelByRole(cut.production_role)
+      if (cut.production_label === 'Postar primeiro') {
+        cut.production_label = 'Postar depois'
+      }
     }
   })
 
@@ -2572,6 +2775,16 @@ Campos de producao:
 - Cortes sensiveis devem receber sensitive_topic ou editorial_alert_level medium/high.
 - Temas com oferta, manipulacao, "nao e obediencia", "nao se pede", Judas ou desperdicio exigem cuidado editorial.
 - Se um corte tiver mais de 60s ou parecer longo demais para Short principal, sugira suggested_smaller_cut quando houver recorte menor confiavel dentro dele.
+- safe_title_suggestion: quando o corte for sensivel ou ambiguo, sugira um titulo mais seguro e fiel, sem exagero.
+
+Regra de primeiro post:
+- O corte recomendado como primeiro post deve ser o mais seguro, claro, concreto, visual e facil de entender sem contexto.
+- Prioridade #1 deve ter baixo risco editorial, ideia clara, imagem visual forte, numero concreto ou frase memoravel, baixa chance de ma interpretacao e duracao preferencial de 25s a 45s.
+- Cortes com alerta medio/alto NAO devem ser #1 se existir outro corte forte com risco baixo.
+- Cortes sobre oferta, manipulacao, "nao e obediencia", "nao se pede", pastor, pulpito ou dinheiro nao devem ser #1, salvo se forem o unico corte forte do episodio.
+- Cortes conceituais podem ter nota alta, mas devem vir como "Postar depois" ou "Usar com cuidado" quando houver risco de interpretacao.
+- Cortes com numero concreto e imagem visual clara devem subir na prioridade.
+- Exemplo: se houver um corte sobre "300 dias de trabalho aos pes de Jesus" com baixo risco, ele deve ter prioridade sobre um corte teologico sensivel sobre "adoracao nao e obediencia".
 
 EPISODIO: ${params.title}
 REFERENCIA: ${params.bibleReference || 'Nao informada'}
@@ -2616,6 +2829,7 @@ Retorne SOMENTE JSON valido neste formato:
       "format_recommendation": "Short principal",
       "should_publish_first": true,
       "needs_context_warning": false,
+      "safe_title_suggestion": null,
       "suggested_smaller_cut": null,
       "caption_lines": ["300 dias de trabalho", "um perfume derramado", "aos pes de Jesus"]
     }

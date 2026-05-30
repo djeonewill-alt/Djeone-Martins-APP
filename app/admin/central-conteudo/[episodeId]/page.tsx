@@ -163,6 +163,10 @@ type CutSuggestion = {
   format_recommendation?: string
   should_publish_first?: boolean
   needs_context_warning?: boolean
+  safe_first_score?: number
+  safe_first_reason?: string[]
+  safe_title_suggestion?: string
+  priority_adjusted_by_backend?: boolean
   suggested_smaller_cut?: {
     start: number
     end: number
@@ -1916,13 +1920,34 @@ export default function AdminContentStudioPage() {
 
         return [
           `${index + 1}. [${formatClockTime(cut.start)} - ${formatClockTime(cut.end)}] ${cut.title}`,
+          typeof cut.production_priority === 'number' ? `   Prioridade: #${cut.production_priority}` : '',
+          cut.production_label ? `   Producao: ${cut.production_label}` : '',
+          cut.production_role ? `   Papel: ${cut.production_role}` : '',
+          `   Primeiro post: ${cut.should_publish_first ? 'sim' : 'nao'}`,
           `   Tipo: ${profile.label}`,
           `   Uso recomendado: ${cut.recommended_use || profile.recommendedUse}`,
+          cut.format_recommendation ? `   Formato recomendado: ${cut.format_recommendation}` : '',
+          cut.editorial_alert_level ? `   Alerta: ${cut.editorial_alert_level}` : '',
+          cut.editorial_alert ? `   Atencao editorial: ${cut.editorial_alert}` : '',
+          typeof cut.needs_context_warning === 'boolean' ? `   Alerta de contexto: ${cut.needs_context_warning ? 'sim' : 'nao'}` : '',
+          typeof cut.safe_first_score === 'number' ? `   Score primeiro post: ${cut.safe_first_score}` : '',
+          cut.safe_first_reason?.length ? `   Razoes do score: ${cut.safe_first_reason.join('; ')}` : '',
+          cut.safe_title_suggestion ? `   Titulo seguro sugerido: ${cut.safe_title_suggestion}` : '',
+          typeof cut.priority_adjusted_by_backend === 'boolean'
+            ? `   Prioridade ajustada pelo backend: ${cut.priority_adjusted_by_backend ? 'sim' : 'nao'}`
+            : '',
           `   Gancho: ${cut.hook}`,
           cut.opening_line ? `   Abertura sugerida: ${cut.opening_line}` : '',
           `   Motivo: ${cut.reason}`,
           `   Nota de retencao: ${cut.retention_score || cut.strength_score || 'Nao informada'}`,
           cut.risk ? `   Risco: ${cut.risk}` : '',
+          cut.suggested_smaller_cut
+            ? [
+                `   Recorte menor sugerido: [${formatClockTime(cut.suggested_smaller_cut.start)} - ${formatClockTime(cut.suggested_smaller_cut.end)}] ${cut.suggested_smaller_cut.title}`,
+                `   Gancho do recorte: ${cut.suggested_smaller_cut.hook}`,
+                `   Motivo do recorte: ${cut.suggested_smaller_cut.reason}`,
+              ].join('\n')
+            : '',
           cut.source_excerpt ? `   Trecho-base: ${cut.source_excerpt}` : '',
           '',
         ].filter(Boolean)
@@ -3714,6 +3739,7 @@ export default function AdminContentStudioPage() {
                                 #{cut.production_priority || index + 1}
                               </span>
                               <InfoPill label="IA forte" tone="green" />
+                              {cut.priority_adjusted_by_backend && <InfoPill label="Prioridade ajustada" tone="amber" />}
                               <span className={`rounded-full border px-2 py-1 text-[11px] font-black ${
                                 cut.editorial_alert_level === 'high'
                                   ? 'border-rose-300/25 bg-rose-500/10 text-rose-100'
@@ -3741,6 +3767,11 @@ export default function AdminContentStudioPage() {
 
                             <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100/70">Titulo</p>
                             <p className="mt-1 text-sm font-black text-white">{cut.title}</p>
+                            {cut.safe_title_suggestion && (
+                              <p className="mt-2 rounded-lg border border-amber-300/15 bg-amber-500/10 p-2 text-xs font-bold leading-5 text-amber-50">
+                                Titulo mais seguro sugerido: {cut.safe_title_suggestion}
+                              </p>
+                            )}
                             <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100/70">Gancho</p>
                             <p className="mt-1 text-xs font-bold leading-5 text-emerald-50">{cut.hook}</p>
 
@@ -3780,6 +3811,13 @@ export default function AdminContentStudioPage() {
                                 <p className="mt-1 text-xs font-black text-emerald-50">{cut.recommended_use || getCutDurationProfile(getCutDuration(cut)).recommendedUse}</p>
                               </div>
                             </div>
+
+                            {typeof cut.safe_first_score === 'number' && (
+                              <p className="mt-2 text-[11px] font-bold text-slate-500">
+                                Score primeiro post: {cut.safe_first_score}
+                                {cut.safe_first_reason?.length ? ` - ${cut.safe_first_reason.join(', ')}` : ''}
+                              </p>
+                            )}
 
                             <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100/70">Motivo</p>
                             <p className="mt-1 text-xs leading-5 text-slate-300">{cut.reason}</p>
