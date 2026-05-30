@@ -83,6 +83,14 @@ type CaptionHybridDebug = {
   missing_terms_from_words: string[]
   confidence: 'high' | 'medium' | 'low'
   reason: string
+  alignment?: {
+    matched_ratio: number
+    segment_tokens_count: number
+    raw_tokens_count: number
+    aligned_tokens_count: number
+    aligned_text: string
+    used_alignment: boolean
+  }
 }
 
 type ShortIdea = {
@@ -225,7 +233,7 @@ const SOFT_MIN_CUT_SECONDS = 25
 const MAX_CUT_SECONDS = 75
 const MISSING_TIMESTAMPS_NOTE =
   'Este episodio nao possui segmentos com timestamps. Gere uma transcricao com timestamps para cortes precisos.'
-const CAPTION_SYNC_ALGORITHM_VERSION = 'cc-l1.2-hybrid'
+const CAPTION_SYNC_ALGORITHM_VERSION = 'cc-l1.3-hybrid-align'
 
 const GENERATION_MODES: GenerationMode[] = [
   'all',
@@ -1446,6 +1454,107 @@ function textHasCaptionTerm(text: string, term: string) {
   return new RegExp(`(^|\\s)${safeTerm}(\\s|$)`, 'i').test(normalized)
 }
 
+function tokenizeCaptionText(text: string) {
+  return cleanText(text)
+    .split(/\s+/)
+    .map((original) => ({
+      original: cleanCaptionWord(original),
+      normalized: normalizeCaptionTokenForGrouping(original),
+    }))
+    .filter((token) => token.original && token.normalized)
+}
+
+function alignHybridTextToRawWords(params: { segmentText: string; rawWordText: string }) {
+  const segmentTokens = tokenizeCaptionText(params.segmentText)
+  const rawTokens = tokenizeCaptionText(params.rawWordText)
+  const rawNormalized = rawTokens.map((token) => token.normalized)
+  let best:
+    | {
+        startIndex: number
+        endIndex: number
+        firstMatchIndex: number
+        matchedCount: number
+        score: number
+      }
+    | null = null
+
+  if (!segmentTokens.length || !rawTokens.length) {
+    return {
+      matched_ratio: 0,
+      segment_tokens_count: segmentTokens.length,
+      raw_tokens_count: rawTokens.length,
+      aligned_tokens_count: 0,
+      aligned_text: '',
+      used_alignment: false,
+    }
+  }
+
+  for (let startIndex = 0; startIndex < segmentTokens.length; startIndex += 1) {
+    let rawIndex = 0
+    let matchedCount = 0
+    let firstMatchIndex = -1
+    let endIndex = startIndex
+
+    for (let segmentIndex = startIndex; segmentIndex < segmentTokens.length && rawIndex < rawNormalized.length; segmentIndex += 1) {
+      if (segmentTokens[segmentIndex].normalized === rawNormalized[rawIndex]) {
+        if (firstMatchIndex === -1) firstMatchIndex = segmentIndex
+        matchedCount += 1
+        rawIndex += 1
+        endIndex = segmentIndex
+      }
+    }
+
+    if (matchedCount === 0 || firstMatchIndex === -1) continue
+
+    const matchedRatio = matchedCount / rawNormalized.length
+    const windowLength = Math.max(1, endIndex - firstMatchIndex + 1)
+    const score = matchedRatio - windowLength / Math.max(segmentTokens.length * 3, 1)
+
+    if (!best || score > best.score) {
+      best = {
+        startIndex,
+        endIndex,
+        firstMatchIndex,
+        matchedCount,
+        score,
+      }
+    }
+  }
+
+  if (!best) {
+    return {
+      matched_ratio: 0,
+      segment_tokens_count: segmentTokens.length,
+      raw_tokens_count: rawTokens.length,
+      aligned_tokens_count: 0,
+      aligned_text: '',
+      used_alignment: false,
+    }
+  }
+
+  let alignedStart = best.firstMatchIndex
+  const prefixLimit = Math.max(0, best.firstMatchIndex - 4)
+
+  while (alignedStart > prefixLimit) {
+    const previous = segmentTokens[alignedStart - 1]?.normalized
+    if (!previous || /^(entao|significa|denario|receber|trabalhavam|epoca)$/.test(previous)) break
+    alignedStart -= 1
+  }
+
+  const alignedEnd = Math.min(segmentTokens.length - 1, best.endIndex + 2)
+  const alignedTokens = segmentTokens.slice(alignedStart, alignedEnd + 1)
+  const matchedRatio = Number((best.matchedCount / rawNormalized.length).toFixed(2))
+
+  return {
+    matched_ratio: matchedRatio,
+    segment_tokens_count: segmentTokens.length,
+    raw_tokens_count: rawTokens.length,
+    aligned_tokens_count: alignedTokens.length,
+    aligned_text: cleanText(alignedTokens.map((token) => token.original).join(' ')),
+    used_alignment: matchedRatio >= 0.45,
+  }
+}
+
 function getSegmentTextForCut(params: {
   segments: TranscriptionSegment[]
   transcriptionText: string
@@ -1489,20 +1598,28 @@ function buildCaptionHybridDebug(params: {
   segmentText: string
   confidence: 'high' | 'medium' | 'low'
   reason: string
+  alignment: ReturnType<typeof alignHybridTextToRawWords>
 }): CaptionHybridDebug {
+  const alignedOrSegmentText = params.alignment.used_alignment ? params.alignment.aligned_text : params.segmentText
   const missingTerms = HYBRID_IMPORTANT_TERMS.filter((term) => {
-    return textHasCaptionTerm(params.segmentText, term) && !textHasCaptionTerm(params.rawText, term)
+    return textHasCaptionTerm(alignedOrSegmentText, term) && !textHasCaptionTerm(params.rawText, term)
   })
+  const usedHybridText =
+    Boolean(alignedOrSegmentText) &&
+    params.confidence !== 'low' &&
+    params.alignment.used_alignment &&
+    missingTerms.length > 0
 
   return {
     raw_word_text: params.rawText,
     segment_text: params.segmentText,
-    used_hybrid_text: Boolean(params.segmentText) && params.confidence !== 'low' && missingTerms.length > 0,
+    used_hybrid_text: usedHybridText,
     missing_terms_from_words: missingTerms,
     confidence: params.confidence,
-    reason: missingTerms.length > 0
-      ? `${params.reason} Termos presentes na transcricao nao apareceram no words.json.`
-      : `${params.reason} Nenhum termo importante ausente foi detectado no words.json.`,
+    reason: usedHybridText
+      ? `${params.reason} Texto alinhado ao words.json antes de aplicar a revisao hibrida.`
+      : `${params.reason} Alinhamento insuficiente ou nenhum termo importante ausente foi detectado.`,
+    alignment: params.alignment,
   }
 }
 
@@ -1520,10 +1637,14 @@ function buildHybridCaptionLines(params: {
   rawWords: WordTimestamp[]
   cut: CaptionSyncCut
 }): SyncedCaptionLine[] {
-  const textWords = cleanText(params.hybridText)
+  const textTokens = cleanText(params.hybridText)
     .split(/\s+/)
-    .map(cleanCaptionWord)
-    .filter(Boolean)
+    .map((token) => ({
+      word: cleanCaptionWord(token),
+      hasSentenceBreak: /[.!?;:]$/.test(token),
+    }))
+    .filter((token) => token.word)
+  const textWords = textTokens.map((token) => token.word)
 
   if (textWords.length < 3) return []
 
@@ -1532,13 +1653,23 @@ function buildHybridCaptionLines(params: {
   const usableStart = Math.max(params.cut.start, timingStart)
   const usableEnd = Math.min(params.cut.end, Math.max(timingEnd, usableStart + 1))
   const totalDuration = Math.max(1, usableEnd - usableStart)
-  const secondsPerWord = totalDuration / textWords.length
-  const pseudoWords = textWords.map((word, index) => {
-    const start = usableStart + index * secondsPerWord
-    const end = index === textWords.length - 1 ? usableEnd : usableStart + (index + 1) * secondsPerWord
+  const tokenStarts: number[] = []
+  let totalUnits = 0
+
+  textTokens.forEach((token) => {
+    tokenStarts.push(totalUnits)
+    totalUnits += 1
+    if (token.hasSentenceBreak) totalUnits += 1.2
+  })
+
+  const secondsPerUnit = totalDuration / Math.max(totalUnits, textTokens.length)
+  const pseudoWords = textTokens.map((token, index) => {
+    const start = usableStart + tokenStarts[index] * secondsPerUnit
+    const nextUnit = index === textTokens.length - 1 ? totalUnits : tokenStarts[index + 1]
+    const end = index === textTokens.length - 1 ? usableEnd : usableStart + nextUnit * secondsPerUnit
 
     return {
-      word,
+      word: token.word,
       start,
       end: Math.max(start + 0.05, end),
     }
@@ -1699,15 +1830,20 @@ async function buildSyncedCaptions(params: {
     cutStart: cut.start,
     cutEnd: cut.end,
   })
+  const alignment = alignHybridTextToRawWords({
+    segmentText: segmentSource.text,
+    rawWordText: debug.raw_text,
+  })
   const hybridDebug = buildCaptionHybridDebug({
     rawText: debug.raw_text,
     segmentText: segmentSource.text,
     confidence: segmentSource.confidence,
     reason: segmentSource.reason,
+    alignment,
   })
   const hybridLines = hybridDebug.used_hybrid_text
     ? buildHybridCaptionLines({
-        hybridText: segmentSource.text,
+        hybridText: hybridDebug.alignment?.aligned_text || segmentSource.text,
         rawWords: cutWords,
         cut,
       })

@@ -55,6 +55,14 @@ type SyncedCaptions = {
     missing_terms_from_words: string[]
     confidence: 'high' | 'medium' | 'low'
     reason: string
+    alignment?: {
+      matched_ratio: number
+      segment_tokens_count: number
+      raw_tokens_count: number
+      aligned_tokens_count: number
+      aligned_text: string
+      used_alignment: boolean
+    }
   }
   debug?: {
     cut_start: number
@@ -238,7 +246,7 @@ const EMPTY_CONTENT_ASSETS: ContentAssets = {
   short_ideas: [],
   cut_suggestions: [],
 }
-const CURRENT_CAPTION_SYNC_VERSION = 'cc-l1.2-hybrid'
+const CURRENT_CAPTION_SYNC_VERSION = 'cc-l1.3-hybrid-align'
 
 type EpisodeStudioRow = {
   id: string
@@ -2298,6 +2306,11 @@ export default function AdminContentStudioPage() {
                           <span className="rounded-full border border-blue-300/20 bg-slate-950/40 px-3 py-1 text-[11px] font-black text-blue-100">
                             usado: {contentAssets.synced_captions.hybrid_debug.used_hybrid_text ? 'sim' : 'nao'}
                           </span>
+                          {contentAssets.synced_captions.hybrid_debug.alignment && (
+                            <span className="rounded-full border border-blue-300/20 bg-slate-950/40 px-3 py-1 text-[11px] font-black text-blue-100">
+                              alinhamento: {Math.round(contentAssets.synced_captions.hybrid_debug.alignment.matched_ratio * 100)}%
+                            </span>
+                          )}
                         </div>
                         {contentAssets.synced_captions.hybrid_debug.missing_terms_from_words.length > 0 && (
                           <div className="mt-3 flex flex-wrap gap-2">
