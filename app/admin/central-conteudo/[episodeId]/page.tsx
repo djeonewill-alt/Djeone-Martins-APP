@@ -288,7 +288,7 @@ type GenerationMode =
   | 'caption_ai_review'
   | 'best_cuts_ai'
 
-type StudioTab = 'studio' | 'episode' | 'transcription' | 'phrases' | 'publishing'
+type StudioTab = 'studio' | 'episode' | 'transcription' | 'phrases' | 'publishing' | 'workshop'
 
 type ManualCutFormState = {
   start: string
@@ -310,6 +310,7 @@ const EMPTY_CONTENT_ASSETS: ContentAssets = {
 }
 const CURRENT_CAPTION_SYNC_VERSION = 'cc-l1.5-hybrid-safe'
 const ACCEPTED_CAPTION_ALGORITHM_VERSIONS = [CURRENT_CAPTION_SYNC_VERSION, 'cc-l2-ai-review', 'cc-l2.1-ai-review-flex']
+const SHOW_CONTENT_FACTORY_WORKSHOP = true
 
 type EpisodeStudioRow = {
   id: string
@@ -366,6 +367,21 @@ function formatSegmentTime(seconds: number) {
   const rest = Math.floor(seconds % 60)
 
   return `${minutes}:${String(rest).padStart(2, '0')}`
+}
+
+function formatClockTime(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds < 0) return '00:00'
+
+  const totalSeconds = Math.floor(seconds)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const secs = totalSeconds % 60
+
+  if (hours > 0) {
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+  }
+
+  return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
 }
 
 function InfoPill({
@@ -821,6 +837,7 @@ export default function AdminContentStudioPage() {
   })
   const [manualCutError, setManualCutError] = useState('')
   const [manualCutWarning, setManualCutWarning] = useState('')
+  const [workshopCopyMessage, setWorkshopCopyMessage] = useState('')
 
   useEffect(() => {
     loadEpisode()
@@ -1665,9 +1682,10 @@ export default function AdminContentStudioPage() {
     )
   }
 
-  const segments = episode.transcription_segments || []
-  const suggestions = episode.daily_quote_suggestions || []
-  const hasTranscription = Boolean(episode.transcription_text?.trim())
+  const currentEpisode = episode
+  const segments = currentEpisode.transcription_segments || []
+  const suggestions = currentEpisode.daily_quote_suggestions || []
+  const hasTranscription = Boolean(currentEpisode.transcription_text?.trim())
   const fullCutSuggestions = contentAssets?.cut_suggestions.filter((cut) => !isHookCut(cut)) || []
   const hookSuggestions = contentAssets?.cut_suggestions.filter((cut) => isHookCut(cut)) || []
   const orderedCutSuggestions = [...fullCutSuggestions, ...hookSuggestions]
@@ -1729,7 +1747,135 @@ export default function AdminContentStudioPage() {
     { key: 'transcription', label: 'Transcricao', description: 'Texto e timestamps' },
     { key: 'phrases', label: 'Frases', description: 'Frases fortes' },
     { key: 'publishing', label: 'Publicacao', description: 'Pacote para redes' },
+    ...(SHOW_CONTENT_FACTORY_WORKSHOP
+      ? [{ key: 'workshop' as const, label: 'Oficina', description: 'Ferramentas tecnicas e diagnosticos para ajustar a fabrica.' }]
+      : []),
   ]
+
+  function formatSegmentedTranscriptForCopy() {
+    const header = [
+      `Titulo: ${currentEpisode.title}`,
+      `Referencia: ${currentEpisode.bible_reference || 'Nao informada'}`,
+      `Duracao: ${currentEpisode.duration_seconds ? formatDuration(currentEpisode.duration_seconds) : 'Nao informada'}`,
+      '',
+      'TRANSCRICAO COM TEMPOS',
+      '',
+    ]
+
+    if (!segments.length) {
+      return [
+        ...header,
+        'Sem segmentos temporizados disponiveis. Abaixo esta a transcricao completa sem tempos.',
+        '',
+        currentEpisode.transcription_text || 'Sem transcricao disponivel.',
+      ].join('\n')
+    }
+
+    return [
+      ...header,
+      ...segments.flatMap((segment) => [
+        `[${formatClockTime(segment.start)} - ${formatClockTime(segment.end)}]`,
+        segment.text,
+        '',
+      ]),
+    ].join('\n').trim()
+  }
+
+  function formatCutListForCopy(title: string, cuts: CutSuggestion[]) {
+    if (!cuts.length) return `${title}\n\nNenhum.`
+
+    return [
+      title,
+      '',
+      ...cuts.flatMap((cut, index) => {
+        const profile = getCutDurationProfile(getCutDuration(cut))
+
+        return [
+          `${index + 1}. [${formatClockTime(cut.start)} - ${formatClockTime(cut.end)}] ${cut.title}`,
+          `   Tipo: ${profile.label}`,
+          `   Uso recomendado: ${cut.recommended_use || profile.recommendedUse}`,
+          `   Gancho: ${cut.hook}`,
+          cut.opening_line ? `   Abertura sugerida: ${cut.opening_line}` : '',
+          `   Motivo: ${cut.reason}`,
+          `   Nota de retencao: ${cut.retention_score || cut.strength_score || 'Nao informada'}`,
+          cut.risk ? `   Risco: ${cut.risk}` : '',
+          cut.source_excerpt ? `   Trecho-base: ${cut.source_excerpt}` : '',
+          '',
+        ].filter(Boolean)
+      }),
+    ].join('\n').trim()
+  }
+
+  function formatCutsForCopy() {
+    return [
+      'CORTES SUGERIDOS',
+      '',
+      formatCutListForCopy('MELHORES CORTES COM IA FORTE', bestAiCutSuggestions),
+      '',
+      formatCutListForCopy('CORTES TRADICIONAIS', fullCutSuggestions),
+      '',
+      formatCutListForCopy('GANCHOS PARA EXPANDIR', hookSuggestions),
+      '',
+      formatCutListForCopy('CORTES MANUAIS', manualCutSuggestions),
+    ].join('\n\n')
+  }
+
+  function formatCutAnalysisPackageForCopy() {
+    const strongPhrasesText = contentAssets?.strong_phrases.length
+      ? contentAssets.strong_phrases.map((phrase, index) => `${index + 1}. ${getStrongPhraseText(phrase)}`).join('\n')
+      : 'Nenhuma frase forte gerada nesta tela.'
+
+    return [
+      'PACOTE PARA ANALISE DE CORTES',
+      '',
+      'EPISODIO',
+      `Titulo: ${currentEpisode.title}`,
+      `Referencia: ${currentEpisode.bible_reference || 'Nao informada'}`,
+      `Descricao: ${currentEpisode.description || 'Nao informada'}`,
+      `Duracao: ${currentEpisode.duration_seconds ? formatDuration(currentEpisode.duration_seconds) : 'Nao informada'}`,
+      '',
+      'STATUS',
+      `Transcricao: ${hasTranscription ? 'sim' : 'nao'}`,
+      `Segments: ${segments.length}`,
+      `Words: ${currentEpisode.transcription_words_count || 0}`,
+      `Frases fortes: ${contentAssets?.strong_phrases.length || suggestions.length || 0}`,
+      `Melhores cortes IA: ${bestAiCutSuggestions.length}`,
+      `Cortes tradicionais: ${contentAssets?.cut_suggestions.length || 0}`,
+      '',
+      formatSegmentedTranscriptForCopy(),
+      '',
+      formatCutListForCopy('CORTES SUGERIDOS PELA IA FORTE', bestAiCutSuggestions),
+      '',
+      formatCutListForCopy('CORTES TRADICIONAIS', fullCutSuggestions),
+      '',
+      formatCutListForCopy('GANCHOS PARA EXPANDIR', hookSuggestions),
+      '',
+      'FRASES FORTES / PALAVRA DO DIA',
+      strongPhrasesText,
+      '',
+      'PEDIDO DE ANALISE',
+      'Analise a transcricao e compare com os cortes sugeridos. Diga:',
+      '',
+      '1. quais cortes sao realmente bons;',
+      '2. quais estao longos demais;',
+      '3. quais deveriam ser divididos;',
+      '4. quais tem melhor potencial de retencao;',
+      '5. quais seriam bons para Short, Microdevocional ou Teaser;',
+      '6. quais tempos voce recomenda.',
+    ].join('\n')
+  }
+
+  async function copyTextToClipboard(text: string, successMessage: string) {
+    try {
+      await navigator.clipboard.writeText(text)
+      setWorkshopCopyMessage(successMessage)
+      window.setTimeout(() => setWorkshopCopyMessage(''), 2500)
+    } catch (error) {
+      console.error('Erro ao copiar conteudo da oficina:', error)
+      setWorkshopCopyMessage('Nao foi possivel copiar o conteudo.')
+    }
+  }
+
   const manualCutFormCard = (
     <article className="order-2 rounded-2xl border border-amber-300/15 bg-amber-500/10 p-4">
       <details>
@@ -2175,6 +2321,79 @@ export default function AdminContentStudioPage() {
                   )}
                 </div>
               )}
+            </section>
+          </div>
+          )}
+
+          {SHOW_CONTENT_FACTORY_WORKSHOP && activeStudioTab === 'workshop' && (
+          <div className="grid gap-5 lg:col-span-2">
+            <section className="rounded-[34px] border border-amber-300/15 bg-slate-900/80 p-5 shadow-2xl shadow-black/20">
+              <p className="text-[11px] font-black uppercase tracking-[0.20em] text-amber-200">
+                Oficina
+              </p>
+              <h2 className="mt-3 text-xl font-black text-white">Oficina tecnica</h2>
+              <p className="mt-2 max-w-3xl text-sm font-bold leading-6 text-slate-300">
+                Use estes botoes para copiar dados do episodio e analisar cortes manualmente. Esta area pode ser ocultada no futuro.
+              </p>
+
+              {workshopCopyMessage && (
+                <p className="mt-4 rounded-xl border border-emerald-300/20 bg-emerald-500/10 p-3 text-xs font-black text-emerald-100">
+                  {workshopCopyMessage}
+                </p>
+              )}
+
+              <div className="mt-5 grid gap-4 lg:grid-cols-3">
+                <article className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                  <h3 className="text-sm font-black text-white">Transcricao para analise</h3>
+                  <p className="mt-2 text-xs font-bold leading-5 text-slate-400">
+                    Copia segmentos com inicio e fim para revisar cortes fora da Central.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => copyTextToClipboard(
+                      formatSegmentedTranscriptForCopy(),
+                      'Transcricao com tempos copiada.'
+                    )}
+                    className="mt-4 w-full rounded-xl border border-amber-300/20 bg-amber-500/10 px-3 py-3 text-xs font-black text-amber-100 active:scale-[0.98]"
+                  >
+                    Copiar transcricao com tempos
+                  </button>
+                </article>
+
+                <article className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                  <h3 className="text-sm font-black text-white">Cortes e sugestoes</h3>
+                  <p className="mt-2 text-xs font-bold leading-5 text-slate-400">
+                    Inclui melhores cortes IA, cortes tradicionais, ganchos e manuais quando existirem.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => copyTextToClipboard(
+                      formatCutsForCopy(),
+                      'Cortes sugeridos copiados.'
+                    )}
+                    className="mt-4 w-full rounded-xl border border-blue-300/20 bg-blue-500/10 px-3 py-3 text-xs font-black text-blue-100 active:scale-[0.98]"
+                  >
+                    Copiar cortes sugeridos
+                  </button>
+                </article>
+
+                <article className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                  <h3 className="text-sm font-black text-white">Pacote completo para analise</h3>
+                  <p className="mt-2 text-xs font-bold leading-5 text-slate-400">
+                    Gera um pacote pronto para colar no ChatGPT e comparar a IA com curadoria humana.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => copyTextToClipboard(
+                      formatCutAnalysisPackageForCopy(),
+                      'Pacote para analise de cortes copiado.'
+                    )}
+                    className="mt-4 w-full rounded-xl border border-emerald-300/20 bg-emerald-500/10 px-3 py-3 text-xs font-black text-emerald-100 active:scale-[0.98]"
+                  >
+                    Copiar pacote para analise de cortes
+                  </button>
+                </article>
+              </div>
             </section>
           </div>
           )}
