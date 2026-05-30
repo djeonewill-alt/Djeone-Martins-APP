@@ -167,6 +167,9 @@ type CutSuggestion = {
   safe_first_reason?: string[]
   safe_title_suggestion?: string
   priority_adjusted_by_backend?: boolean
+  risk_adjusted_by_backend?: boolean
+  biblical_perfume_context?: boolean
+  sensitive_offering_context?: boolean
   suggested_smaller_cut?: {
     start: number
     end: number
@@ -1930,6 +1933,15 @@ export default function AdminContentStudioPage() {
           cut.editorial_alert_level ? `   Alerta: ${cut.editorial_alert_level}` : '',
           cut.editorial_alert ? `   Atencao editorial: ${cut.editorial_alert}` : '',
           typeof cut.needs_context_warning === 'boolean' ? `   Alerta de contexto: ${cut.needs_context_warning ? 'sim' : 'nao'}` : '',
+          typeof cut.biblical_perfume_context === 'boolean'
+            ? `   Contexto biblico seguro do perfume: ${cut.biblical_perfume_context ? 'sim' : 'nao'}`
+            : '',
+          typeof cut.sensitive_offering_context === 'boolean'
+            ? `   Contexto sensivel de oferta: ${cut.sensitive_offering_context ? 'sim' : 'nao'}`
+            : '',
+          typeof cut.risk_adjusted_by_backend === 'boolean'
+            ? `   Risco ajustado pelo backend: ${cut.risk_adjusted_by_backend ? 'sim' : 'nao'}`
+            : '',
           typeof cut.safe_first_score === 'number' ? `   Score primeiro post: ${cut.safe_first_score}` : '',
           cut.safe_first_reason?.length ? `   Razoes do score: ${cut.safe_first_reason.join('; ')}` : '',
           cut.safe_title_suggestion ? `   Titulo seguro sugerido: ${cut.safe_title_suggestion}` : '',
@@ -3740,6 +3752,7 @@ export default function AdminContentStudioPage() {
                               </span>
                               <InfoPill label="IA forte" tone="green" />
                               {cut.priority_adjusted_by_backend && <InfoPill label="Prioridade ajustada" tone="amber" />}
+                              {cut.risk_adjusted_by_backend && <InfoPill label="Risco ajustado" tone="green" />}
                               <span className={`rounded-full border px-2 py-1 text-[11px] font-black ${
                                 cut.editorial_alert_level === 'high'
                                   ? 'border-rose-300/25 bg-rose-500/10 text-rose-100'

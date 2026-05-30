@@ -176,6 +176,9 @@ type CutSuggestion = {
   safe_first_reason?: string[]
   safe_title_suggestion?: string
   priority_adjusted_by_backend?: boolean
+  risk_adjusted_by_backend?: boolean
+  biblical_perfume_context?: boolean
+  sensitive_offering_context?: boolean
   suggested_smaller_cut?: {
     start: number
     end: number
@@ -879,8 +882,41 @@ function normalizeProductionRole(input: unknown, duration: number): CutSuggestio
     : getProductionRoleByDuration(duration)
 }
 
-function containsSensitiveCutLanguage(text: string) {
-  const normalized = normalizeTextForCaptionSearch(text)
+function normalizeForEditorialScan(text: string) {
+  return normalizeTextForCaptionSearch(text)
+}
+
+function hasBiblicalPerfumeValueContext(text: string) {
+  const normalized = normalizeForEditorialScan(text)
+  const strongSignals = [
+    '300 dias de trabalho',
+    'denario',
+    'denarios',
+    'nardo',
+    'perfume',
+    'oleo',
+    'pes de jesus',
+    'maria',
+    'derramou',
+    'cabelos',
+    'gramas',
+    'litra',
+    'valor do perfume',
+    'perfume caro',
+  ]
+  const signalCount = strongSignals.filter((term) => normalized.includes(term)).length
+  const hasValueSignal = ['300', 'dias de trabalho', 'denario', 'denarios', 'valor', 'gramas', 'litra'].some((term) =>
+    normalized.includes(term)
+  )
+  const hasSceneSignal = ['perfume', 'nardo', 'oleo', 'maria', 'pes de jesus', 'derramou', 'cabelos'].some((term) =>
+    normalized.includes(term)
+  )
+
+  return signalCount >= 3 || (hasValueSignal && hasSceneSignal && signalCount >= 2)
+}
+
+function hasSensitiveOfferingContext(text: string) {
+  const normalized = normalizeForEditorialScan(text)
   return [
     'oferta',
     'dinheiro',
@@ -888,12 +924,20 @@ function containsSensitiveCutLanguage(text: string) {
     'pastor',
     'pulpito',
     'manipulacao',
+    'pressao',
     'nao e obediencia',
     'nao se pede',
     'foi pedida',
-    'desperdicio',
-    'judas',
+    'foi pedido',
+    'campanha',
+    'promessa',
+    'entregar dinheiro',
+    'pedir oferta',
   ].some((term) => normalized.includes(term))
+}
+
+function containsSensitiveCutLanguage(text: string) {
+  return hasSensitiveOfferingContext(text)
 }
 
 function containsAnyNormalizedTerm(text: string, terms: string[]) {
@@ -913,6 +957,8 @@ function calculateSafeFirstPostScore(cut: CutSuggestion) {
     cut.risk,
     cut.editorial_alert,
   ].filter(Boolean).join(' ')
+  const biblicalPerfumeContext = cut.biblical_perfume_context ?? hasBiblicalPerfumeValueContext(searchText)
+  const sensitiveOfferingContext = cut.sensitive_offering_context ?? hasSensitiveOfferingContext(searchText)
   const reasons: string[] = []
   let score = 0
 
@@ -939,6 +985,10 @@ function calculateSafeFirstPostScore(cut: CutSuggestion) {
   if (containsAnyNormalizedTerm(searchText, ['300', 'dias de trabalho', 'gramas', 'valor', 'denario'])) {
     score += 20
     reasons.push('numero concreto ou valor memoravel')
+  }
+  if (biblicalPerfumeContext) {
+    score += 20
+    reasons.push('valor biblico do perfume como imagem segura')
   }
   if (
     containsAnyNormalizedTerm(searchText, [
@@ -983,19 +1033,7 @@ function calculateSafeFirstPostScore(cut: CutSuggestion) {
     score -= 40
     reasons.push('mais longo que um short principal')
   }
-  if (
-    containsAnyNormalizedTerm(searchText, [
-      'oferta',
-      'dinheiro',
-      'financeiro',
-      'pastor',
-      'pulpito',
-      'manipulacao',
-      'nao e obediencia',
-      'nao se pede',
-      'foi pedida',
-    ])
-  ) {
+  if (sensitiveOfferingContext) {
     score -= 25
     reasons.push('linguagem com chance de interpretacao sensivel')
   }
@@ -1129,14 +1167,36 @@ function normalizeBestAiCuts(input: unknown, model: string): BestAiCutsResult {
       const alertLevel = cleanText(String(value.editorial_alert_level || 'low'))
       const safeAlertLevel = alertLevel === 'medium' || alertLevel === 'high' ? alertLevel : 'low'
       const safeTitleSuggestion = cleanText(String(value.safe_title_suggestion || '')).slice(0, 140)
-      const sensitiveLanguage = containsSensitiveCutLanguage(`${title} ${hook} ${reason} ${baseExcerpt || ''}`)
-      const finalAlertLevel = sensitiveLanguage && safeAlertLevel === 'low' ? 'medium' : safeAlertLevel
+      const editorialScanText = `${title} ${hook} ${reason} ${baseExcerpt || ''} ${value.risk || ''} ${value.editorial_alert || ''}`
+      const biblicalPerfumeContext = hasBiblicalPerfumeValueContext(editorialScanText)
+      const sensitiveOfferingContext = hasSensitiveOfferingContext(editorialScanText)
+      const riskAdjustedByBackend = biblicalPerfumeContext && !sensitiveOfferingContext && safeAlertLevel !== 'low'
+      const sensitiveLanguage = sensitiveOfferingContext
+      const finalAlertLevel = riskAdjustedByBackend
+        ? 'low'
+        : sensitiveLanguage && safeAlertLevel === 'low'
+          ? 'medium'
+          : safeAlertLevel
       const needsContextWarning =
         typeof value.needs_context_warning === 'boolean'
-          ? value.needs_context_warning
+          ? value.needs_context_warning && !riskAdjustedByBackend
           : sensitiveLanguage
       let finalProductionRole = sensitiveLanguage && finalAlertLevel !== 'low' ? 'sensitive_topic' : productionRole
       let finalProductionLabel = productionLabel
+
+      if (biblicalPerfumeContext && !sensitiveOfferingContext && finalProductionRole === 'sensitive_topic') {
+        finalProductionRole = duration >= 25 && duration <= 45 ? 'main_short' : getProductionRoleByDuration(duration)
+        if (finalProductionLabel === 'Usar com cuidado') {
+          finalProductionLabel = getProductionLabelByRole(finalProductionRole)
+        }
+      }
+
+      if (riskAdjustedByBackend && duration >= 25 && duration <= 45) {
+        finalProductionRole = 'main_short'
+        if (value.should_publish_first === true) {
+          finalProductionLabel = 'Postar primeiro'
+        }
+      }
 
       if (finalAlertLevel === 'high') {
         finalProductionRole = 'sensitive_topic'
@@ -1163,16 +1223,20 @@ function normalizeBestAiCuts(input: unknown, model: string): BestAiCutsResult {
         duration_type: profile.type,
         duration_label: profile.label,
         recommended_use: profile.recommendedUse,
-        risk: cleanText(String(value.risk || '')).slice(0, 220) || 'Risco editorial nao informado.',
+        risk: riskAdjustedByBackend
+          ? 'Baixo. Valor do perfume tratado como dado biblico concreto, nao como pressao financeira.'
+          : cleanText(String(value.risk || '')).slice(0, 220) || 'Risco editorial nao informado.',
         production_priority: Number.isFinite(priority) ? Math.max(1, Math.round(priority)) : rawCuts.indexOf(item) + 1,
         production_label: finalProductionLabel,
         production_role: finalProductionRole,
         editorial_alert_level: finalAlertLevel,
         editorial_alert:
-          cleanText(String(value.editorial_alert || '')).slice(0, 260) ||
-          (sensitiveLanguage
-            ? 'Tema sensivel. Confira se o corte nao fica mal interpretado fora do contexto.'
-            : 'Baixo risco. Corte claro, visual e fiel ao episodio.'),
+          riskAdjustedByBackend
+            ? 'Baixo risco. O valor do perfume funciona como dado biblico concreto e imagem visual da entrega de Maria.'
+            : cleanText(String(value.editorial_alert || '')).slice(0, 260) ||
+              (sensitiveLanguage
+                ? 'Tema sensivel. Confira se o corte nao fica mal interpretado fora do contexto.'
+                : 'Baixo risco. Corte claro, visual e fiel ao episodio.'),
         format_recommendation:
           cleanText(String(value.format_recommendation || '')).slice(0, 120) ||
           profile.recommendedUse,
@@ -1180,6 +1244,9 @@ function normalizeBestAiCuts(input: unknown, model: string): BestAiCutsResult {
         needs_context_warning: needsContextWarning,
         safe_title_suggestion: safeTitleSuggestion || undefined,
         priority_adjusted_by_backend: false,
+        risk_adjusted_by_backend: riskAdjustedByBackend,
+        biblical_perfume_context: biblicalPerfumeContext,
+        sensitive_offering_context: sensitiveOfferingContext,
         suggested_smaller_cut: normalizeSuggestedSmallerCut(value.suggested_smaller_cut, { start, end }, warnings),
         suggested_caption_lines: normalizeCaptionLines(value.caption_lines || value.suggested_caption_lines),
         cut_type: profile.cutType,
@@ -2785,6 +2852,13 @@ Regra de primeiro post:
 - Cortes conceituais podem ter nota alta, mas devem vir como "Postar depois" ou "Usar com cuidado" quando houver risco de interpretacao.
 - Cortes com numero concreto e imagem visual clara devem subir na prioridade.
 - Exemplo: se houver um corte sobre "300 dias de trabalho aos pes de Jesus" com baixo risco, ele deve ter prioridade sobre um corte teologico sensivel sobre "adoracao nao e obediencia".
+
+Separacao importante sobre linguagem financeira:
+- Nao trate mencoes ao valor do perfume/nardo como tema sensivel por si so.
+- "300 dias de trabalho", "denarios", "valor do perfume" e "perfume caro" sao elementos visuais e narrativos seguros quando ligados a cena de Maria aos pes de Jesus.
+- Tema sensivel e quando o corte fala de oferta financeira, pressao religiosa, pastor, pulpito, manipulacao, dinheiro, "nao se pede", "foi pedido" ou doacao motivada por autoridade humana.
+- O corte do perfume de Maria deve ser considerado seguro se o foco for a cena biblica e a honra a Jesus.
+- Cortes com numero concreto e imagem visual clara podem ser bons candidatos a primeiro post.
 
 EPISODIO: ${params.title}
 REFERENCIA: ${params.bibleReference || 'Nao informada'}
