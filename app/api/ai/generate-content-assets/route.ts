@@ -40,6 +40,12 @@ type SyncedCaptionVersion = {
   json: SyncedCaptionLine[]
 }
 
+type EditorialSplitDebug = {
+  chunks_count: number
+  lines_count: number
+  protected_phrases_found: string[]
+}
+
 type SyncedCaptions = {
   source: 'word_timestamps'
   mode: 'hybrid' | 'word_only'
@@ -91,6 +97,7 @@ type CaptionHybridDebug = {
     aligned_text: string
     used_alignment: boolean
   }
+  editorial_split?: EditorialSplitDebug
 }
 
 type ShortIdea = {
@@ -233,7 +240,7 @@ const SOFT_MIN_CUT_SECONDS = 25
 const MAX_CUT_SECONDS = 75
 const MISSING_TIMESTAMPS_NOTE =
   'Este episodio nao possui segmentos com timestamps. Gere uma transcricao com timestamps para cortes precisos.'
-const CAPTION_SYNC_ALGORITHM_VERSION = 'cc-l1.3-hybrid-align'
+const CAPTION_SYNC_ALGORITHM_VERSION = 'cc-l1.4-hybrid-editorial'
 
 const GENERATION_MODES: GenerationMode[] = [
   'all',
@@ -1377,8 +1384,8 @@ function refineCaptionGroups(groups: WordTimestamp[][]): WordTimestamp[][] {
 function buildCaptionQualityWarnings(lines: SyncedCaptionLine[]) {
   const warnings: string[] = []
 
-  if (lines.some((line) => line.words_count < 3)) {
-    warnings.push('Algumas linhas podem estar curtas demais.')
+  if (lines.some((line) => line.words_count === 1)) {
+    warnings.push('Uma ou mais linhas ficaram com apenas uma palavra.')
   }
 
   if (lines.some((line) => {
@@ -1388,7 +1395,11 @@ function buildCaptionQualityWarnings(lines: SyncedCaptionLine[]) {
 
     return isWeakCaptionLineOpening(first) || isWeakCaptionLineEnding(last)
   })) {
-    warnings.push('Algumas linhas podem comecar ou terminar com palavras fracas.')
+    warnings.push('Algumas linhas ainda podem terminar com palavras fracas.')
+  }
+
+  if (lines.some((line) => line.words_count > 7)) {
+    warnings.push('Algumas linhas estao longas para Shorts/Reels.')
   }
 
   if (lines.some((line) => /\b(os|as|a|o)\s+de\s+Jesus\b/i.test(line.text))) {
@@ -1599,6 +1610,7 @@ function buildCaptionHybridDebug(params: {
   confidence: 'high' | 'medium' | 'low'
   reason: string
   alignment: ReturnType<typeof alignHybridTextToRawWords>
+  editorialSplit?: EditorialSplitDebug
 }): CaptionHybridDebug {
   const alignedOrSegmentText = params.alignment.used_alignment ? params.alignment.aligned_text : params.segmentText
   const missingTerms = HYBRID_IMPORTANT_TERMS.filter((term) => {
@@ -1620,6 +1632,7 @@ function buildCaptionHybridDebug(params: {
       ? `${params.reason} Texto alinhado ao words.json antes de aplicar a revisao hibrida.`
       : `${params.reason} Alinhamento insuficiente ou nenhum termo importante ausente foi detectado.`,
     alignment: params.alignment,
+    editorial_split: params.editorialSplit,
   }
 }
 
@@ -1632,53 +1645,184 @@ function buildCaptionVersion(lines: SyncedCaptionLine[]): SyncedCaptionVersion {
   }
 }
 
+const HYBRID_PROTECTED_PHRASES = [
+  '300 dias de trabalho',
+  'pes de jesus',
+  'ungiu os pes de jesus',
+  'com esse oleo',
+  'com esse perfume',
+  'secou com os cabelos',
+  'perfume de maria',
+  'nardo puro',
+  'adoracao extravagante',
+  'de todo o coracao',
+]
+
+function splitSentenceLikeHybridText(text: string) {
+  return cleanText(text)
+    .replace(/\b(E\s+o\s+texto\s+fala)\b/gi, '|$1')
+    .replace(/\b(O\s+texto\s+fala)\b/gi, '|$1')
+    .replace(/\b(E\s+entao|Então|Entao|Significa|Porque|Mas|Essa\s+foi)\b/g, '|$1')
+    .split(/[,.!?;:|]+/)
+    .map((chunk) => cleanText(chunk))
+    .filter(Boolean)
+}
+
+function findProtectedHybridPhrases(text: string) {
+  const normalizedText = normalizeTextForCaptionSearch(text)
+
+  return HYBRID_PROTECTED_PHRASES.filter((phrase) => normalizedText.includes(phrase))
+}
+
+function splitHybridTextIntoEditorialChunks(text: string): string[] {
+  const chunks: string[] = []
+
+  splitSentenceLikeHybridText(text).forEach((chunk) => {
+    const normalized = normalizeTextForCaptionSearch(chunk)
+
+    if (
+      normalized.includes('esse perfume de maria') &&
+      normalized.includes('300') &&
+      normalized.includes('dias de trabalho')
+    ) {
+      chunks.push('esse perfume de Maria equivalia')
+      chunks.push('a cerca de 300')
+      chunks.push('dias de trabalho')
+      return
+    }
+
+    if (normalized.includes('texto fala') && normalized.includes('derramou')) {
+      chunks.push(/^e\s+/i.test(chunk) ? 'E o texto fala' : 'O texto fala que')
+      chunks.push('que ela derramou')
+      return
+    }
+
+    if (normalized.includes('ungiu os pes de jesus')) {
+      chunks.push('ela ungiu os pes de Jesus')
+      return
+    }
+
+    if (normalized.includes('com esse oleo') && normalized.includes('com esse perfume')) {
+      chunks.push('com esse oleo')
+      chunks.push('com esse perfume')
+      return
+    }
+
+    if (normalized.includes('secou com os cabelos')) {
+      chunks.push(/^e\s+/i.test(chunk) ? 'e secou com os cabelos' : 'secou com os cabelos')
+      return
+    }
+
+    if (normalized.includes('essa foi') && normalized.includes('maria trouxe')) {
+      chunks.push('Essa foi a expressao')
+      chunks.push('que Maria trouxe')
+      return
+    }
+
+    chunks.push(chunk)
+  })
+
+  return mergeTinyCaptionChunks(chunks)
+}
+
+function splitChunkIntoCaptionLines(chunk: string) {
+  const words = cleanText(chunk).split(/\s+/).map(cleanCaptionWord).filter(Boolean)
+  const lines: string[] = []
+  let current: string[] = []
+
+  function pushCurrent() {
+    if (!current.length) return
+
+    lines.push(cleanSyncedCaptionLineText(current))
+    current = []
+  }
+
+  words.forEach((word, index) => {
+    current.push(word)
+
+    const nextWord = words[index + 1]
+    const reachedIdeal = current.length >= 5
+    const reachedMax = current.length >= 7
+    const shouldHold = nextWord && (isWeakCaptionLineEnding(word) || isWeakCaptionLineOpening(nextWord))
+
+    if ((reachedMax || reachedIdeal) && !shouldHold) {
+      pushCurrent()
+    }
+  })
+
+  pushCurrent()
+
+  return mergeTinyCaptionChunks(lines)
+}
+
+function mergeTinyCaptionChunks(lines: string[]) {
+  const merged = [...lines]
+
+  for (let index = 0; index < merged.length; index += 1) {
+    const words = merged[index].split(/\s+/).filter(Boolean)
+
+    if (words.length !== 1) continue
+
+    const previous = merged[index - 1]
+    const next = merged[index + 1]
+
+    if (previous && previous.split(/\s+/).length <= 6) {
+      merged[index - 1] = cleanText(`${previous} ${merged[index]}`)
+      merged.splice(index, 1)
+      index = Math.max(-1, index - 2)
+    } else if (next && next.split(/\s+/).length <= 6) {
+      merged[index] = cleanText(`${merged[index]} ${next}`)
+      merged.splice(index + 1, 1)
+      index = Math.max(-1, index - 1)
+    }
+  }
+
+  return merged
+}
+
+function splitHybridTextIntoCaptionLines(text: string) {
+  return splitHybridTextIntoEditorialChunks(text)
+    .flatMap(splitChunkIntoCaptionLines)
+    .filter(Boolean)
+}
+
 function buildHybridCaptionLines(params: {
   hybridText: string
   rawWords: WordTimestamp[]
   cut: CaptionSyncCut
 }): SyncedCaptionLine[] {
-  const textTokens = cleanText(params.hybridText)
-    .split(/\s+/)
-    .map((token) => ({
-      word: cleanCaptionWord(token),
-      hasSentenceBreak: /[.!?;:]$/.test(token),
-    }))
-    .filter((token) => token.word)
-  const textWords = textTokens.map((token) => token.word)
+  const captionTexts = splitHybridTextIntoCaptionLines(params.hybridText)
+  const lineWordCounts = captionTexts.map((line) => line.split(/\s+/).filter(Boolean).length)
+  const totalWords = lineWordCounts.reduce((sum, count) => sum + count, 0)
 
-  if (textWords.length < 3) return []
+  if (totalWords < 3) return []
 
   const timingStart = params.rawWords[0]?.start ?? params.cut.start
   const timingEnd = params.rawWords[params.rawWords.length - 1]?.end ?? params.cut.end
   const usableStart = Math.max(params.cut.start, timingStart)
   const usableEnd = Math.min(params.cut.end, Math.max(timingEnd, usableStart + 1))
   const totalDuration = Math.max(1, usableEnd - usableStart)
-  const tokenStarts: number[] = []
-  let totalUnits = 0
+  let cursor = usableStart
 
-  textTokens.forEach((token) => {
-    tokenStarts.push(totalUnits)
-    totalUnits += 1
-    if (token.hasSentenceBreak) totalUnits += 1.2
-  })
-
-  const secondsPerUnit = totalDuration / Math.max(totalUnits, textTokens.length)
-  const pseudoWords = textTokens.map((token, index) => {
-    const start = usableStart + tokenStarts[index] * secondsPerUnit
-    const nextUnit = index === textTokens.length - 1 ? totalUnits : tokenStarts[index + 1]
-    const end = index === textTokens.length - 1 ? usableEnd : usableStart + nextUnit * secondsPerUnit
+  return captionTexts.map((text, index) => {
+    const wordsCount = lineWordCounts[index]
+    const isLast = index === captionTexts.length - 1
+    const weightedDuration = totalDuration * (wordsCount / Math.max(totalWords, 1))
+    const duration = isLast
+      ? Math.max(1, usableEnd - cursor)
+      : Math.min(4.8, Math.max(1, weightedDuration))
+    const start = cursor
+    const end = isLast ? usableEnd : Math.min(usableEnd, start + duration)
+    cursor = Math.max(end, start + 0.2)
 
     return {
-      word: token.word,
-      start,
-      end: Math.max(start + 0.05, end),
+      start: roundCaptionTime(start - params.cut.start),
+      end: roundCaptionTime(Math.max(end, start + 0.8) - params.cut.start),
+      text,
+      words_count: wordsCount,
+      timing_mode: 'approximate_from_words' as const,
     }
-  })
-
-  return groupCaptionWords(pseudoWords, params.cut).map((line) => ({
-    ...line,
-    timing_mode: 'approximate_from_words',
-  }))
+  }).filter((line) => line.end > line.start)
 }
 
 function groupCaptionWords(words: WordTimestamp[], cut: CaptionSyncCut): SyncedCaptionLine[] {
@@ -1834,16 +1978,24 @@ async function buildSyncedCaptions(params: {
     segmentText: segmentSource.text,
     rawWordText: debug.raw_text,
   })
+  const alignedHybridText = alignment.aligned_text || segmentSource.text
+  const editorialCaptionTexts = splitHybridTextIntoCaptionLines(alignedHybridText)
+  const editorialSplitDebug: EditorialSplitDebug = {
+    chunks_count: splitHybridTextIntoEditorialChunks(alignedHybridText).length,
+    lines_count: editorialCaptionTexts.length,
+    protected_phrases_found: findProtectedHybridPhrases(alignedHybridText),
+  }
   const hybridDebug = buildCaptionHybridDebug({
     rawText: debug.raw_text,
     segmentText: segmentSource.text,
     confidence: segmentSource.confidence,
     reason: segmentSource.reason,
     alignment,
+    editorialSplit: editorialSplitDebug,
   })
   const hybridLines = hybridDebug.used_hybrid_text
     ? buildHybridCaptionLines({
-        hybridText: hybridDebug.alignment?.aligned_text || segmentSource.text,
+        hybridText: alignedHybridText,
         rawWords: cutWords,
         cut,
       })

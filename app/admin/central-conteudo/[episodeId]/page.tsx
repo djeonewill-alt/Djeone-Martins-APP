@@ -63,6 +63,11 @@ type SyncedCaptions = {
       aligned_text: string
       used_alignment: boolean
     }
+    editorial_split?: {
+      chunks_count: number
+      lines_count: number
+      protected_phrases_found: string[]
+    }
   }
   debug?: {
     cut_start: number
@@ -246,7 +251,7 @@ const EMPTY_CONTENT_ASSETS: ContentAssets = {
   short_ideas: [],
   cut_suggestions: [],
 }
-const CURRENT_CAPTION_SYNC_VERSION = 'cc-l1.3-hybrid-align'
+const CURRENT_CAPTION_SYNC_VERSION = 'cc-l1.4-hybrid-editorial'
 
 type EpisodeStudioRow = {
   id: string
