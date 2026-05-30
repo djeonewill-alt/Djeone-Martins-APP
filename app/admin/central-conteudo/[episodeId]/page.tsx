@@ -23,7 +23,7 @@ type SyncedCaptionLine = {
   end: number
   text: string
   words_count: number
-  timing_mode?: 'word_timestamps' | 'approximate_from_words'
+  timing_mode?: 'word_timestamps' | 'approximate_from_words' | 'redistributed_from_original_caption'
 }
 
 type SyncedCaptionVersion = {
@@ -34,8 +34,8 @@ type SyncedCaptionVersion = {
 }
 
 type ReviewedCaptions = {
-  mode: 'ai_review'
-  algorithm_version: 'cc-l2-ai-review'
+  mode: 'ai_review' | 'ai_review_flex'
+  algorithm_version: 'cc-l2-ai-review' | 'cc-l2.1-ai-review-flex'
   base_algorithm_version?: string
   lines: SyncedCaptionLine[]
   plain_text: string
@@ -44,6 +44,14 @@ type ReviewedCaptions = {
   review_notes: string[]
   confidence: 'high' | 'medium' | 'low'
   model: string
+  timing_mode?: 'redistributed_from_original_caption'
+  validation?: {
+    coverage_ratio: number
+    missing_important_tokens: string[]
+    missing_protected_phrases: string[]
+    original_line_count: number
+    reviewed_line_count: number
+  }
 }
 
 type SyncedCaptions = {
@@ -279,7 +287,7 @@ const EMPTY_CONTENT_ASSETS: ContentAssets = {
   cut_suggestions: [],
 }
 const CURRENT_CAPTION_SYNC_VERSION = 'cc-l1.5-hybrid-safe'
-const ACCEPTED_CAPTION_ALGORITHM_VERSIONS = [CURRENT_CAPTION_SYNC_VERSION, 'cc-l2-ai-review']
+const ACCEPTED_CAPTION_ALGORITHM_VERSIONS = [CURRENT_CAPTION_SYNC_VERSION, 'cc-l2-ai-review', 'cc-l2.1-ai-review-flex']
 
 type EpisodeStudioRow = {
   id: string
@@ -2434,6 +2442,14 @@ export default function AdminContentStudioPage() {
                             <p className="mt-1 text-xs font-bold text-emerald-100/60">
                               Base: {reviewedCaptionsForSelectedCut.base_algorithm_version || 'sem versao'} | versao: {reviewedCaptionsForSelectedCut.algorithm_version}
                             </p>
+                            <p className="mt-1 text-xs font-bold text-emerald-100/60">
+                              Modo: {reviewedCaptionsForSelectedCut.mode === 'ai_review_flex' ? 'revisao flexivel' : 'revisao por IA'} | tempos: {reviewedCaptionsForSelectedCut.timing_mode || 'originais'}
+                            </p>
+                            {reviewedCaptionsForSelectedCut.validation && (
+                              <p className="mt-1 text-xs font-bold text-emerald-100/60">
+                                Linhas: {reviewedCaptionsForSelectedCut.validation.original_line_count} originais - {reviewedCaptionsForSelectedCut.validation.reviewed_line_count} revisadas | cobertura: {Math.round(reviewedCaptionsForSelectedCut.validation.coverage_ratio * 100)}%
+                              </p>
+                            )}
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <CopyButton value={reviewedCaptionsForSelectedCut.srt} label="Copiar SRT revisado" />
@@ -2463,6 +2479,16 @@ export default function AdminContentStudioPage() {
                             ))}
                           </ul>
                         )}
+
+                        {reviewedCaptionsForSelectedCut.validation?.missing_protected_phrases.length ? (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {reviewedCaptionsForSelectedCut.validation.missing_protected_phrases.map((phrase) => (
+                              <span key={phrase} className="rounded-full border border-rose-300/20 bg-rose-500/10 px-3 py-1 text-[11px] font-black text-rose-100">
+                                revisar: {phrase}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
 
                         <div className="mt-3 grid gap-2">
                           {reviewedCaptionsForSelectedCut.lines.map((line, index) => (

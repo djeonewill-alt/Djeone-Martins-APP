@@ -30,7 +30,7 @@ type SyncedCaptionLine = {
   end: number
   text: string
   words_count: number
-  timing_mode?: 'word_timestamps' | 'approximate_from_words'
+  timing_mode?: 'word_timestamps' | 'approximate_from_words' | 'redistributed_from_original_caption'
 }
 
 type SyncedCaptionVersion = {
@@ -66,8 +66,8 @@ type SyncedCaptions = {
 }
 
 type ReviewedCaptions = {
-  mode: 'ai_review'
-  algorithm_version: 'cc-l2-ai-review'
+  mode: 'ai_review_flex'
+  algorithm_version: 'cc-l2.1-ai-review-flex'
   base_algorithm_version?: string
   lines: SyncedCaptionLine[]
   plain_text: string
@@ -76,6 +76,14 @@ type ReviewedCaptions = {
   review_notes: string[]
   confidence: 'high' | 'medium' | 'low'
   model: string
+  timing_mode: 'redistributed_from_original_caption'
+  validation: {
+    coverage_ratio: number
+    missing_important_tokens: string[]
+    missing_protected_phrases: string[]
+    original_line_count: number
+    reviewed_line_count: number
+  }
 }
 
 type CaptionSyncDebug = {
@@ -267,7 +275,7 @@ const MAX_CUT_SECONDS = 75
 const MISSING_TIMESTAMPS_NOTE =
   'Este episodio nao possui segmentos com timestamps. Gere uma transcricao com timestamps para cortes precisos.'
 const CAPTION_SYNC_ALGORITHM_VERSION = 'cc-l1.5-hybrid-safe'
-const CAPTION_AI_REVIEW_ALGORITHM_VERSION = 'cc-l2-ai-review'
+const CAPTION_AI_REVIEW_ALGORITHM_VERSION = 'cc-l2.1-ai-review-flex'
 
 const GENERATION_MODES: GenerationMode[] = [
   'all',
@@ -2066,6 +2074,9 @@ function buildCaptionAiReviewPrompt(params: {
     end: line.end,
     text: line.text,
   }))
+  const cutDuration = lines.length
+    ? Math.max(0, lines[lines.length - 1].end - lines[0].start)
+    : 0
   const segmentText = params.transcriptionSegments
     .filter((segment) => {
       if (!params.selectedCut) return true
@@ -2084,15 +2095,23 @@ REGRAS OBRIGATORIAS:
 2. Nao transforme em resumo.
 3. Nao mude a mensagem teologica/devocional.
 4. Preserve a ordem das ideias.
-5. Preserve os timestamps recebidos.
-6. Mantenha o mesmo numero de linhas/blocos: ${lines.length}.
-7. Corrija quebras ruins: linha terminando com "E", "que", "com", "de"; linha com conectivo solto; duplicacoes como "que que" e "e e"; frases incompletas.
-8. Se uma palavra necessaria aparece na transcricao/segmento, pode restaura-la.
-9. Se nao tiver certeza, preserve o texto original.
+5. Voce pode retornar numero diferente de linhas da entrada.
+6. Para cortes de 15s a 35s, use entre 6 e 12 linhas.
+7. Use linhas curtas, naturais e fortes para Shorts/Reels/TikTok.
+8. Cada linha deve ter preferencialmente 3 a 7 palavras.
+9. Pode dividir uma linha longa em duas.
+10. Pode juntar linhas quebradas.
+11. Preserve palavras teologicas, biblicas e nomes importantes.
+12. Nao precisa preservar timestamps exatos; o backend vai redistribuir os tempos.
+13. Retorne apenas o texto revisado por linha. Se incluir start/end aproximado, eles serao ignorados.
+14. Corrija quebras ruins: linha terminando com "E", "que", "com", "de"; linha com conectivo solto; duplicacoes como "que que" e "e e"; frases incompletas.
+15. Se uma palavra necessaria aparece na transcricao/segmento, pode restaura-la.
+16. Se nao tiver certeza, preserve o texto original.
 
 EPISODIO: ${params.title}
 REFERENCIA: ${params.bibleReference || 'Nao informada'}
 CORTE: ${params.selectedCut ? `${params.selectedCut.start}s - ${params.selectedCut.end}s | ${params.selectedCut.title || ''}` : 'Nao informado'}
+DURACAO APROXIMADA DA LEGENDA: ${cutDuration.toFixed(2)}s
 
 TRANSCRICAO/SEGMENTOS DO TRECHO:
 ${segmentText || params.transcriptionText.slice(0, 4000) || 'Nao enviada'}
@@ -2109,12 +2128,74 @@ ${JSON.stringify(lines, null, 2)}
 Responda SOMENTE JSON valido neste formato:
 {
   "reviewed_lines": [
-    { "start": 0.62, "end": 3.27, "text": "texto revisado" }
+    { "text": "texto revisado" }
   ],
-  "review_notes": ["nota curta"],
+  "review_notes": ["Reorganizei linhas para melhorar fluidez e remover conectivos soltos."],
   "confidence": "high"
 }
 `.trim()
+}
+
+function normalizeAiReviewedLineText(text: string) {
+  return cleanText(text)
+    .replace(/([,.!?;:])\1+/g, '$1')
+    .replace(/\s+([,.!?;:])/g, '$1')
+}
+
+function validateAiCaptionReviewCoverage(params: {
+  sourceText: string
+  reviewedLines: string[]
+}) {
+  const sourceLines = params.reviewedLines.map((text, index) => ({
+    start: index,
+    end: index + 1,
+    text,
+    words_count: text.split(/\s+/).filter(Boolean).length,
+  }))
+  const validation = validateCaptionCoverage({
+    sourceText: params.sourceText,
+    finalLines: sourceLines,
+    protectedPhrases: HYBRID_PROTECTED_PHRASES,
+  })
+  const passed = validation.coverageRatio >= 0.72 && validation.missingProtectedPhrases.length === 0
+
+  return {
+    ...validation,
+    passed,
+  }
+}
+
+function redistributeReviewedCaptionTimes(params: {
+  reviewedLines: string[]
+  originalLines: SyncedCaptionLine[]
+}): SyncedCaptionLine[] {
+  const startTotal = params.originalLines[0]?.start ?? 0
+  const endTotal = params.originalLines[params.originalLines.length - 1]?.end ?? startTotal + 1
+  const totalDuration = Math.max(0.5, endTotal - startTotal)
+  const lineWordCounts = params.reviewedLines.map((line) => line.split(/\s+/).filter(Boolean).length)
+  const totalWeight = lineWordCounts.reduce((sum, count) => sum + Math.max(1, count), 0)
+  const minimumDuration = totalDuration >= params.reviewedLines.length ? 1 : totalDuration / params.reviewedLines.length
+  const leftoverDuration = Math.max(0, totalDuration - minimumDuration * params.reviewedLines.length)
+  let cursor = startTotal
+
+  return params.reviewedLines.map((text, index) => {
+    const isLast = index === params.reviewedLines.length - 1
+    const wordsCount = lineWordCounts[index]
+    const weightedExtra = leftoverDuration * (Math.max(1, wordsCount) / Math.max(1, totalWeight))
+    const duration = isLast ? Math.max(0.2, endTotal - cursor) : Math.max(0.2, minimumDuration + weightedExtra)
+    const start = index === 0 ? startTotal : cursor
+    const end = isLast ? endTotal : Math.min(endTotal, start + duration)
+
+    cursor = end
+
+    return {
+      start: roundCaptionTime(start),
+      end: roundCaptionTime(Math.max(end, start + 0.2)),
+      text,
+      words_count: wordsCount,
+      timing_mode: 'redistributed_from_original_caption' as const,
+    }
+  })
 }
 
 function normalizeReviewedCaptions(params: {
@@ -2128,31 +2209,36 @@ function normalizeReviewedCaptions(params: {
     confidence?: unknown
   }
   const reviewedLines = Array.isArray(parsed.reviewed_lines) ? parsed.reviewed_lines : []
+  const reviewedTexts = reviewedLines
+    .map((line) => normalizeAiReviewedLineText(String(line?.text || '')))
+    .filter(Boolean)
 
-  if (reviewedLines.length !== params.syncedCaptions.lines.length) {
-    throw new Error('A IA retornou quantidade diferente de linhas. Tente revisar novamente.')
+  if (reviewedTexts.length < 3) {
+    throw new Error('A revisao da IA ficou curta demais ou removeu conteudo importante. Tente revisar novamente.')
   }
 
-  const lines = params.syncedCaptions.lines.map((originalLine, index) => {
-    const reviewedText = cleanText(String(reviewedLines[index]?.text || ''))
+  if (reviewedTexts.length > 18) {
+    throw new Error('A IA retornou linhas demais para este corte. Tente revisar novamente.')
+  }
 
-    if (!reviewedText) {
-      throw new Error('A IA retornou uma linha revisada vazia.')
-    }
+  const validation = validateAiCaptionReviewCoverage({
+    sourceText: params.syncedCaptions.plain_text || params.syncedCaptions.lines.map((line) => line.text).join(' '),
+    reviewedLines: reviewedTexts,
+  })
 
-    return {
-      ...originalLine,
-      start: originalLine.start,
-      end: originalLine.end,
-      text: reviewedText,
-      words_count: reviewedText.split(/\s+/).filter(Boolean).length,
-    }
+  if (!validation.passed) {
+    throw new Error('A revisao da IA parece ter removido conteudo importante. Tente novamente.')
+  }
+
+  const lines = redistributeReviewedCaptionTimes({
+    reviewedLines: reviewedTexts,
+    originalLines: params.syncedCaptions.lines,
   })
   const version = buildCaptionVersion(lines)
   const confidence = cleanText(String(parsed.confidence || 'medium'))
 
   return {
-    mode: 'ai_review',
+    mode: 'ai_review_flex',
     algorithm_version: CAPTION_AI_REVIEW_ALGORITHM_VERSION,
     base_algorithm_version: params.syncedCaptions.algorithm_version,
     lines: version.lines,
@@ -2162,6 +2248,14 @@ function normalizeReviewedCaptions(params: {
     review_notes: normalizeStringArray(parsed.review_notes, 8, 180),
     confidence: confidence === 'high' || confidence === 'low' ? confidence : 'medium',
     model: params.model,
+    timing_mode: 'redistributed_from_original_caption',
+    validation: {
+      coverage_ratio: validation.coverageRatio,
+      missing_important_tokens: validation.missingImportantTokens,
+      missing_protected_phrases: validation.missingProtectedPhrases,
+      original_line_count: params.syncedCaptions.lines.length,
+      reviewed_line_count: lines.length,
+    },
   }
 }
 
