@@ -252,6 +252,50 @@ type ShortScript = {
   }
 }
 
+type VisualStoryboardScene = {
+  start: number
+  end: number
+  role: string
+  title: string
+  on_screen_text: string
+  visual_description: string
+  image_prompt: string
+  b_roll: string
+  motion: string
+  sound: string
+  editing_note: string
+}
+
+type VisualStoryboard = {
+  mode: 'visual_storyboard'
+  version: string
+  model: string
+  visual_style: string
+  format: string
+  summary: string
+  visual_concept: string
+  scenes: VisualStoryboardScene[]
+  image_prompts: Array<{
+    label: string
+    prompt: string
+  }>
+  motion_plan: string[]
+  sound_plan: string[]
+  cta_visual: {
+    text: string
+    visual: string
+    motion: string
+  }
+  quality_checklist: {
+    has_hook_visual: boolean
+    has_biblical_fidelity: boolean
+    has_scene_variety: boolean
+    has_cta: boolean
+    avoids_text_inside_image: boolean
+  }
+  warnings: string[]
+}
+
 type StrongPhrase = {
   text: string
   use_case?: string
@@ -272,6 +316,7 @@ type ContentAssets = {
   expanded_cut?: CutSuggestion
   short_script?: ShortScript
   synced_captions?: SyncedCaptions
+  visual_storyboard?: VisualStoryboard
   best_ai_cuts?: {
     mode: 'best_cuts_ai'
     model: string
@@ -286,6 +331,7 @@ type ContentStudioWorkspace = {
   contentAssets: ContentAssets | null
   manualCuts: CutSuggestion[]
   reviewedCaptionsByKey: Record<string, ReviewedCaptions>
+  visualStoryboardsByKey: Record<string, VisualStoryboard>
   shortScriptSourceKey: string
   expandedCutSourceKey: string
   syncedCaptionSourceKey: string
@@ -309,6 +355,7 @@ type GenerationMode =
   | 'caption_sync'
   | 'caption_ai_review'
   | 'best_cuts_ai'
+  | 'visual_storyboard'
 
 type StudioTab = 'studio' | 'episode' | 'transcription' | 'phrases' | 'publishing' | 'workshop'
 
@@ -641,6 +688,7 @@ const generatingLabels: Record<GenerationMode, string> = {
   caption_sync: 'Sincronizando legendas...',
   caption_ai_review: 'Revisando legenda...',
   best_cuts_ai: 'Analisando melhores cortes com IA forte...',
+  visual_storyboard: 'Gerando plano visual...',
 }
 
 function formatShortScriptForCopy(script: ShortScript) {
@@ -735,6 +783,51 @@ function formatCutPackageForCopy(cut: CutSuggestion, assets: ContentAssets | nul
   return blocks.join('\n\n---\n\n')
 }
 
+function formatVisualStoryboardForCopy(storyboard: VisualStoryboard, title = '') {
+  return [
+    'PLANO VISUAL DO SHORT',
+    '',
+    title ? `Titulo: ${title}` : '',
+    `Conceito: ${storyboard.visual_concept}`,
+    `Estilo: ${storyboard.visual_style}`,
+    `Formato: ${storyboard.format}`,
+    `Resumo: ${storyboard.summary}`,
+    '',
+    'CENAS',
+    ...storyboard.scenes.map((scene) => [
+      `[${scene.start}s - ${scene.end}s] ${scene.title}`,
+      `Papel: ${scene.role}`,
+      `Texto na tela: ${scene.on_screen_text || 'sem texto'}`,
+      `Visual: ${scene.visual_description}`,
+      `B-roll: ${scene.b_roll || 'nao informado'}`,
+      `Motion: ${scene.motion || 'nao informado'}`,
+      `Som: ${scene.sound || 'nao informado'}`,
+      scene.editing_note ? `Nota de edicao: ${scene.editing_note}` : '',
+    ].filter(Boolean).join('\n')),
+    '',
+    'PROMPTS DE IMAGEM',
+    ...storyboard.image_prompts.map((item, index) => `${index + 1}. ${item.label}\n${item.prompt}`),
+    '',
+    'MOTION',
+    ...storyboard.motion_plan,
+    '',
+    'SOM',
+    ...storyboard.sound_plan,
+    '',
+    'CTA VISUAL',
+    `Texto: ${storyboard.cta_visual.text}`,
+    `Visual: ${storyboard.cta_visual.visual}`,
+    `Motion: ${storyboard.cta_visual.motion}`,
+    storyboard.warnings.length ? `\nAVISOS\n${storyboard.warnings.join('\n')}` : '',
+  ].filter(Boolean).join('\n')
+}
+
+function formatImagePromptsForCopy(storyboard: VisualStoryboard) {
+  return storyboard.image_prompts
+    .map((item, index) => `${index + 1}. ${item.label}\n${item.prompt}`)
+    .join('\n\n')
+}
+
 function formatCaptionDiagnosisForCopy(captions: SyncedCaptions) {
   return [
     `algorithm_version: ${captions.algorithm_version || 'sem versao'}`,
@@ -783,6 +876,7 @@ function readStoredWorkspace(episodeId: string): ContentStudioWorkspace | null {
       contentAssets: parsed.contentAssets || null,
       manualCuts: Array.isArray(parsed.manualCuts) ? parsed.manualCuts as CutSuggestion[] : [],
       reviewedCaptionsByKey: parsed.reviewedCaptionsByKey || {},
+      visualStoryboardsByKey: parsed.visualStoryboardsByKey || {},
       shortScriptSourceKey: parsed.shortScriptSourceKey || '',
       expandedCutSourceKey: parsed.expandedCutSourceKey || '',
       syncedCaptionSourceKey: parsed.syncedCaptionSourceKey || '',
@@ -829,6 +923,7 @@ export default function AdminContentStudioPage() {
   const [contentAssets, setContentAssets] = useState<ContentAssets | null>(null)
   const [manualCuts, setManualCuts] = useState<CutSuggestion[]>([])
   const [reviewedCaptionsByKey, setReviewedCaptionsByKey] = useState<Record<string, ReviewedCaptions>>({})
+  const [visualStoryboardsByKey, setVisualStoryboardsByKey] = useState<Record<string, VisualStoryboard>>({})
   const [generatingMode, setGeneratingMode] = useState<GenerationMode | null>(null)
   const [generatingShortScriptKey, setGeneratingShortScriptKey] = useState('')
   const [shortScriptSourceKey, setShortScriptSourceKey] = useState('')
@@ -838,12 +933,14 @@ export default function AdminContentStudioPage() {
   const [generatingExpandedCutKey, setGeneratingExpandedCutKey] = useState('')
   const [generatingSyncedCaptionKey, setGeneratingSyncedCaptionKey] = useState('')
   const [generatingCaptionReviewKey, setGeneratingCaptionReviewKey] = useState('')
+  const [generatingVisualStoryboardKey, setGeneratingVisualStoryboardKey] = useState('')
   const [syncedCaptionSourceKey, setSyncedCaptionSourceKey] = useState('')
   const [expandedCutSourceKey, setExpandedCutSourceKey] = useState('')
   const [expandedCutErrorByKey, setExpandedCutErrorByKey] = useState<Record<string, string>>({})
   const [syncedCaptionErrorByKey, setSyncedCaptionErrorByKey] = useState<Record<string, string>>({})
   const [contentAssetsError, setContentAssetsError] = useState('')
   const [captionReviewError, setCaptionReviewError] = useState('')
+  const [visualStoryboardError, setVisualStoryboardError] = useState('')
   const [generatingWordTimestamps, setGeneratingWordTimestamps] = useState(false)
   const [wordTimestampsError, setWordTimestampsError] = useState('')
   const [selectedCutKey, setSelectedCutKey] = useState('')
@@ -873,6 +970,7 @@ export default function AdminContentStudioPage() {
       Boolean(contentAssets) ||
       manualCuts.length > 0 ||
       Object.keys(reviewedCaptionsByKey).length > 0 ||
+      Object.keys(visualStoryboardsByKey).length > 0 ||
       Boolean(shortScriptSourceKey) ||
       Boolean(expandedCutSourceKey) ||
       Boolean(syncedCaptionSourceKey) ||
@@ -887,6 +985,7 @@ export default function AdminContentStudioPage() {
       contentAssets,
       manualCuts,
       reviewedCaptionsByKey,
+      visualStoryboardsByKey,
       shortScriptSourceKey,
       expandedCutSourceKey,
       syncedCaptionSourceKey,
@@ -902,6 +1001,7 @@ export default function AdminContentStudioPage() {
     contentAssets,
     manualCuts,
     reviewedCaptionsByKey,
+    visualStoryboardsByKey,
     shortScriptSourceKey,
     expandedCutSourceKey,
     syncedCaptionSourceKey,
@@ -961,6 +1061,7 @@ export default function AdminContentStudioPage() {
         setContentAssets(storedWorkspace.contentAssets)
         setManualCuts(storedWorkspace.manualCuts)
         setReviewedCaptionsByKey(storedWorkspace.reviewedCaptionsByKey)
+        setVisualStoryboardsByKey(storedWorkspace.visualStoryboardsByKey)
         setShortScriptSourceKey(storedWorkspace.shortScriptSourceKey)
         setExpandedCutSourceKey(storedWorkspace.expandedCutSourceKey)
         setSyncedCaptionSourceKey(storedWorkspace.syncedCaptionSourceKey)
@@ -973,6 +1074,7 @@ export default function AdminContentStudioPage() {
         setContentAssets(null)
         setManualCuts([])
         setReviewedCaptionsByKey({})
+        setVisualStoryboardsByKey({})
         setShortScriptSourceKey('')
         setExpandedCutSourceKey('')
         setSyncedCaptionSourceKey('')
@@ -987,6 +1089,7 @@ export default function AdminContentStudioPage() {
       setManualCutError('')
       setManualCutWarning('')
       setCaptionReviewError('')
+      setVisualStoryboardError('')
       setReadyShortError('')
       setReadyShortStep('')
     } catch (error) {
@@ -1002,6 +1105,7 @@ export default function AdminContentStudioPage() {
     setContentAssets(null)
     setManualCuts([])
     setReviewedCaptionsByKey({})
+    setVisualStoryboardsByKey({})
     setShortScriptSourceKey('')
     setExpandedCutSourceKey('')
     setSyncedCaptionSourceKey('')
@@ -1013,6 +1117,7 @@ export default function AdminContentStudioPage() {
     setManualCutError('')
     setManualCutWarning('')
     setCaptionReviewError('')
+    setVisualStoryboardError('')
     setReadyShortError('')
     setReadyShortStep('')
   }
@@ -1555,6 +1660,76 @@ export default function AdminContentStudioPage() {
     return reviewedCaptions
   }
 
+  async function handleGenerateVisualStoryboard() {
+    if (!episode || !selectedCut || !selectedCutKey || !finalShortPackage) return
+
+    try {
+      setGeneratingVisualStoryboardKey(selectedCutKey)
+      setVisualStoryboardError('')
+
+      const response = await fetch('/api/ai/generate-content-assets', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          episodeId: episode.id,
+          title: episode.title,
+          bible_reference: episode.bible_reference,
+          description: episode.description,
+          transcription_text: episode.transcription_text,
+          transcription_segments: episode.transcription_segments,
+          mode: 'visual_storyboard',
+          selected_cut: {
+            title: selectedCut.title,
+            start: selectedCut.start,
+            end: selectedCut.end,
+            hook: selectedCut.hook,
+            source_excerpt: selectedCut.source_excerpt,
+            reason: selectedCut.reason,
+            production_role: selectedCut.production_role,
+            duration_type: selectedCut.duration_type,
+            editorial_alert: selectedCut.editorial_alert,
+          },
+          short_script: finalShortPackage.script,
+          final_captions: finalShortPackage.finalCaptions,
+          hook: finalShortPackage.hook,
+          cta: finalShortPackage.cta,
+          editorial_alert: finalShortPackage.editorialAlert,
+        }),
+      })
+      const payload = await response.json()
+
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error || 'Nao foi possivel gerar plano visual.')
+      }
+
+      const storyboard = (payload.visual_storyboard || payload.assets?.visual_storyboard) as VisualStoryboard | undefined
+
+      if (!storyboard) {
+        throw new Error('A IA nao retornou um plano visual valido.')
+      }
+
+      setVisualStoryboardsByKey((current) => ({
+        ...current,
+        [selectedCutKey]: storyboard,
+      }))
+      setContentAssets((current) => ({
+        ...(current || EMPTY_CONTENT_ASSETS),
+        visual_storyboard: storyboard,
+      }))
+    } catch (error) {
+      console.error('Erro ao gerar plano visual:', error)
+      setVisualStoryboardError(
+        error instanceof Error
+          ? error.message
+          : 'Nao foi possivel gerar plano visual.'
+      )
+    } finally {
+      setGeneratingVisualStoryboardKey('')
+    }
+  }
+
   async function handleGenerateReadyShort(cut: CutSuggestion, index: number) {
     const cutKey = getCutKey(cut, index)
     let workingAssets = contentAssets || EMPTY_CONTENT_ASSETS
@@ -1768,7 +1943,7 @@ export default function AdminContentStudioPage() {
     hasScript: Boolean(selectedCutKey && contentAssets?.short_script && shortScriptSourceKey === selectedCutKey),
     hasSyncedCaptions: Boolean(selectedCutKey && contentAssets?.synced_captions && syncedCaptionSourceKey === selectedCutKey),
     hasReviewedCaptions: Boolean(selectedCutKey && reviewedCaptionsByKey[selectedCutKey]),
-    hasVisualPlan: false,
+    hasVisualPlan: Boolean(selectedCutKey && visualStoryboardsByKey[selectedCutKey]),
     hasPublishingPackage: false,
   }
   const selectedFinalCaptions = reviewedCaptionsForSelectedCut || (
@@ -1779,7 +1954,7 @@ export default function AdminContentStudioPage() {
     hasScript: Boolean(contentAssets?.short_script && shortScriptSourceKey === cutKey),
     hasSyncedCaptions: Boolean(contentAssets?.synced_captions && syncedCaptionSourceKey === cutKey),
     hasReviewedCaptions: Boolean(reviewedCaptionsByKey[cutKey]),
-    hasVisualPlan: false,
+    hasVisualPlan: Boolean(visualStoryboardsByKey[cutKey]),
     hasPublishingPackage: false,
   })
 
@@ -1798,6 +1973,7 @@ export default function AdminContentStudioPage() {
       ? contentAssets.synced_captions
       : null
     const finalCaptions = reviewedCaptions || automaticCaptions
+    const visualPlan = visualStoryboardsByKey[cutKey] || null
     const isReviewedCaption = Boolean(reviewedCaptions)
     const title = cut.title || script?.title || 'Short sem titulo'
     const hook = script?.hook_improved || script?.main_hook || cut.hook || cut.opening_line || 'Hook pendente.'
@@ -1828,8 +2004,8 @@ export default function AdminContentStudioPage() {
       captionsText,
       '',
       'VISUAL',
-      'Status: pendente',
-      'Observacao: plano visual sera gerado em etapa futura.',
+      visualPlan ? 'Status: pronto' : 'Status: pendente',
+      visualPlan ? formatVisualStoryboardForCopy(visualPlan, title) : 'Observacao: plano visual sera gerado em etapa futura.',
       '',
       'PUBLICACAO',
       'Status: pendente',
@@ -1850,11 +2026,11 @@ export default function AdminContentStudioPage() {
       finalCaptions,
       finalCaptionsAreReviewed: isReviewedCaption,
       cta,
-      visualStatus: 'pendente',
+      visualStatus: visualPlan ? 'pronto' : 'pendente',
       publishingStatus: 'pendente',
-      visualPlan: null,
+      visualPlan,
       publishingPackage: null,
-      hasVisualPlan: false,
+      hasVisualPlan: Boolean(visualPlan),
       hasPublishingPackage: false,
       copyText,
       isReady: Boolean(script && finalCaptions),
@@ -2013,6 +2189,11 @@ export default function AdminContentStudioPage() {
       '',
       'FRASES FORTES / PALAVRA DO DIA',
       strongPhrasesText,
+      '',
+      'STORYBOARD VISUAL DO CORTE SELECIONADO',
+      selectedCutKey && visualStoryboardsByKey[selectedCutKey]
+        ? formatVisualStoryboardForCopy(visualStoryboardsByKey[selectedCutKey], selectedCut?.title || '')
+        : 'Sem plano visual gerado para o corte selecionado.',
       '',
       'PEDIDO DE ANALISE',
       'Analise a transcricao e compare com os cortes sugeridos. Diga:',
@@ -2843,7 +3024,7 @@ export default function AdminContentStudioPage() {
                               Visual / Publicacao
                             </p>
                             <p className="mt-2 text-xs font-bold leading-5 text-fuchsia-50/80">
-                              pendente
+                              {selectedCutPackageStatus.hasVisualPlan ? 'visual pronto' : 'visual pendente'}
                             </p>
                           </div>
                         </div>
@@ -2940,7 +3121,7 @@ export default function AdminContentStudioPage() {
                                 }`}
                                 tone={finalShortPackage.finalCaptionsAreReviewed ? 'green' : finalShortPackage.finalCaptions ? 'amber' : 'slate'}
                               />
-                              <InfoPill label="Visual: pendente" tone="slate" />
+                              <InfoPill label={`Visual: ${finalShortPackage.hasVisualPlan ? 'pronto' : 'pendente'}`} tone={finalShortPackage.hasVisualPlan ? 'green' : 'slate'} />
                               <InfoPill label="Publicacao: pendente" tone="slate" />
                             </div>
 
@@ -3018,10 +3199,80 @@ export default function AdminContentStudioPage() {
 
                             <div className="mt-4 grid gap-3 md:grid-cols-2">
                               <div className="rounded-xl border border-white/10 bg-slate-950/45 p-3">
-                                <h4 className="text-xs font-black text-white">Visual</h4>
-                                <p className="mt-2 text-xs font-bold leading-5 text-slate-400">
-                                  Plano visual sera gerado em etapa futura.
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div>
+                                    <h4 className="text-xs font-black text-white">Plano visual</h4>
+                                    <p className="mt-2 text-xs font-bold leading-5 text-slate-400">
+                                      {finalShortPackage.visualPlan
+                                        ? finalShortPackage.visualPlan.visual_concept
+                                        : 'Plano visual pendente.'}
+                                    </p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={handleGenerateVisualStoryboard}
+                                    disabled={generatingVisualStoryboardKey === selectedCutKey}
+                                    className="rounded-xl border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-xs font-black text-emerald-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                                  >
+                                    {generatingVisualStoryboardKey === selectedCutKey ? 'Gerando plano visual...' : 'Gerar plano visual'}
+                                  </button>
+                                </div>
+                                <p className="mt-2 text-[11px] font-bold leading-5 text-slate-500">
+                                  Usa IA forte para criar storyboard, B-roll e prompts visuais. Nao gera video nem imagem.
                                 </p>
+                                {visualStoryboardError && (
+                                  <p className="mt-3 rounded-lg border border-rose-300/20 bg-rose-500/10 p-2 text-xs font-bold text-rose-100">
+                                    {visualStoryboardError}
+                                  </p>
+                                )}
+                                {finalShortPackage.visualPlan && (
+                                  <div className="mt-3 grid gap-3">
+                                    <div className="flex flex-wrap gap-2">
+                                      <CopyButton value={formatVisualStoryboardForCopy(finalShortPackage.visualPlan, finalShortPackage.title)} label="Copiar plano visual" />
+                                      <CopyButton value={formatImagePromptsForCopy(finalShortPackage.visualPlan)} label="Copiar prompts de imagem" />
+                                      <CopyButton value={JSON.stringify(finalShortPackage.visualPlan, null, 2)} label="Copiar storyboard completo" />
+                                    </div>
+                                    <p className="text-xs font-bold leading-5 text-slate-300">
+                                      {finalShortPackage.visualPlan.summary}
+                                    </p>
+                                    <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+                                      {finalShortPackage.visualPlan.visual_style} | {finalShortPackage.visualPlan.format}
+                                    </p>
+                                    {finalShortPackage.visualPlan.scenes.map((scene, index) => (
+                                      <div key={`${scene.start}-${scene.end}-${index}`} className="rounded-lg border border-white/10 bg-white/[0.04] p-3">
+                                        <p className="text-[11px] font-black text-emerald-100">
+                                          {scene.start}s - {scene.end}s | {scene.role}
+                                        </p>
+                                        <p className="mt-1 text-xs font-black text-white">{scene.title}</p>
+                                        <p className="mt-2 text-xs font-bold leading-5 text-slate-300">
+                                          Texto na tela: {scene.on_screen_text || 'sem texto'}
+                                        </p>
+                                        <p className="mt-2 text-xs leading-5 text-slate-300">{scene.visual_description}</p>
+                                        <p className="mt-2 text-xs leading-5 text-slate-400">Motion: {scene.motion || 'nao informado'}</p>
+                                        <p className="mt-1 text-xs leading-5 text-slate-400">Som: {scene.sound || 'nao informado'}</p>
+                                      </div>
+                                    ))}
+                                    {finalShortPackage.visualPlan.image_prompts.length > 0 && (
+                                      <details className="rounded-lg border border-white/10 bg-slate-950/50 p-3">
+                                        <summary className="cursor-pointer text-xs font-black text-emerald-100">Prompts de imagem</summary>
+                                        <div className="mt-3 grid gap-2">
+                                          {finalShortPackage.visualPlan.image_prompts.map((item, index) => (
+                                            <p key={`${item.label}-${index}`} className="rounded-lg border border-white/10 bg-white/[0.04] p-2 text-xs leading-5 text-slate-300">
+                                              <span className="font-black text-white">{item.label}</span>
+                                              <br />
+                                              {item.prompt}
+                                            </p>
+                                          ))}
+                                        </div>
+                                      </details>
+                                    )}
+                                    <div className="rounded-lg border border-blue-300/15 bg-blue-500/10 p-3">
+                                      <p className="text-xs font-black text-blue-50">CTA visual</p>
+                                      <p className="mt-2 text-xs font-bold leading-5 text-blue-50">{finalShortPackage.visualPlan.cta_visual.text}</p>
+                                      <p className="mt-1 text-xs leading-5 text-blue-100/75">{finalShortPackage.visualPlan.cta_visual.visual}</p>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                               <div className="rounded-xl border border-white/10 bg-slate-950/45 p-3">
                                 <h4 className="text-xs font-black text-white">Publicacao</h4>

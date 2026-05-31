@@ -86,6 +86,50 @@ type ReviewedCaptions = {
   }
 }
 
+type VisualStoryboardScene = {
+  start: number
+  end: number
+  role: string
+  title: string
+  on_screen_text: string
+  visual_description: string
+  image_prompt: string
+  b_roll: string
+  motion: string
+  sound: string
+  editing_note: string
+}
+
+type VisualStoryboard = {
+  mode: 'visual_storyboard'
+  version: 'cc-f4-visual-storyboard'
+  model: string
+  visual_style: string
+  format: string
+  summary: string
+  visual_concept: string
+  scenes: VisualStoryboardScene[]
+  image_prompts: Array<{
+    label: string
+    prompt: string
+  }>
+  motion_plan: string[]
+  sound_plan: string[]
+  cta_visual: {
+    text: string
+    visual: string
+    motion: string
+  }
+  quality_checklist: {
+    has_hook_visual: boolean
+    has_biblical_fidelity: boolean
+    has_scene_variety: boolean
+    has_cta: boolean
+    avoids_text_inside_image: boolean
+  }
+  warnings: string[]
+}
+
 type CaptionSyncDebug = {
   cut_start: number
   cut_end: number
@@ -310,6 +354,7 @@ type GenerationMode =
   | 'caption_sync'
   | 'caption_ai_review'
   | 'best_cuts_ai'
+  | 'visual_storyboard'
 
 const MAX_TRANSCRIPTION_CHARS = 28000
 const MAX_SEGMENTS = 160
@@ -335,6 +380,7 @@ const GENERATION_MODES: GenerationMode[] = [
   'caption_sync',
   'caption_ai_review',
   'best_cuts_ai',
+  'visual_storyboard',
 ]
 
 function cleanText(text: string) {
@@ -2979,6 +3025,290 @@ async function generateBestCutsWithOpenAI(params: {
   return normalizeBestAiCuts(extractJsonFromText(content), model)
 }
 
+function ensureVisualPromptSafety(prompt: string) {
+  const cleaned = cleanText(prompt)
+  const parts = [cleaned]
+  const normalized = normalizeTextForCaptionSearch(cleaned)
+
+  if (!normalized.includes('vertical') || !normalized.includes('9:16')) {
+    parts.push('Vertical 9:16.')
+  }
+  if (!normalized.includes('cinematic') && !normalized.includes('biblical')) {
+    parts.push('Cinematic biblical realism.')
+  }
+  if (!normalized.includes('no text') && !normalized.includes('sem texto')) {
+    parts.push('No text in image, sem texto na imagem.')
+  }
+
+  return parts.join(' ').trim()
+}
+
+function normalizeVisualStoryboard(input: unknown, model: string, cutDuration: number): VisualStoryboard {
+  const parsed = input as { visual_storyboard?: unknown }
+  const rawStoryboard = (parsed.visual_storyboard || input) as {
+    visual_style?: unknown
+    format?: unknown
+    summary?: unknown
+    visual_concept?: unknown
+    scenes?: unknown
+    image_prompts?: unknown
+    motion_plan?: unknown
+    sound_plan?: unknown
+    cta_visual?: unknown
+    quality_checklist?: unknown
+    warnings?: unknown
+  }
+  const rawScenes = Array.isArray(rawStoryboard.scenes) ? rawStoryboard.scenes.slice(0, 12) : []
+
+  if (rawScenes.length < 2) {
+    throw new Error('A IA nao retornou cenas suficientes para o storyboard visual.')
+  }
+
+  const sceneCount = rawScenes.length
+  let cursor = 0
+  const scenes = rawScenes.map((item, index): VisualStoryboardScene => {
+    const value = item as {
+      start?: unknown
+      end?: unknown
+      role?: unknown
+      title?: unknown
+      on_screen_text?: unknown
+      visual_description?: unknown
+      image_prompt?: unknown
+      b_roll?: unknown
+      motion?: unknown
+      sound?: unknown
+      editing_note?: unknown
+    }
+    const fallbackStart = (cutDuration / sceneCount) * index
+    const fallbackEnd = index === sceneCount - 1 ? cutDuration : (cutDuration / sceneCount) * (index + 1)
+    let start = Number(value.start)
+    let end = Number(value.end)
+
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || start < cursor - 0.1) {
+      start = fallbackStart
+      end = fallbackEnd
+    }
+
+    start = Math.max(0, Math.max(cursor, start))
+    end = Math.min(cutDuration, Math.max(start + 0.5, end))
+    cursor = end
+
+    const title = cleanText(String(value.title || '')).slice(0, 100) || `Cena ${index + 1}`
+    const visualDescription = cleanText(String(value.visual_description || '')).slice(0, 420)
+    const imagePrompt = ensureVisualPromptSafety(String(value.image_prompt || visualDescription || title))
+
+    if (!visualDescription || !imagePrompt) {
+      throw new Error('Uma cena do storyboard veio sem descricao visual ou prompt de imagem.')
+    }
+
+    return {
+      start: Number(start.toFixed(2)),
+      end: Number(end.toFixed(2)),
+      role: cleanText(String(value.role || (index === 0 ? 'hook' : 'scene'))).slice(0, 60),
+      title,
+      on_screen_text: cleanText(String(value.on_screen_text || '')).slice(0, 120),
+      visual_description: visualDescription,
+      image_prompt: imagePrompt,
+      b_roll: cleanText(String(value.b_roll || '')).slice(0, 260),
+      motion: cleanText(String(value.motion || '')).slice(0, 220),
+      sound: cleanText(String(value.sound || '')).slice(0, 220),
+      editing_note: cleanText(String(value.editing_note || '')).slice(0, 260),
+    }
+  })
+
+  const imagePrompts = Array.isArray(rawStoryboard.image_prompts)
+    ? rawStoryboard.image_prompts.slice(0, 12).map((item, index) => {
+        const value = item as { label?: unknown; prompt?: unknown }
+        return {
+          label: cleanText(String(value.label || `Cena ${index + 1}`)).slice(0, 80),
+          prompt: ensureVisualPromptSafety(String(value.prompt || scenes[index]?.image_prompt || '')),
+        }
+      }).filter((item) => item.prompt)
+    : scenes.map((scene) => ({ label: scene.title, prompt: scene.image_prompt }))
+  const ctaVisual = rawStoryboard.cta_visual as { text?: unknown; visual?: unknown; motion?: unknown } | undefined
+  const quality = rawStoryboard.quality_checklist as Partial<VisualStoryboard['quality_checklist']> | undefined
+
+  return {
+    mode: 'visual_storyboard',
+    version: 'cc-f4-visual-storyboard',
+    model,
+    visual_style: cleanText(String(rawStoryboard.visual_style || '')).slice(0, 100) || 'cinematic biblical realism',
+    format: cleanText(String(rawStoryboard.format || '')).slice(0, 60) || 'vertical 9:16',
+    summary: cleanText(String(rawStoryboard.summary || '')).slice(0, 360) || 'Plano visual para o Short selecionado.',
+    visual_concept: cleanText(String(rawStoryboard.visual_concept || '')).slice(0, 360) || 'Visual biblico, reverente e cinematografico.',
+    scenes,
+    image_prompts: imagePrompts.length ? imagePrompts : scenes.map((scene) => ({ label: scene.title, prompt: scene.image_prompt })),
+    motion_plan: normalizeStringArray(rawStoryboard.motion_plan, 8, 180),
+    sound_plan: normalizeStringArray(rawStoryboard.sound_plan, 8, 180),
+    cta_visual: {
+      text: cleanText(String(ctaVisual?.text || '')).slice(0, 120) || 'Ouca o devocional completo no app',
+      visual: cleanText(String(ctaVisual?.visual || '')).slice(0, 220) || 'Tela final limpa com fundo reverente.',
+      motion: cleanText(String(ctaVisual?.motion || '')).slice(0, 160) || 'Fade in suave.',
+    },
+    quality_checklist: {
+      has_hook_visual: quality?.has_hook_visual !== false,
+      has_biblical_fidelity: quality?.has_biblical_fidelity !== false,
+      has_scene_variety: quality?.has_scene_variety !== false,
+      has_cta: quality?.has_cta !== false,
+      avoids_text_inside_image: quality?.avoids_text_inside_image !== false,
+    },
+    warnings: normalizeStringArray(rawStoryboard.warnings, 6, 180),
+  }
+}
+
+function buildVisualStoryboardPrompt(params: {
+  title: string
+  bibleReference: string
+  description: string
+  selectedCut: CutSuggestion
+  shortScript?: unknown
+  finalCaptions?: unknown
+  hook?: string
+  cta?: string
+  editorialAlert?: string
+}) {
+  const cutDuration = Math.max(1, params.selectedCut.end - params.selectedCut.start)
+  const sceneGuidance =
+    cutDuration <= 25 ? '3 a 4 cenas' :
+      cutDuration <= 45 ? '4 a 6 cenas' :
+        cutDuration <= 60 ? '5 a 7 cenas' :
+          cutDuration <= 90 ? '6 a 9 cenas' :
+            'ate 12 cenas, com aviso de corte longo'
+
+  return `
+Voce e um diretor criativo de videos biblicos/devocionais verticais.
+Crie um storyboard visual para um Short/Reels/TikTok com base no corte selecionado.
+
+Tom: biblico, reverente, cinematografico, pastoral, sem sensacionalismo, sem teatralidade exagerada.
+Nao gere imagem. Nao chame API de imagem. Crie apenas planejamento textual.
+
+Regras:
+1. Nao invente cenario que contradiga a Biblia ou o episodio.
+2. Nao troque cena biblica concreta por metafora generica.
+3. Para Maria/nardo/Betania: use casa simples em Betania, ceia, Marta servindo, Lazaro a mesa, Maria aos pes de Jesus, nardo/perfume/oleo, pes de Jesus e clima de reverencia.
+4. Para Atos 27/naufragio: use navio, mar, naufragio, centuriao, soldados, prisioneiros, Paulo e terra firme; nao use casa, porta, estrada ou vila generica.
+5. Nao incluir letras/texto dentro das imagens geradas.
+6. O texto na tela deve ser aplicado pelo editor/app, nao gerado na imagem.
+7. Priorize hook visual nos primeiros 3 segundos, variacao visual a cada 5 a 8 segundos, motion suave, pausas dramaticas e texto curto na tela.
+8. Crie ${sceneGuidance} para este corte.
+9. Todo image_prompt deve mencionar vertical 9:16, cinematic biblical realism e no text in image / sem texto na imagem.
+
+EPISODIO: ${params.title}
+REFERENCIA: ${params.bibleReference || 'Nao informada'}
+DESCRICAO: ${params.description || 'Nao informada'}
+
+CORTE:
+${JSON.stringify(params.selectedCut, null, 2)}
+
+ROTEIRO DO SHORT:
+${JSON.stringify(params.shortScript || {}, null, 2).slice(0, 9000)}
+
+LEGENDA FINAL:
+${JSON.stringify(params.finalCaptions || {}, null, 2).slice(0, 7000)}
+
+HOOK: ${params.hook || params.selectedCut.hook}
+CTA: ${params.cta || 'Ouca o devocional completo no app.'}
+ALERTA EDITORIAL: ${params.editorialAlert || params.selectedCut.editorial_alert || 'Nenhum.'}
+
+Retorne SOMENTE JSON valido:
+{
+  "visual_storyboard": {
+    "mode": "visual_storyboard",
+    "version": "cc-f4-visual-storyboard",
+    "model": "",
+    "visual_style": "cinematic biblical realism",
+    "format": "vertical 9:16",
+    "summary": "Plano visual para o Short...",
+    "visual_concept": "Conceito visual central...",
+    "scenes": [
+      {
+        "start": 0,
+        "end": 3,
+        "role": "hook",
+        "title": "O valor do perfume",
+        "on_screen_text": "300 dias de trabalho",
+        "visual_description": "Close cinematografico no frasco de nardo...",
+        "image_prompt": "Vertical 9:16, cinematic biblical realism, ... no text in image, sem texto na imagem.",
+        "b_roll": "Close do perfume sendo derramado...",
+        "motion": "zoom lento de aproximacao",
+        "sound": "impacto suave e pausa curta",
+        "editing_note": "Texto entra em duas etapas..."
+      }
+    ],
+    "image_prompts": [{ "label": "Cena principal", "prompt": "Vertical 9:16..." }],
+    "motion_plan": ["Zoom lento no hook"],
+    "sound_plan": ["Trilha baixa e reverente"],
+    "cta_visual": { "text": "Ouca o devocional completo no app", "visual": "Tela final limpa com fundo reverente", "motion": "fade in suave" },
+    "quality_checklist": {
+      "has_hook_visual": true,
+      "has_biblical_fidelity": true,
+      "has_scene_variety": true,
+      "has_cta": true,
+      "avoids_text_inside_image": true
+    },
+    "warnings": []
+  }
+}
+`.trim()
+}
+
+async function generateVisualStoryboardWithOpenAI(params: {
+  title: string
+  bibleReference: string
+  description: string
+  selectedCut: CutSuggestion
+  shortScript?: unknown
+  finalCaptions?: unknown
+  hook?: string
+  cta?: string
+  editorialAlert?: string
+}): Promise<VisualStoryboard> {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) throw new Error('OPENAI_API_KEY ausente.')
+
+  const model =
+    process.env.OPENAI_RESPONSE_STRONG_MODEL ||
+    process.env.OPENAI_RESPONSE_MODEL ||
+    process.env.OPENAI_CONTENT_ASSETS_MODEL ||
+    process.env.OPENAI_MODEL ||
+    'gpt-4o-mini'
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.35,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: 'Voce e um diretor criativo de videos biblicos verticais. Responda somente JSON valido.',
+        },
+        {
+          role: 'user',
+          content: buildVisualStoryboardPrompt(params),
+        },
+      ],
+    }),
+  })
+  const data = await response.json()
+
+  if (!response.ok) {
+    console.error('Erro OpenAI visual storyboard:', data)
+    throw new Error(data?.error?.message || 'Erro ao gerar plano visual.')
+  }
+
+  const content = data?.choices?.[0]?.message?.content
+  if (!content) throw new Error('A OpenAI nao retornou storyboard visual.')
+
+  return normalizeVisualStoryboard(extractJsonFromText(content), model, params.selectedCut.end - params.selectedCut.start)
+}
+
 function normalizeAiReviewedLineText(text: string) {
   return cleanText(text)
     .replace(/([,.!?;:])\1+/g, '$1')
@@ -3998,6 +4328,9 @@ Este modo revisa legendas sincronizadas ja geradas. Use somente o fluxo dedicado
     best_cuts_ai: `
 Este modo usa IA forte para selecionar e lapidar os melhores cortes editoriais.
 `.trim(),
+    visual_storyboard: `
+Este modo usa IA forte para gerar um storyboard visual textual para o Short selecionado.
+`.trim(),
   }
 
   return contracts[mode]
@@ -4336,6 +4669,38 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'Envie o ID do episódio.' },
         { status: 400 }
       )
+    }
+
+    if (mode === 'visual_storyboard') {
+      if (!selectedCut) {
+        return NextResponse.json(
+          { success: false, error: 'Envie um corte selecionado para gerar o plano visual.' },
+          { status: 400 }
+        )
+      }
+
+      const visualStoryboard = await generateVisualStoryboardWithOpenAI({
+        title,
+        bibleReference,
+        description,
+        selectedCut,
+        shortScript: body.short_script || body.finalShortPackage?.script,
+        finalCaptions: body.final_captions || body.finalShortPackage?.finalCaptions,
+        hook: body.hook || body.finalShortPackage?.hook,
+        cta: body.cta || body.finalShortPackage?.cta,
+        editorialAlert: body.editorial_alert || body.finalShortPackage?.editorialAlert,
+      })
+
+      return NextResponse.json({
+        success: true,
+        provider: 'openai',
+        model: visualStoryboard.model,
+        mode,
+        visual_storyboard: visualStoryboard,
+        assets: {
+          visual_storyboard: visualStoryboard,
+        },
+      })
     }
 
     if (mode === 'best_cuts_ai') {
