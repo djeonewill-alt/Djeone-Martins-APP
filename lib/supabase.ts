@@ -99,6 +99,7 @@ export type Episode = {
   published_at?: string | null;
   created_at?: string | null;
   cover_image_url?: string | null;
+  og_image_url?: string | null;
   status?: string | null;
   is_preview?: boolean | null;
   scheduled_publish_at?: string | null;

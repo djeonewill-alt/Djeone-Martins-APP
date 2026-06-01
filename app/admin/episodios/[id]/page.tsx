@@ -21,6 +21,7 @@ type EpisodeRow = {
   published_at: string | null
   created_at: string | null
   cover_image_url: string | null
+  og_image_url: string | null
   transcription_text: string | null
 }
 
@@ -44,6 +45,8 @@ export default function AdminEditEpisodePage() {
   const [coverFile, setCoverFile] = useState<File | null>(null)
   const [uploadingCover, setUploadingCover] = useState(false)
   const [coverUploadError, setCoverUploadError] = useState('')
+  const [generatingOgPreview, setGeneratingOgPreview] = useState(false)
+  const [ogPreviewMessage, setOgPreviewMessage] = useState('')
 
   useEffect(() => {
     async function loadEpisode() {
@@ -53,7 +56,7 @@ export default function AdminEditEpisodePage() {
         const { data, error } = await supabase
           .from('episodes')
           .select(
-            'id, series_id, title, description, bible_reference, audio_url, duration_seconds, episode_number, status, is_preview, published_at, created_at, cover_image_url, transcription_text'
+            'id, series_id, title, description, bible_reference, audio_url, duration_seconds, episode_number, status, is_preview, published_at, created_at, cover_image_url, og_image_url, transcription_text'
           )
           .eq('id', episodeId)
           .single()
@@ -75,6 +78,7 @@ export default function AdminEditEpisodePage() {
         setIsPreview(Boolean(row.is_preview))
         setTranscriptionText(row.transcription_text || '')
         setCoverImageUrl(row.cover_image_url || '')
+        setOgPreviewMessage('')
       } catch (error) {
         console.error('Erro ao carregar episódio:', error)
         alert('Não foi possível carregar este episódio.')
@@ -139,6 +143,52 @@ export default function AdminEditEpisodePage() {
       alert(message)
     } finally {
       setUploadingCover(false)
+    }
+  }
+
+  async function handleGenerateOgPreview() {
+    if (!episode || generatingOgPreview) return
+
+    try {
+      setGeneratingOgPreview(true)
+      setOgPreviewMessage('')
+
+      const response = await fetch(
+        `/api/admin/episodes/${episode.id}/generate-og-image`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ force: true }),
+        }
+      )
+
+      const result = await response.json().catch(() => ({}))
+
+      if (!response.ok || !result?.ok) {
+        throw new Error(result?.error || 'Nao foi possivel gerar o preview.')
+      }
+
+      const sizeLabel = result.size_bytes
+        ? `${Math.round(Number(result.size_bytes) / 1024)} KB`
+        : 'tamanho nao informado'
+      const nextOgImageUrl = String(result.og_image_url || '')
+
+      setEpisode({
+        ...episode,
+        og_image_url: nextOgImageUrl,
+      })
+      setOgPreviewMessage(`Preview WhatsApp gerado (${sizeLabel}).`)
+    } catch (error) {
+      console.error('Erro ao gerar preview WhatsApp:', error)
+      setOgPreviewMessage(
+        error instanceof Error
+          ? error.message
+          : 'Nao foi possivel gerar o preview WhatsApp.'
+      )
+    } finally {
+      setGeneratingOgPreview(false)
     }
   }
 
@@ -361,6 +411,70 @@ export default function AdminEditEpisodePage() {
                 <p className="text-xs font-bold leading-5 text-slate-500">
                   Depois de enviar ou remover a capa, clique em Salvar alteracoes.
                 </p>
+              </div>
+            </section>
+
+            <section className="rounded-[28px] border border-emerald-300/15 bg-emerald-500/5 p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-200">
+                    Preview WhatsApp
+                  </p>
+
+                  <p className="mt-2 text-sm leading-6 text-slate-400">
+                    Preview estatico: {episode?.og_image_url ? 'pronto' : 'pendente'}.
+                  </p>
+
+                  <p className="mt-2 text-xs font-bold leading-5 text-slate-500">
+                    Depois de regenerar, o WhatsApp pode manter cache antigo por algum tempo. Teste com uma nova conversa ou um link com query nova.
+                  </p>
+                </div>
+
+                <span
+                  className={`rounded-full border px-3 py-1 text-xs font-black ${
+                    episode?.og_image_url
+                      ? 'border-emerald-300/20 bg-emerald-500/10 text-emerald-100'
+                      : 'border-amber-300/20 bg-amber-500/10 text-amber-100'
+                  }`}
+                >
+                  {episode?.og_image_url ? 'Pronto' : 'Pendente'}
+                </span>
+              </div>
+
+              {episode?.og_image_url && (
+                <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                  <a
+                    href={episode.og_image_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sm font-black text-emerald-100 underline decoration-emerald-300/40 underline-offset-4"
+                  >
+                    Abrir preview
+                  </a>
+
+                  <p className="mt-2 break-all text-xs font-bold leading-5 text-slate-500">
+                    {episode.og_image_url}
+                  </p>
+                </div>
+              )}
+
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+                <button
+                  type="button"
+                  onClick={handleGenerateOgPreview}
+                  disabled={generatingOgPreview}
+                  className="rounded-2xl border border-emerald-300/30 bg-emerald-500/15 px-5 py-4 text-sm font-black text-emerald-100 active:scale-[0.98] disabled:opacity-50"
+                >
+                  {generatingOgPreview
+                    ? 'Gerando preview...'
+                    : 'Regenerar preview WhatsApp'}
+                </button>
+
+                {ogPreviewMessage && (
+                  <p className="text-sm font-bold leading-5 text-slate-300">
+                    {ogPreviewMessage}
+                  </p>
+                )}
               </div>
             </section>
 

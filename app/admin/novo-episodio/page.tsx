@@ -1592,6 +1592,32 @@ export default function NovoEpisodio() {
     return data.url as string
   }
 
+  const generateEpisodeOgPreview = async (episodeId: string) => {
+    try {
+      const response = await fetch(
+        `/api/admin/episodes/${episodeId}/generate-og-image`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ force: false }),
+        }
+      )
+
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || 'Nao foi possivel gerar o preview.')
+      }
+
+      return '\nPreview WhatsApp gerado.'
+    } catch (error) {
+      console.warn('Erro ao gerar preview WhatsApp:', error)
+      return '\nEpisodio salvo, mas o preview WhatsApp esta usando fallback dinamico.'
+    }
+  }
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
 
@@ -1820,6 +1846,8 @@ export default function NovoEpisodio() {
         }
       }
 
+      const ogPreviewMessage = await generateEpisodeOgPreview(newEpisode.id)
+
       const message = scheduledPublishAt
         ? hasDailyQuote
           ? `✅ Episódio e Palavra do Dia agendados para ${new Date(scheduledPublishAt).toLocaleString('pt-BR')}!`
@@ -1832,7 +1860,7 @@ export default function NovoEpisodio() {
         ? '✅ Rascunho salvo com Palavra do Dia!'
         : '✅ Rascunho salvo com sucesso!'
 
-      alert(`${message}${wordsPersistence.message}`)
+      alert(`${message}${wordsPersistence.message}${ogPreviewMessage}`)
       router.push('/admin')
     } catch (error) {
       console.error('Erro ao criar episódio:', error)

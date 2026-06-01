@@ -134,10 +134,10 @@ export async function GET(request: Request, { params }: Props) {
               position: 'relative',
               display: 'flex',
               flexDirection: 'column',
-              width: 704,
-              height: 348,
-              borderRadius: 22,
-              padding: 22,
+              width: 1056,
+              height: 522,
+              borderRadius: 32,
+              padding: 34,
               background:
                 'linear-gradient(135deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98))',
               border: '1px solid rgba(255,255,255,0.14)',
@@ -150,9 +150,9 @@ export async function GET(request: Request, { params }: Props) {
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 color: '#dbeafe',
-                fontSize: 14,
+                fontSize: 21,
                 fontWeight: 900,
-                marginBottom: 12,
+                marginBottom: 18,
               }}
             >
               <span style={{ color: '#bfdbfe', letterSpacing: 3 }}>
@@ -161,8 +161,8 @@ export async function GET(request: Request, { params }: Props) {
               <span
                 style={{
                   color: '#93c5fd',
-                  fontSize: 13,
-                  letterSpacing: 1.5,
+                  fontSize: 19,
+                  letterSpacing: 2,
                 }}
               >
                 {seriesTitle.toUpperCase()} →
@@ -172,11 +172,11 @@ export async function GET(request: Request, { params }: Props) {
             <div
               style={{
                 display: 'flex',
-                gap: 12,
+                gap: 18,
                 color: '#cbd5e1',
-                fontSize: 14,
+                fontSize: 21,
                 fontWeight: 800,
-                marginBottom: 14,
+                marginBottom: 22,
               }}
             >
               {metaItems.map((item, index) => (
@@ -197,7 +197,7 @@ export async function GET(request: Request, { params }: Props) {
                 alignItems: 'center',
                 justifyContent: 'center',
                 overflow: 'hidden',
-                borderRadius: 18,
+                borderRadius: 28,
                 backgroundColor: '#0f172a',
                 border: '1px solid rgba(255,255,255,0.12)',
               }}
@@ -241,21 +241,21 @@ export async function GET(request: Request, { params }: Props) {
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  padding: '24px 42px',
+                  padding: '36px 64px',
                   textAlign: 'center',
                 }}
               >
                 <div
                   style={{
-                      maxWidth: 520,
+                      maxWidth: 780,
                       color: '#ffffff',
-                      fontSize: 40,
+                      fontSize: 60,
                       fontWeight: 900,
                       lineHeight: 0.94,
                       letterSpacing: '-0.8px',
                       textAlign: 'center',
                       textShadow: '0 4px 12px rgba(2,6,23,0.92)',
-                      marginBottom: 12,
+                      marginBottom: 18,
                     }}
                 >
                   {title}
@@ -264,7 +264,7 @@ export async function GET(request: Request, { params }: Props) {
                 <div
                   style={{
                       color: '#f8fafc',
-                      fontSize: 18,
+                      fontSize: 27,
                       fontWeight: 900,
                       letterSpacing: 0,
                       opacity: 0.97,
@@ -279,9 +279,10 @@ export async function GET(request: Request, { params }: Props) {
         </div>
       ),
       {
-        width: 800,
-        height: 420,
+        width: 1200,
+        height: 630,
         headers: {
+          'Content-Type': 'image/png',
           'Cache-Control':
             'public, max-age=300, s-maxage=86400, stale-while-revalidate=604800',
         },
