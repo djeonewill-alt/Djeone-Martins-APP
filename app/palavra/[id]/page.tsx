@@ -111,8 +111,9 @@ export async function generateMetadata({
   const quote = await getDailyQuote(id)
   const baseUrl = getPublicAppUrl()
 
-  const pageUrl = `${baseUrl}/palavra/${id}?share=quote-v25`
-  const imageUrl = quote?.share_image_url || `${baseUrl}/api/og/quote/${id}?v=quote-og-v25`
+  const pageUrl = `${baseUrl}/palavra/${id}?share=quote-og-v26`
+  const dynamicQuoteOgUrl = `${baseUrl}/api/og/quote/${id}?v=quote-og-v26`
+  const ogImageUrl = quote?.share_image_url || dynamicQuoteOgUrl
   const title = 'Palavra do Dia | Pr. Djeone Martins'
   const description = buildDescription(quote)
 
@@ -131,7 +132,7 @@ export async function generateMetadata({
     title,
     description,
     alternates: {
-      canonical: `/palavra/${id}`,
+      canonical: pageUrl,
     },
     openGraph: {
       title,
@@ -141,9 +142,9 @@ export async function generateMetadata({
       siteName: 'Pr. Djeone Martins',
       images: [
         {
-          url: imageUrl,
-          width: 800,
-          height: 420,
+          url: ogImageUrl,
+          width: 1200,
+          height: 630,
           alt: 'Palavra do Dia',
         },
       ],
@@ -152,7 +153,7 @@ export async function generateMetadata({
       card: 'summary_large_image',
       title,
       description,
-      images: [imageUrl],
+      images: [ogImageUrl],
     },
   }
 }
@@ -180,10 +181,10 @@ export default async function PalavraDoDiaPage({ params }: PageProps) {
 
   const duration = formatDuration(quote.episode?.duration_seconds)
   const episodeHref = quote.episode?.id
-    ? `/ep/${quote.episode.id}?from=palavra&share=quote-v25`
+    ? `/ep/${quote.episode.id}?from=palavra&share=quote-og-v26`
     : null
   const quotePreview = normalizeText(quote.quote_text).slice(0, 140)
-  const canonicalUrl = `${getPublicAppUrl()}/palavra/${quote.id}?share=quote-v25`
+  const canonicalUrl = `${getPublicAppUrl()}/palavra/${quote.id}?share=quote-og-v26`
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.20),transparent_35%),linear-gradient(135deg,#020617,#0f172a_52%,#020617)] px-4 py-6 text-white">
@@ -273,21 +274,4 @@ export default async function PalavraDoDiaPage({ params }: PageProps) {
     </main>
   )
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

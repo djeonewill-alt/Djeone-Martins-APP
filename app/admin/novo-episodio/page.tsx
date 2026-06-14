@@ -1820,16 +1820,55 @@ export default function NovoEpisodio() {
         }
       }
 
+      // Auto-generate WhatsApp share image for the daily quote
+      let shareImageMessage = ''
+
+      if (hasDailyQuote) {
+        try {
+          // Fetch the daily quote ID that was just saved
+          const { data: savedQuote } = await supabase
+            .from('daily_quotes')
+            .select('id')
+            .eq('episode_id', newEpisode.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+          if (savedQuote?.id) {
+            const shareImageResponse = await fetch(
+              `/api/admin/daily-quotes/${savedQuote.id}/generate-share-image`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+              }
+            )
+
+            const shareImageResult = await shareImageResponse.json()
+
+            if (shareImageResponse.ok && shareImageResult.share_image_url) {
+              shareImageMessage = ' Preview WhatsApp da Palavra do Dia gerado.'
+            } else {
+              shareImageMessage = ' Palavra salva, mas preview WhatsApp usará fallback dinâmico.'
+            }
+          }
+        } catch (error) {
+          shareImageMessage = ' Palavra salva, mas preview WhatsApp usará fallback dinâmico.'
+          console.error('Erro ao gerar share image automaticamente:', error)
+        }
+      }
+
       const message = scheduledPublishAt
         ? hasDailyQuote
-          ? `✅ Episódio e Palavra do Dia agendados para ${new Date(scheduledPublishAt).toLocaleString('pt-BR')}!`
+          ? `✅ Episódio e Palavra do Dia agendados para ${new Date(scheduledPublishAt).toLocaleString('pt-BR')}!${shareImageMessage}`
           : `✅ Episódio agendado para ${new Date(scheduledPublishAt).toLocaleString('pt-BR')}!`
         : formData.status === 'published'
         ? hasDailyQuote
-          ? '✅ Episódio e Palavra do Dia publicados com sucesso!'
+          ? `✅ Episódio e Palavra do Dia publicados com sucesso!${shareImageMessage}`
           : '✅ Episódio publicado com sucesso!'
         : hasDailyQuote
-        ? '✅ Rascunho salvo com Palavra do Dia!'
+        ? `✅ Rascunho salvo com Palavra do Dia!${shareImageMessage}`
         : '✅ Rascunho salvo com sucesso!'
 
       alert(`${message}${wordsPersistence.message}`)

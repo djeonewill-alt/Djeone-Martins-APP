@@ -31,10 +31,10 @@ function fitText(value: string, maxLength = 145) {
 }
 
 function getQuoteFontSize(text: string) {
-  if (text.length > 125) return 31
-  if (text.length > 95) return 34
-  if (text.length > 70) return 38
-  return 44
+  if (text.length > 125) return 48
+  if (text.length > 95) return 54
+  if (text.length > 70) return 60
+  return 66
 }
 
 export async function GET(_request: Request, { params }: RouteProps) {
@@ -55,7 +55,13 @@ export async function GET(_request: Request, { params }: RouteProps) {
           status,
           background_image_url,
           source_image_url,
-          card_image_url
+          card_image_url,
+          episode:episodes (
+            cover_image_url,
+            series:series (
+              cover_image_url
+            )
+          )
         `)
         .eq('id', id)
         .eq('status', 'published')
@@ -67,10 +73,15 @@ export async function GET(_request: Request, { params }: RouteProps) {
 
       if (data?.quote_text) {
         quoteText = cleanText(data.quote_text)
+
+        // Ordem melhorada: background > source > episode cover > series cover > card (último fallback)
         backgroundImageUrl =
           cleanText(data.background_image_url) ||
           cleanText(data.source_image_url) ||
-          cleanText(data.card_image_url)
+          cleanText((data as any).episode?.cover_image_url) ||
+          cleanText((data as any).episode?.series?.cover_image_url) ||
+          cleanText(data.card_image_url) ||
+          ''
       }
     } catch (error) {
       console.error('Erro inesperado na rota OG da Palavra do Dia:', error)
@@ -84,8 +95,8 @@ export async function GET(_request: Request, { params }: RouteProps) {
     (
       <div
         style={{
-          width: '800px',
-          height: '420px',
+          width: '1200px',
+          height: '630px',
           display: 'flex',
           position: 'relative',
           overflow: 'hidden',
@@ -97,14 +108,14 @@ export async function GET(_request: Request, { params }: RouteProps) {
         {backgroundImageUrl ? (
           <img
             src={backgroundImageUrl}
-            width="800"
-            height="420"
+            width="1200"
+            height="630"
             alt=""
             style={{
               position: 'absolute',
               inset: 0,
-              width: 800,
-              height: 420,
+              width: 1200,
+              height: 630,
               objectFit: 'cover',
               objectPosition: 'center center',
               display: 'flex',
@@ -144,10 +155,10 @@ export async function GET(_request: Request, { params }: RouteProps) {
         <div
           style={{
             position: 'absolute',
-            left: 58,
-            top: 32,
-            right: 58,
-            bottom: 30,
+            left: 80,
+            top: 48,
+            right: 80,
+            bottom: 48,
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'space-between',
@@ -160,13 +171,13 @@ export async function GET(_request: Request, { params }: RouteProps) {
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: 10,
+              gap: 14,
             }}
           >
             <div
               style={{
                 display: 'flex',
-                width: 96,
+                width: 120,
                 height: 1,
                 background:
                   'linear-gradient(90deg, rgba(217,188,107,0), rgba(217,188,107,0.95), rgba(217,188,107,0))',
@@ -176,9 +187,9 @@ export async function GET(_request: Request, { params }: RouteProps) {
             <div
               style={{
                 display: 'flex',
-                fontSize: 13,
+                fontSize: 18,
                 fontWeight: 900,
-                letterSpacing: 8,
+                letterSpacing: 10,
                 color: '#fff4d6',
                 textShadow: '0 3px 10px rgba(0,0,0,0.92)',
                 textTransform: 'uppercase',
@@ -191,7 +202,7 @@ export async function GET(_request: Request, { params }: RouteProps) {
           <div
             style={{
               display: 'flex',
-              maxWidth: 650,
+              maxWidth: 900,
               fontSize: quoteFontSize,
               lineHeight: 1.18,
               fontWeight: 700,
@@ -209,13 +220,13 @@ export async function GET(_request: Request, { params }: RouteProps) {
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: 9,
+              gap: 12,
             }}
           >
             <div
               style={{
                 display: 'flex',
-                width: 96,
+                width: 120,
                 height: 1,
                 background:
                   'linear-gradient(90deg, rgba(217,188,107,0), rgba(217,188,107,0.95), rgba(217,188,107,0))',
@@ -225,7 +236,7 @@ export async function GET(_request: Request, { params }: RouteProps) {
             <div
               style={{
                 display: 'flex',
-                fontSize: 25,
+                fontSize: 36,
                 fontWeight: 700,
                 color: '#fffdf5',
                 fontFamily: 'Georgia, serif',
@@ -238,9 +249,9 @@ export async function GET(_request: Request, { params }: RouteProps) {
             <div
               style={{
                 display: 'flex',
-                fontSize: 11,
+                fontSize: 15,
                 fontWeight: 900,
-                letterSpacing: 5,
+                letterSpacing: 6,
                 color: '#fff4d6',
                 textShadow: '0 3px 10px rgba(0,0,0,0.90)',
                 textTransform: 'uppercase',
@@ -253,9 +264,10 @@ export async function GET(_request: Request, { params }: RouteProps) {
       </div>
     ),
     {
-      width: 800,
-      height: 420,
+      width: 1200,
+      height: 630,
       headers: {
+        'Content-Type': 'image/png',
         'Cache-Control':
           'public, max-age=300, s-maxage=86400, stale-while-revalidate=604800',
       },

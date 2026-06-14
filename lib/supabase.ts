@@ -134,6 +134,7 @@ export type DailyQuote = {
   quote_background_id?: string | null;
   quote_text: string;
   background_image_url?: string | null;
+  share_image_url?: string | null;
   card_image_url?: string | null;
   date?: string | null;
   status?: string | null;

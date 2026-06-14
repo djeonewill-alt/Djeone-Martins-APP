@@ -17,11 +17,16 @@ type RouteProps = {
 type DailyQuoteRecord = {
   id: string
   quote_text: string
+  share_image_url: string | null
   background_image_url: string | null
   source_image_url: string | null
   card_image_url: string | null
   episode: {
     bible_reference?: string | null
+    cover_image_url?: string | null
+    series?: {
+      cover_image_url?: string | null
+    } | null
   } | null
 }
 
@@ -59,21 +64,26 @@ function getAdminAuthError(request: NextRequest) {
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) return error.message
-
   return String(error)
 }
 
 function getBaseImageUrl(quote: DailyQuoteRecord) {
+  // Ordem: background > source > episode cover > series cover > card (último fallback)
   return (
     quote.background_image_url ||
     quote.source_image_url ||
+    quote.episode?.cover_image_url ||
+    quote.episode?.series?.cover_image_url ||
     quote.card_image_url ||
     null
   )
 }
 
-function getShareImageKey(quoteId: string) {
-  return `share/quotes/${quoteId}/og.jpg`
+function getShareImageKey(quoteId: string, force: boolean) {
+  if (force) {
+    return `og/quotes/${quoteId}-quote-og-v26-${Date.now()}.png`
+  }
+  return `og/quotes/${quoteId}-quote-og-v26.png`
 }
 
 async function markQuoteError(quoteId: string, message: string) {
@@ -102,6 +112,8 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
   }
 
   try {
+    const body = (await request.json().catch(() => ({}))) as { force?: boolean }
+    const force = body.force === true
     const publicBaseUrl = R2_PUBLIC_URL.replace(/\/+$/, '')
 
     if (!publicBaseUrl) {
@@ -114,11 +126,16 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
       .select(`
         id,
         quote_text,
+        share_image_url,
         background_image_url,
         source_image_url,
         card_image_url,
         episode:episodes (
-          bible_reference
+          bible_reference,
+          cover_image_url,
+          series:series (
+            cover_image_url
+          )
         )
       `)
       .eq('id', id)
@@ -131,13 +148,24 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
     }
 
     const quote = data as DailyQuoteRecord
+
+    // Se share_image_url já existe e não for force, retornar URL existente
+    if (quote.share_image_url && !force) {
+      return NextResponse.json({
+        ok: true,
+        daily_quote_id: quote.id,
+        share_image_url: quote.share_image_url,
+        reused_existing: true,
+      })
+    }
+
     const generated = await generateQuoteShareImage({
       quoteText: quote.quote_text,
       bibleReference: quote.episode?.bible_reference,
       baseImageUrl: getBaseImageUrl(quote),
     })
 
-    const key = getShareImageKey(quote.id)
+    const key = getShareImageKey(quote.id, force)
     const shareImageUrl = `${publicBaseUrl}/${key}`
 
     await r2Client.send(
@@ -145,7 +173,7 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
         Bucket: R2_BUCKET_NAME,
         Key: key,
         Body: generated.buffer,
-        ContentType: 'image/jpeg',
+        ContentType: 'image/png',
         CacheControl: 'public, max-age=31536000, immutable',
       })
     )
@@ -166,14 +194,10 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
 
     return NextResponse.json({
       ok: true,
+      daily_quote_id: quote.id,
       share_image_url: shareImageUrl,
-      share_image_key: key,
-      share_image_size_bytes: generated.sizeBytes,
-      width: generated.width,
-      height: generated.height,
-      quality: generated.quality,
-      share_image_generated_at: generatedAt,
-      share_image_status: 'ready',
+      size_bytes: generated.sizeBytes,
+      content_type: 'image/png',
     })
   } catch (error) {
     const message = getErrorMessage(error)

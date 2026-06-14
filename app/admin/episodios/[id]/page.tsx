@@ -24,6 +24,12 @@ type EpisodeRow = {
   transcription_text: string | null
 }
 
+type DailyQuoteBrief = {
+  id: string
+  quote_text: string
+  share_image_url: string | null
+}
+
 export default function AdminEditEpisodePage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
@@ -44,6 +50,10 @@ export default function AdminEditEpisodePage() {
   const [coverFile, setCoverFile] = useState<File | null>(null)
   const [uploadingCover, setUploadingCover] = useState(false)
   const [coverUploadError, setCoverUploadError] = useState('')
+
+  // WhatsApp preview state for the daily quote linked to this episode
+  const [dailyQuote, setDailyQuote] = useState<DailyQuoteBrief | null>(null)
+  const [regeneratingShareImage, setRegeneratingShareImage] = useState(false)
 
   useEffect(() => {
     async function loadEpisode() {
@@ -75,6 +85,19 @@ export default function AdminEditEpisodePage() {
         setIsPreview(Boolean(row.is_preview))
         setTranscriptionText(row.transcription_text || '')
         setCoverImageUrl(row.cover_image_url || '')
+
+        // Load daily quote associated with this episode
+        const { data: quoteData } = await supabase
+          .from('daily_quotes')
+          .select('id, quote_text, share_image_url')
+          .eq('episode_id', episodeId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (quoteData) {
+          setDailyQuote(quoteData as DailyQuoteBrief)
+        }
       } catch (error) {
         console.error('Erro ao carregar episódio:', error)
         alert('Não foi possível carregar este episódio.')
@@ -220,6 +243,46 @@ export default function AdminEditEpisodePage() {
     }
   }
 
+  async function handleRegenerateShareImage() {
+    if (!dailyQuote) return
+
+    setRegeneratingShareImage(true)
+
+    try {
+      const response = await fetch(
+        `/api/admin/daily-quotes/${dailyQuote.id}/generate-share-image`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ force: true }),
+        }
+      )
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Erro ao regenerar preview.')
+      }
+
+      setDailyQuote((prev) =>
+        prev
+          ? { ...prev, share_image_url: result.share_image_url }
+          : prev
+      )
+
+      alert('Preview WhatsApp da Palavra do Dia gerado!')
+    } catch (error) {
+      console.error('Erro ao regenerar preview:', error)
+      alert(
+        `Erro ao regenerar preview: ${error instanceof Error ? error.message : 'Erro desconhecido'}`
+      )
+    } finally {
+      setRegeneratingShareImage(false)
+    }
+  }
+
   const backHref = episode?.series_id
     ? `/admin/series/${episode.series_id}/episodios`
     : '/admin/episodios'
@@ -271,6 +334,60 @@ export default function AdminEditEpisodePage() {
               src={episode.audio_url}
               title={episode.title}
             />
+          </section>
+        )}
+
+        {/* WhatsApp Preview da Palavra do Dia */}
+        {dailyQuote && (
+          <section className="mt-5 rounded-[30px] border border-white/10 bg-slate-900/80 p-5 shadow-xl shadow-black/10">
+            <p className="mb-3 text-xs font-black uppercase tracking-[0.18em] text-blue-200">
+              Preview WhatsApp da Palavra do Dia
+            </p>
+
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-bold text-slate-300">
+                  Status:{' '}
+                </span>
+                {dailyQuote.share_image_url ? (
+                  <span className="rounded-full border border-emerald-300/20 bg-emerald-500/10 px-3 py-1 text-xs font-black text-emerald-100">
+                    Pronto
+                  </span>
+                ) : (
+                  <span className="rounded-full border border-amber-300/20 bg-amber-500/10 px-3 py-1 text-xs font-black text-amber-100">
+                    Pendente
+                  </span>
+                )}
+              </div>
+
+              <p className="text-sm leading-6 text-slate-400">
+                &ldquo;{dailyQuote.quote_text}&rdquo;
+              </p>
+
+              <div className="flex flex-wrap gap-3">
+                {dailyQuote.share_image_url && (
+                  <a
+                    href={dailyQuote.share_image_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-2xl border border-white/10 bg-slate-950 px-5 py-3 text-sm font-black text-blue-200 active:scale-[0.98]"
+                  >
+                    Abrir preview
+                  </a>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleRegenerateShareImage}
+                  disabled={regeneratingShareImage}
+                  className="rounded-2xl border border-amber-300/30 bg-amber-500/15 px-5 py-3 text-sm font-black text-amber-100 active:scale-[0.98] disabled:opacity-50"
+                >
+                  {regeneratingShareImage
+                    ? 'Gerando...'
+                    : 'Regenerar preview da Palavra'}
+                </button>
+              </div>
+            </div>
           </section>
         )}
 
