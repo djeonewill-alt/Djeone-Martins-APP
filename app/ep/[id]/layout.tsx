@@ -37,8 +37,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       'Ouça uma palavra bíblica para fortalecer sua fé hoje.'
     const appUrl = getPublicAppUrl()
     const episodeUrl = `${appUrl}/ep/${id}?share=audio-v5`
-    const dynamicOgImageUrl = `${appUrl}/api/og/episode/${id}?v=audio-og-v7`
-    const ogImageUrl = episode.og_image_url || dynamicOgImageUrl
+    const ogImageUrl = `${appUrl}/api/og/episode/${id}?v=audio-og-v6`
 
     return {
       title,
@@ -52,8 +51,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         images: [
           {
             url: ogImageUrl,
-            width: 1200,
-            height: 630,
+            width: 800,
+            height: 420,
             type: 'image/png',
             alt: title,
           },
