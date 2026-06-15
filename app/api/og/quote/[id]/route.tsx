@@ -1,5 +1,6 @@
 ﻿import { ImageResponse } from 'next/og'
 import { createSupabaseAdminClient } from '@/lib/supabase/admin'
+import { isPublicEpisodeVisible } from '@/lib/episodes/publicVisibility'
 
 type RouteParams = {
   id: string
@@ -11,6 +12,21 @@ type RouteProps = {
 
 export const runtime = 'edge'
 export const dynamic = 'force-dynamic'
+
+type QuoteOgData = {
+  episode_id?: string | null
+  quote_text?: string | null
+  background_image_url?: string | null
+  source_image_url?: string | null
+  card_image_url?: string | null
+  episode?: {
+    editorial_status?: string | null
+    cover_image_url?: string | null
+    series?: {
+      cover_image_url?: string | null
+    } | null
+  } | null
+}
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -51,12 +67,14 @@ export async function GET(_request: Request, { params }: RouteProps) {
         .from('daily_quotes')
         .select(`
           id,
+          episode_id,
           quote_text,
           status,
           background_image_url,
           source_image_url,
           card_image_url,
           episode:episodes (
+            editorial_status,
             cover_image_url,
             series:series (
               cover_image_url
@@ -71,16 +89,25 @@ export async function GET(_request: Request, { params }: RouteProps) {
         console.error('Erro ao carregar OG da Palavra do Dia:', error)
       }
 
-      if (data?.quote_text) {
-        quoteText = cleanText(data.quote_text)
+      const quote = data as QuoteOgData | null
+
+      if (
+        quote?.episode_id &&
+        (!quote.episode || !isPublicEpisodeVisible(quote.episode))
+      ) {
+        return new Response('Quote not found', { status: 404 })
+      }
+
+      if (quote?.quote_text) {
+        quoteText = cleanText(quote.quote_text)
 
         // Ordem melhorada: background > source > episode cover > series cover > card (último fallback)
         backgroundImageUrl =
-          cleanText(data.background_image_url) ||
-          cleanText(data.source_image_url) ||
-          cleanText((data as any).episode?.cover_image_url) ||
-          cleanText((data as any).episode?.series?.cover_image_url) ||
-          cleanText(data.card_image_url) ||
+          cleanText(quote.background_image_url) ||
+          cleanText(quote.source_image_url) ||
+          cleanText(quote.episode?.cover_image_url) ||
+          cleanText(quote.episode?.series?.cover_image_url) ||
+          cleanText(quote.card_image_url) ||
           ''
       }
     } catch (error) {

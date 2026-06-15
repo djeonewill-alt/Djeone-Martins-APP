@@ -2,6 +2,7 @@
 import { notFound } from 'next/navigation'
 import { createSupabaseAdminClient } from '@/lib/supabase/admin'
 import { getPublicAppUrl } from '@/lib/appUrl'
+import { isPublicEpisodeVisible } from '@/lib/episodes/publicVisibility'
 import PublicQuoteActions from './PublicQuoteActions'
 
 type RouteParams = {
@@ -14,6 +15,7 @@ type PageProps = {
 
 type PublicDailyQuote = {
   id: string
+  episode_id?: string | null
   quote_text: string
   card_image_url?: string | null
   background_image_url?: string | null
@@ -22,6 +24,7 @@ type PublicDailyQuote = {
   date?: string | null
   episode?: {
     id?: string | null
+    editorial_status?: string | null
     title?: string | null
     bible_reference?: string | null
     cover_image_url?: string | null
@@ -72,6 +75,7 @@ async function getDailyQuote(id: string): Promise<PublicDailyQuote | null> {
     .from('daily_quotes')
     .select(`
       id,
+      episode_id,
       quote_text,
       card_image_url,
       background_image_url,
@@ -81,6 +85,7 @@ async function getDailyQuote(id: string): Promise<PublicDailyQuote | null> {
       status,
       episode:episodes (
         id,
+        editorial_status,
         title,
         bible_reference,
         cover_image_url,
@@ -101,7 +106,16 @@ async function getDailyQuote(id: string): Promise<PublicDailyQuote | null> {
     return null
   }
 
-  return data as PublicDailyQuote | null
+  const quote = data as PublicDailyQuote | null
+
+  if (
+    quote?.episode_id &&
+    (!quote.episode || !isPublicEpisodeVisible(quote.episode))
+  ) {
+    return null
+  }
+
+  return quote
 }
 
 export async function generateMetadata({
@@ -274,4 +288,3 @@ export default async function PalavraDoDiaPage({ params }: PageProps) {
     </main>
   )
 }
-
