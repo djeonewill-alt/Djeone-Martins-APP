@@ -33,6 +33,13 @@ type MonthData = {
   daysInMonth: number
 }
 
+type ModalState = {
+  open: boolean
+  selectedDate: Date | null
+  selectedEpisodeId: string | null
+  selectedTime: string
+}
+
 const ADMIN_STORAGE_KEY = 'djeone_admin_logged'
 const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? ''
 
@@ -66,6 +73,18 @@ function isSameDay(a: Date, b: Date) {
   )
 }
 
+function formatTimeForDisplay(date: Date): string {
+  return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+}
+
+function formatDateBr(date: Date): string {
+  return date.toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
+}
+
 export default function AdminAgendaPage() {
   const [isLogged, setIsLogged] = useState(false)
   const [password, setPassword] = useState('')
@@ -81,6 +100,20 @@ export default function AdminAgendaPage() {
   // Data
   const [repositoryEpisodes, setRepositoryEpisodes] = useState<EpisodeWithSeries[]>([])
   const [calendarEpisodes, setCalendarEpisodes] = useState<EpisodeWithSeries[]>([])
+
+  // Modal state
+  const [modal, setModal] = useState<ModalState>({
+    open: false,
+    selectedDate: null,
+    selectedEpisodeId: null,
+    selectedTime: '07:00',
+  })
+
+  // Scheduling state
+  const [scheduling, setScheduling] = useState(false)
+  const [scheduleError, setScheduleError] = useState('')
+  const [scheduleSuccess, setScheduleSuccess] = useState('')
+  const [showConflictWarning, setShowConflictWarning] = useState(false)
 
   const monthData = useMemo(
     () => getMonthData(currentYear, currentMonth),
@@ -248,6 +281,135 @@ export default function AdminAgendaPage() {
     setCurrentMonth(today.getMonth())
   }
 
+  // ---- Modal handlers ----
+  function openModal(dateObj: Date) {
+    // Check for conflict on same day + time
+    const timeStr = '07:00'
+    const [hours, minutes] = timeStr.split(':').map(Number)
+    const candidateAt = new Date(dateObj)
+    candidateAt.setHours(hours, minutes, 0, 0)
+
+    const hasConflict = calendarEpisodes.some((ep) => {
+      if (!ep.calendar_scheduled_at) return false
+      const epDate = new Date(ep.calendar_scheduled_at)
+      return isSameDay(epDate, candidateAt) && epDate.getHours() === hours && epDate.getMinutes() === minutes
+    })
+
+    setShowConflictWarning(hasConflict)
+
+    setModal({
+      open: true,
+      selectedDate: dateObj,
+      selectedEpisodeId: repositoryEpisodes.length > 0 ? repositoryEpisodes[0].id : null,
+      selectedTime: '07:00',
+    })
+    setScheduleError('')
+    setScheduleSuccess('')
+  }
+
+  function closeModal() {
+    setModal({ ...modal, open: false })
+    setScheduleError('')
+    setScheduleSuccess('')
+  }
+
+  function handleEpisodeChange(episodeId: string) {
+    setModal((prev) => ({ ...prev, selectedEpisodeId: episodeId }))
+  }
+
+  function handleTimeChange(time: string) {
+    setModal((prev) => ({ ...prev, selectedTime: time }))
+
+    // Re-check conflict
+    if (modal.selectedDate) {
+      const [hours, minutes] = time.split(':').map(Number)
+      const candidateAt = new Date(modal.selectedDate)
+      candidateAt.setHours(hours, minutes, 0, 0)
+
+      const hasConflict = calendarEpisodes.some((ep) => {
+        if (!ep.calendar_scheduled_at) return false
+        const epDate = new Date(ep.calendar_scheduled_at)
+        return isSameDay(epDate, candidateAt) && epDate.getHours() === hours && epDate.getMinutes() === minutes
+      })
+
+      setShowConflictWarning(hasConflict)
+    }
+  }
+
+  // ---- Click on calendar day ----
+  function handleDayClick(dateObj: Date) {
+    if (repositoryEpisodes.length === 0) {
+      // No episodes to schedule
+      openModal(dateObj)
+      return
+    }
+
+    openModal(dateObj)
+  }
+
+  // ---- Schedule mutation ----
+  async function handleSchedule() {
+    if (!modal.selectedEpisodeId || !modal.selectedDate) return
+
+    setScheduling(true)
+    setScheduleError('')
+    setScheduleSuccess('')
+
+    const [hours, minutes] = modal.selectedTime.split(':').map(Number)
+    const scheduledAt = new Date(modal.selectedDate)
+    scheduledAt.setHours(hours, minutes, 0, 0)
+
+    // Format as ISO with -03:00 offset
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const isoOffset = `${scheduledAt.getFullYear()}-${pad(scheduledAt.getMonth() + 1)}-${pad(scheduledAt.getDate())}T${pad(scheduledAt.getHours())}:${pad(scheduledAt.getMinutes())}:00-03:00`
+
+    try {
+      const { error } = await supabase
+        .from('episodes')
+        .update({
+          editorial_status: 'calendar_scheduled',
+          calendar_scheduled_at: isoOffset,
+        })
+        .eq('id', modal.selectedEpisodeId)
+        .eq('editorial_status', 'repository')
+
+      if (error) throw error
+
+      // Find the episode that was scheduled to update local state
+      const scheduledEp = repositoryEpisodes.find((ep) => ep.id === modal.selectedEpisodeId)
+      if (scheduledEp) {
+        // Remove from repository
+        setRepositoryEpisodes((prev) => prev.filter((ep) => ep.id !== modal.selectedEpisodeId))
+
+        // Add to calendar episodes
+        const updatedEp: EpisodeWithSeries = {
+          ...scheduledEp,
+          editorial_status: 'calendar_scheduled',
+          calendar_scheduled_at: isoOffset,
+        }
+        setCalendarEpisodes((prev) =>
+          [...prev, updatedEp].sort((a, b) => {
+            if (!a.calendar_scheduled_at) return 1
+            if (!b.calendar_scheduled_at) return -1
+            return new Date(a.calendar_scheduled_at).getTime() - new Date(b.calendar_scheduled_at).getTime()
+          })
+        )
+      }
+
+      setScheduleSuccess('Episódio agendado no calendário. Ele ainda não está público.')
+
+      // Auto-close modal after 2 seconds
+      setTimeout(() => {
+        closeModal()
+      }, 2000)
+    } catch (err) {
+      console.error('Erro ao agendar episódio:', err)
+      setScheduleError('Não foi possível agendar o episódio.')
+    } finally {
+      setScheduling(false)
+    }
+  }
+
   // ---- Login screen ----
   if (!isLogged) {
     return (
@@ -374,6 +536,7 @@ export default function AdminAgendaPage() {
                 <div
                   key={idx}
                   className={`calendar-cell ${day.isCurrentMonth ? '' : 'other-month'} ${day.isToday ? 'today' : ''}`}
+                  onClick={() => day.isCurrentMonth && handleDayClick(day.dateObj)}
                 >
                   <span className="day-number">{day.date}</span>
                   <div className="day-episodes">
@@ -391,7 +554,6 @@ export default function AdminAgendaPage() {
                       </div>
                     )}
                   </div>
-                  <div className="day-hint">Agendamento será liberado no próximo patch.</div>
                 </div>
               ))}
             </div>
@@ -440,6 +602,94 @@ export default function AdminAgendaPage() {
           </aside>
         </div>
       </div>
+
+      {/* ---- Schedule Modal ---- */}
+      {modal.open && (
+        <div className="modal-overlay" onClick={closeModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Agendar episódio</h2>
+              <button type="button" className="modal-close" onClick={closeModal}>
+                ✕
+              </button>
+            </div>
+
+            {modal.selectedDate && (
+              <p className="modal-date">
+                Data: <strong>{formatDateBr(modal.selectedDate)}</strong>
+              </p>
+            )}
+
+            {repositoryEpisodes.length === 0 ? (
+              <div className="modal-empty-msg">
+                Não há episódios no repositório para agendar.
+              </div>
+            ) : (
+              <>
+                <div className="modal-field">
+                  <label htmlFor="modal-episode">Episódio</label>
+                  <select
+                    id="modal-episode"
+                    value={modal.selectedEpisodeId ?? ''}
+                    onChange={(e) => handleEpisodeChange(e.target.value)}
+                    className="modal-select"
+                  >
+                    {repositoryEpisodes.map((ep) => (
+                      <option key={ep.id} value={ep.id}>
+                        {ep.series?.[0]?.title || 'Sem série'} — Ep. {ep.episode_number ?? '?'} — {ep.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="modal-field">
+                  <label htmlFor="modal-time">Horário</label>
+                  <input
+                    id="modal-time"
+                    type="time"
+                    value={modal.selectedTime}
+                    onChange={(e) => handleTimeChange(e.target.value)}
+                    className="modal-input"
+                  />
+                </div>
+
+                {showConflictWarning && (
+                  <div className="modal-warning">
+                    Já existe um episódio nesse horário.
+                  </div>
+                )}
+
+                {scheduleSuccess && (
+                  <div className="modal-success">{scheduleSuccess}</div>
+                )}
+
+                {scheduleError && (
+                  <div className="modal-error">{scheduleError}</div>
+                )}
+
+                <div className="modal-actions">
+                  <button
+                    type="button"
+                    className="modal-cancel"
+                    onClick={closeModal}
+                    disabled={scheduling}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="modal-submit"
+                    onClick={handleSchedule}
+                    disabled={scheduling || !modal.selectedEpisodeId}
+                  >
+                    {scheduling ? 'Agendando...' : 'Agendar episódio'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <style jsx>{styles}</style>
     </main>
@@ -684,10 +934,23 @@ const styles = `
     position: relative;
     display: flex;
     flex-direction: column;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .calendar-cell:hover {
+    background: rgba(30, 41, 59, 0.5);
+    border-color: rgba(96, 165, 250, 0.2);
   }
 
   .calendar-cell.other-month {
     opacity: 0.3;
+    cursor: default;
+  }
+
+  .calendar-cell.other-month:hover {
+    background: rgba(2, 6, 23, 0.4);
+    border-color: rgba(148, 163, 184, 0.06);
   }
 
   .calendar-cell.today {
@@ -752,21 +1015,6 @@ const styles = `
     font-weight: 800;
     color: #a78bfa;
     padding: 2px 6px;
-  }
-
-  .day-hint {
-    display: none;
-    position: absolute;
-    bottom: 4px;
-    left: 6px;
-    right: 6px;
-    font-size: 0.55rem;
-    color: #64748b;
-    text-align: center;
-  }
-
-  .calendar-cell:hover .day-hint {
-    display: block;
   }
 
   .calendar-empty-msg {
@@ -897,6 +1145,187 @@ const styles = `
 
   .repo-edit-link:hover {
     background: rgba(59, 130, 246, 0.25);
+  }
+
+  /* ---------- Modal ---------- */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(2, 6, 23, 0.7);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 24px;
+  }
+
+  .modal-content {
+    width: min(100%, 480px);
+    background: rgba(15, 23, 42, 0.96);
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 28px;
+    padding: 28px;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+
+  .modal-header h2 {
+    font-size: 1.3rem;
+    letter-spacing: -0.04em;
+    font-weight: 900;
+  }
+
+  .modal-close {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 12px;
+    font-size: 1rem;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    background: rgba(15, 23, 42, 0.6);
+  }
+
+  .modal-date {
+    font-size: 0.95rem;
+    color: #bfdbfe;
+    margin-bottom: 20px;
+    padding: 12px 16px;
+    border-radius: 14px;
+    background: rgba(30, 64, 175, 0.12);
+    border: 1px solid rgba(96, 165, 250, 0.15);
+  }
+
+  .modal-date strong {
+    color: #f8fafc;
+  }
+
+  .modal-field {
+    margin-bottom: 16px;
+  }
+
+  .modal-field label {
+    display: block;
+    color: #dbeafe;
+    font-weight: 900;
+    font-size: 0.82rem;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .modal-select,
+  .modal-input {
+    width: 100%;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: rgba(2, 6, 23, 0.7);
+    color: #f8fafc;
+    border-radius: 14px;
+    padding: 12px 14px;
+    outline: none;
+    font-size: 0.9rem;
+    font-weight: 700;
+  }
+
+  .modal-select:focus,
+  .modal-input:focus {
+    border-color: rgba(96, 165, 250, 0.6);
+    background: rgba(2, 6, 23, 0.9);
+  }
+
+  .modal-select option {
+    background: #0f172a;
+    color: #f8fafc;
+  }
+
+  .modal-warning {
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+    font-size: 0.82rem;
+    font-weight: 800;
+    margin-bottom: 16px;
+  }
+
+  .modal-success {
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: rgba(6, 95, 70, 0.2);
+    border: 1px solid rgba(45, 212, 191, 0.2);
+    color: #5eead4;
+    font-size: 0.82rem;
+    font-weight: 800;
+    margin-bottom: 16px;
+  }
+
+  .modal-error {
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: rgba(127, 29, 29, 0.25);
+    border: 1px solid rgba(248, 113, 113, 0.2);
+    color: #fca5a5;
+    font-size: 0.82rem;
+    font-weight: 800;
+    margin-bottom: 16px;
+  }
+
+  .modal-empty-msg {
+    text-align: center;
+    padding: 40px 16px;
+    color: #64748b;
+    font-size: 0.9rem;
+    font-weight: 700;
+    line-height: 1.6;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+  }
+
+  .modal-cancel {
+    flex: 1;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    background: rgba(15, 23, 42, 0.6);
+    color: #94a3b8;
+    border-radius: 14px;
+    padding: 14px;
+    font-weight: 900;
+    font-size: 0.95rem;
+  }
+
+  .modal-submit {
+    flex: 1;
+    border: 1px solid rgba(96, 165, 250, 0.3);
+    background: rgba(37, 99, 235, 0.4);
+    color: #f8fafc;
+    border-radius: 14px;
+    padding: 14px;
+    font-weight: 900;
+    font-size: 0.95rem;
+  }
+
+  .modal-submit:hover {
+    background: rgba(37, 99, 235, 0.6);
+    border-color: rgba(96, 165, 250, 0.5);
+  }
+
+  .modal-cancel:hover {
+    background: rgba(15, 23, 42, 0.85);
+    border-color: rgba(148, 163, 184, 0.35);
   }
 
   /* ---------- Login ---------- */
