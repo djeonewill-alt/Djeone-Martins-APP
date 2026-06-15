@@ -103,6 +103,9 @@ export type Episode = {
   status?: string | null;
   is_preview?: boolean | null;
   scheduled_publish_at?: string | null;
+  editorial_status?: string | null;
+  calendar_scheduled_at?: string | null;
+  internal_notes?: string | null;
   transcription_text?: string | null;
   transcription_status?: string | null;
   transcription_error?: string | null;
