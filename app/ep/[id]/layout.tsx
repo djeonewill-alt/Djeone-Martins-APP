@@ -1,6 +1,7 @@
 import { Metadata } from 'next'
 import { supabase } from '@/lib/supabase'
 import { getPublicAppUrl } from '@/lib/appUrl'
+import { PUBLIC_EPISODE_EDITORIAL_FILTER } from '@/lib/episodes/publicVisibility'
 import { ReactNode } from 'react'
 
 type Props = {
@@ -23,6 +24,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         )
       `)
       .eq('id', id)
+      .or(PUBLIC_EPISODE_EDITORIAL_FILTER)
       .single()
 
     if (!episode) {

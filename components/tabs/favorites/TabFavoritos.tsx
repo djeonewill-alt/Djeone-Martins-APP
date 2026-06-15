@@ -4,6 +4,10 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAudio } from '@/components/audio/AudioProvider'
 import FavoriteButton from '@/components/favorites/FavoriteButton'
+import {
+  isPublicEpisodeVisible,
+  PUBLIC_EPISODE_EDITORIAL_FILTER,
+} from '@/lib/episodes/publicVisibility'
 import type { Episode } from '@/lib/supabase'
 
 export default function TabFavoritos() {
@@ -43,11 +47,12 @@ export default function TabFavoritos() {
         .from('episodes')
         .select('*')
         .in('id', episodeIds)
+        .or(PUBLIC_EPISODE_EDITORIAL_FILTER)
         .order('created_at', { ascending: false })
 
       if (epError) throw epError
 
-      setFavorites(episodes || [])
+      setFavorites((episodes || []).filter(isPublicEpisodeVisible))
     } catch (error) {
       console.error('Erro ao carregar favoritos:', error)
     } finally {

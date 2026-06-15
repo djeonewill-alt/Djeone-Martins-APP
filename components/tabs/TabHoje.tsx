@@ -7,6 +7,7 @@ import { useAudio } from '@/components/audio/AudioProvider'
 import { usePushNotifications } from '@/lib/notifications/usePushNotifications'
 import { getPublicAppUrl } from '@/lib/appUrl'
 import { trackAppEvent } from '@/lib/analytics/client'
+import { PUBLIC_EPISODE_EDITORIAL_FILTER } from '@/lib/episodes/publicVisibility'
 import DailyQuoteCard from '@/components/daily-quote/DailyQuoteCard'
 import TodayAudioCard from '@/components/tabs/TodayAudioCard'
 import TodayActionCard from '@/components/tabs/today/TodayActionCard'
@@ -79,6 +80,7 @@ export default function TabHoje({
           )
         `)
         .or('status.eq.published,status.is.null')
+        .or(PUBLIC_EPISODE_EDITORIAL_FILTER)
         .eq('show_on_today', true)
         .order('published_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })

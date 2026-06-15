@@ -1,5 +1,7 @@
 import { ImageResponse } from 'next/og'
 
+import { PUBLIC_EPISODE_EDITORIAL_FILTER } from '@/lib/episodes/publicVisibility'
+
 export const runtime = 'edge'
 
 type Props = {
@@ -50,6 +52,7 @@ async function loadEpisode(id: string) {
     'title,bible_reference,cover_image_url,episode_number,duration_seconds,series:series_id(title,cover_image_url)'
   )
   url.searchParams.set('id', `eq.${id}`)
+  url.searchParams.set('or', `(${PUBLIC_EPISODE_EDITORIAL_FILTER})`)
   url.searchParams.set('limit', '1')
 
   const response = await fetch(url.toString(), {

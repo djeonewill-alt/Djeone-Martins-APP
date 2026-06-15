@@ -6,6 +6,10 @@ import { supabase } from '@/lib/supabase'
 import { useAudio } from '@/components/audio/AudioProvider'
 import { getPublicAppUrl } from '@/lib/appUrl'
 import { trackAppEvent, type AnalyticsEventName } from '@/lib/analytics/client'
+import {
+  isPublicEpisodeVisible,
+  PUBLIC_EPISODE_EDITORIAL_FILTER,
+} from '@/lib/episodes/publicVisibility'
 import type { Episode } from '@/lib/supabase'
 
 type EpisodeSeries = {
@@ -243,11 +247,17 @@ export default function EpisodePage() {
           )
         `)
         .eq('id', episodeId)
+        .or(PUBLIC_EPISODE_EDITORIAL_FILTER)
         .single()
 
       if (error) throw error
 
       const typedEpisode = data as PublicEpisode
+
+      if (!isPublicEpisodeVisible(typedEpisode)) {
+        setEpisode(null)
+        return
+      }
 
       setEpisode(typedEpisode)
 

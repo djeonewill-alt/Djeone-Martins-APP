@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import EpisodeAudioPlayer from '@/components/audio/EpisodeAudioPlayer'
 import { getPreferredAudioUrl } from '@/lib/audio/compatibleAudio'
+import { PUBLIC_EPISODE_EDITORIAL_FILTER } from '@/lib/episodes/publicVisibility'
 import { supabase } from '@/lib/supabase'
 import type { Series } from '@/lib/supabase'
 
@@ -739,6 +740,7 @@ export default function TabSeries() {
         .from('episodes')
         .select('series_id')
         .eq('status', 'published')
+        .or(PUBLIC_EPISODE_EDITORIAL_FILTER)
         .in('series_id', podcastIds)
 
       if (episodeCountError) throw episodeCountError
@@ -785,6 +787,7 @@ export default function TabSeries() {
         )
         .eq('series_id', serie.id)
         .eq('status', 'published')
+        .or(PUBLIC_EPISODE_EDITORIAL_FILTER)
         .order('episode_number', { ascending: true, nullsFirst: false })
         .order('published_at', { ascending: false })
 
@@ -914,5 +917,4 @@ export default function TabSeries() {
     </div>
   )
 }
-
 
