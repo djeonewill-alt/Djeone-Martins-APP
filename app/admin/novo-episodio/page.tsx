@@ -423,6 +423,7 @@ export default function NovoEpisodio() {
   const [series, setSeries] = useState<Series[]>([])
 
   const [loading, setLoading] = useState(false)
+  const [savingToRepository, setSavingToRepository] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [isGeneratingCompatibleAudio, setIsGeneratingCompatibleAudio] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
@@ -1590,6 +1591,90 @@ export default function NovoEpisodio() {
     }
 
     return data.url as string
+  }
+
+  const handleSaveToRepository = async () => {
+    const safeEpisodeNumber =
+      Number.isFinite(Number(formData.episode_number)) &&
+      Number(formData.episode_number) > 0
+        ? Number(formData.episode_number)
+        : 1
+
+    if (!formData.series_id || !formData.bible_reference || !formData.title) {
+      alert('Preencha todos os campos obrigatórios.')
+      return
+    }
+
+    if (!audioUrl) {
+      alert('Grave ou faça upload do áudio antes de salvar no repositório.')
+      return
+    }
+
+    setSavingToRepository(true)
+
+    try {
+      const finalImageUrl = useSeriesImage ? null : episodeImageUrl || null
+      const hasTranscription = transcriptionText.trim().length > 0
+      const hasQuoteSuggestions = quoteSuggestions.length > 0
+
+      const { data: newEpisode, error } = await supabase
+        .from('episodes')
+        .insert([
+          {
+            series_id: formData.series_id,
+            episode_number: safeEpisodeNumber,
+            bible_reference: formData.bible_reference,
+            title: formData.title,
+            description: formData.description,
+            audio_url: audioUrl,
+            audio_original_url: audioOriginalUrl || audioUrl,
+            audio_original_type: audioOriginalType || uploadedAudioContentType || null,
+            audio_url_compatible: audioUrlCompatible || null,
+            audio_compatible_type: audioCompatibleType || null,
+            duration_seconds: audioDuration,
+            cover_image_url: finalImageUrl,
+            status: 'draft',
+            editorial_status: 'repository',
+            calendar_scheduled_at: null,
+            internal_notes: null,
+
+            transcription_text: hasTranscription ? transcriptionText.trim() : null,
+            transcription_segments:
+              hasTranscription && transcriptionSegments.length > 0
+                ? transcriptionSegments
+                : null,
+            transcription_status: hasTranscription ? 'completed' : 'not_started',
+            transcription_error: null,
+            transcription_generated_at: hasTranscription ? new Date().toISOString() : null,
+
+            daily_quote_status: 'not_started',
+            daily_quote_suggestions: hasQuoteSuggestions ? quoteSuggestions : null,
+            daily_quote_generated_at: hasQuoteSuggestions ? new Date().toISOString() : null,
+          },
+        ])
+        .select('id')
+        .single()
+
+      if (error) throw error
+
+      if (!newEpisode?.id) {
+        throw new Error('Episódio salvo no repositório sem ID retornado.')
+      }
+
+      const wordsPersistence = await persistPendingTranscriptionWords(newEpisode.id)
+
+      if (!wordsPersistence.ok) {
+        console.warn('Episódio salvo no repositório, mas houve aviso na transcrição:', wordsPersistence.message)
+      }
+
+      alert('Episódio salvo no repositório. Ele ainda não está público.')
+      router.push('/admin')
+    } catch (error) {
+      console.error('Erro ao salvar episódio no repositório:', error)
+      alert('Não foi possível salvar no repositório. Revise os dados e tente novamente.')
+    } finally {
+      setSavingToRepository(false)
+    }
   }
 
   const handleSubmit = async (e: FormEvent) => {
@@ -3052,6 +3137,23 @@ export default function NovoEpisodio() {
             </div>
           )}
 
+          <div className="rounded-xl border border-amber-300/20 bg-amber-500/5 p-4">
+            <p className="text-sm font-semibold text-amber-100">
+              Repositório editorial
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              Salva o episódio preparado sem publicar e sem acionar o agendamento automático.
+            </p>
+            <button
+              type="button"
+              onClick={handleSaveToRepository}
+              disabled={loading || savingToRepository}
+              className="mt-3 w-full rounded-lg border border-amber-300/40 bg-amber-400/10 px-4 py-3 font-bold text-amber-100 transition-colors hover:bg-amber-400/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {savingToRepository ? 'Salvando no repositório...' : 'Salvar no repositório'}
+            </button>
+          </div>
+
           <div className="flex gap-3 pt-4">
             <Link
               href="/admin"
@@ -3062,7 +3164,7 @@ export default function NovoEpisodio() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || savingToRepository}
               className="flex-1 bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
               {loading
