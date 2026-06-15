@@ -168,6 +168,87 @@ export default function AdminAgendaPage() {
   const [publishError, setPublishError] = useState('')
   const [publishSuccess, setPublishSuccess] = useState('')
 
+  // Filter state
+  const [searchText, setSearchText] = useState('')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [seriesFilter, setSeriesFilter] = useState<string>('all')
+
+  // Compute series list from loaded data
+  const allSeries = useMemo(() => {
+    const seen = new Set<string>()
+    const result: { id: string; title: string }[] = []
+    const all = [...repositoryEpisodes, ...calendarEpisodes]
+    for (const ep of all) {
+      if (ep.series_id && !seen.has(ep.series_id)) {
+        seen.add(ep.series_id)
+        result.push({ id: ep.series_id, title: ep.series?.[0]?.title || 'Sem nome' })
+      }
+    }
+    return result.sort((a, b) => a.title.localeCompare(b.title))
+  }, [repositoryEpisodes, calendarEpisodes])
+
+  // Filter repository episodes
+  const filteredRepositoryEpisodes = useMemo(() => {
+    let list = repositoryEpisodes
+    if (searchText.trim()) {
+      const q = searchText.trim().toLowerCase()
+      list = list.filter(
+        (ep) =>
+          ep.title.toLowerCase().includes(q) ||
+          (ep.series?.[0]?.title || '').toLowerCase().includes(q)
+      )
+    }
+    if (seriesFilter !== 'all') {
+      list = list.filter((ep) => ep.series_id === seriesFilter)
+    }
+    return list
+  }, [repositoryEpisodes, searchText, seriesFilter])
+
+  // Filter calendar episodes
+  const filteredCalendarEpisodes = useMemo(() => {
+    let list = calendarEpisodes
+    if (searchText.trim()) {
+      const q = searchText.trim().toLowerCase()
+      list = list.filter(
+        (ep) =>
+          ep.title.toLowerCase().includes(q) ||
+          (ep.series?.[0]?.title || '').toLowerCase().includes(q)
+      )
+    }
+    if (statusFilter !== 'all') {
+      if (statusFilter === 'repository') {
+        list = list.filter((ep) => ep.editorial_status === 'repository')
+      } else if (statusFilter === 'calendar_scheduled') {
+        list = list.filter((ep) => ep.editorial_status === 'calendar_scheduled')
+      } else if (statusFilter === 'published') {
+        list = list.filter((ep) => ep.editorial_status === 'published')
+      }
+    }
+    if (seriesFilter !== 'all') {
+      list = list.filter((ep) => ep.series_id === seriesFilter)
+    }
+    return list
+  }, [calendarEpisodes, searchText, statusFilter, seriesFilter])
+
+  // Counters using filtered data
+  const filteredRepositoryCount = filteredRepositoryEpisodes.length
+  const filteredCalendarCount = filteredCalendarEpisodes.length
+  const filteredThisMonthCount = useMemo(() => {
+    return filteredCalendarEpisodes.filter((ep) => {
+      if (!ep.calendar_scheduled_at) return false
+      const d = new Date(ep.calendar_scheduled_at)
+      return d.getFullYear() === currentYear && d.getMonth() === currentMonth
+    }).length
+  }, [filteredCalendarEpisodes, currentYear, currentMonth])
+
+  const hasActiveFilters = searchText.trim() !== '' || statusFilter !== 'all' || seriesFilter !== 'all'
+
+  function clearFilters() {
+    setSearchText('')
+    setStatusFilter('all')
+    setSeriesFilter('all')
+  }
+
   const monthData = useMemo(
     () => getMonthData(currentYear, currentMonth),
     [currentYear, currentMonth]
@@ -646,18 +727,70 @@ export default function AdminAgendaPage() {
 
         {loadError && <div className="alert">{loadError}</div>}
 
+        {/* ---- Filters ---- */}
+        <section className="filters-bar">
+          <div className="filter-search">
+            <input
+              type="text"
+              placeholder="Buscar por título ou série..."
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              className="filter-search-input"
+            />
+          </div>
+          <div className="filter-selects">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="filter-select"
+            >
+              <option value="all">Todos</option>
+              <option value="repository">No repositório</option>
+              <option value="calendar_scheduled">Agendados</option>
+              <option value="published">Publicados</option>
+            </select>
+            <select
+              value={seriesFilter}
+              onChange={(e) => setSeriesFilter(e.target.value)}
+              className="filter-select"
+            >
+              <option value="all">Todas as séries</option>
+              {allSeries.map((s) => (
+                <option key={s.id} value={s.id}>{s.title}</option>
+              ))}
+            </select>
+            {hasActiveFilters && (
+              <button type="button" className="clear-filters-button" onClick={clearFilters}>
+                Limpar filtros
+              </button>
+            )}
+          </div>
+        </section>
+
+        {/* ---- Legend ---- */}
+        <section className="legend-bar">
+          <span className="legend-item"><span className="legend-dot repo-dot"></span> No repositório</span>
+          <span className="legend-item"><span className="legend-dot scheduled-dot"></span> Agendado</span>
+          <span className="legend-item"><span className="legend-dot published-dot"></span> Publicado</span>
+        </section>
+
+        {/* ---- Filters empty state ---- */}
+        {hasActiveFilters && filteredRepositoryCount === 0 && filteredCalendarCount === 0 && (
+          <div className="filter-empty-state">Nenhum episódio encontrado com os filtros atuais.</div>
+        )}
+
         <section className="summary-cards">
           <div className="summary-card gold">
             <div className="summary-card-icon">📦</div>
-            <div><strong>{repositoryEpisodes.length}</strong><span>No repositório</span></div>
+            <div><strong>{filteredRepositoryCount}</strong><span>No repositório</span></div>
           </div>
           <div className="summary-card blue">
             <div className="summary-card-icon">📅</div>
-            <div><strong>{calendarEpisodes.length}</strong><span>Agendados no calendário</span></div>
+            <div><strong>{filteredCalendarCount}</strong><span>Agendados no calendário</span></div>
           </div>
           <div className="summary-card purple">
             <div className="summary-card-icon">🗓️</div>
-            <div><strong>{scheduledThisMonth}</strong><span>Este mês</span></div>
+            <div><strong>{filteredThisMonthCount}</strong><span>Este mês</span></div>
           </div>
         </section>
 
@@ -673,39 +806,60 @@ export default function AdminAgendaPage() {
               {DAYS_PT.map((day) => (<div key={day} className="weekday-label">{day}</div>))}
             </div>
             <div className="calendar-grid">
-              {calendarDays.map((day, idx) => (
-                <div
-                  key={idx}
-                  className={`calendar-cell ${day.isCurrentMonth ? '' : 'other-month'} ${day.isToday ? 'today' : ''}`}
-                  onClick={() => day.isCurrentMonth && handleDayClick(day.dateObj)}
-                >
-                  <span className="day-number">{day.date}</span>
-                  <div className="day-episodes">
-                    {day.episodes.slice(0, 2).map((ep) => (
-                      <div
-                        key={ep.id}
-                        className={`day-episode-chip ${ep.status === 'published' ? 'published-chip' : ''}`}
-                        title={ep.title}
-                        onClick={(e) => handleChipClick(ep, e)}
-                      >
-                        <span className="chip-series">
-                          {ep.series?.[0]?.title || 'Sem série'} — Ep. {ep.episode_number ?? '?'}
-                        </span>
-                        <span className="chip-title">{ep.title}</span>
-                        {ep.status === 'published' && (
-                          <span className="chip-published-label">Publicado</span>
-                        )}
-                      </div>
-                    ))}
-                    {day.episodes.length > 2 && (
-                      <div className="day-episode-more">+{day.episodes.length - 2} episódios</div>
-                    )}
+              {calendarDays.map((day, idx) => {
+                // Apply filters to day episodes
+                const filteredDayEps = day.episodes.filter((ep) => {
+                  if (hasActiveFilters) {
+                    if (searchText.trim()) {
+                      const q = searchText.trim().toLowerCase()
+                      if (!ep.title.toLowerCase().includes(q) && !(ep.series?.[0]?.title || '').toLowerCase().includes(q)) return false
+                    }
+                    if (statusFilter !== 'all') {
+                      if (statusFilter === 'repository' && ep.editorial_status !== 'repository') return false
+                      if (statusFilter === 'calendar_scheduled' && ep.editorial_status !== 'calendar_scheduled') return false
+                      if (statusFilter === 'published' && ep.editorial_status !== 'published') return false
+                    }
+                    if (seriesFilter !== 'all' && ep.series_id !== seriesFilter) return false
+                  }
+                  return true
+                })
+                return (
+                  <div
+                    key={idx}
+                    className={`calendar-cell ${day.isCurrentMonth ? '' : 'other-month'} ${day.isToday ? 'today' : ''}`}
+                    onClick={() => day.isCurrentMonth && handleDayClick(day.dateObj)}
+                  >
+                    <span className="day-number">{day.date}</span>
+                    <div className="day-episodes">
+                      {filteredDayEps.slice(0, 2).map((ep) => (
+                        <div
+                          key={ep.id}
+                          className={`day-episode-chip ${ep.status === 'published' ? 'published-chip' : ''} ${ep.editorial_status === 'calendar_scheduled' ? 'scheduled-chip' : ''}`}
+                          title={ep.title}
+                          onClick={(e) => handleChipClick(ep, e)}
+                        >
+                          <span className="chip-series">
+                            {ep.series?.[0]?.title || 'Sem série'} — Ep. {ep.episode_number ?? '?'}
+                          </span>
+                          <span className="chip-title">{ep.title}</span>
+                          {ep.status === 'published' && (
+                            <span className="chip-published-label">Publicado</span>
+                          )}
+                          {ep.editorial_status === 'calendar_scheduled' && ep.status !== 'published' && (
+                            <span className="chip-scheduled-label">Agendado</span>
+                          )}
+                        </div>
+                      ))}
+                      {filteredDayEps.length > 2 && (
+                        <div className="day-episode-more">+{filteredDayEps.length - 2} episódios</div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
-            {calendarEpisodes.length === 0 && (
-              <div className="calendar-empty-msg">Nenhum episódio agendado neste mês.</div>
+            {filteredCalendarCount === 0 && !hasActiveFilters && (
+              <div className="calendar-empty-msg">Nenhum episódio neste mês.</div>
             )}
           </section>
 
@@ -714,11 +868,13 @@ export default function AdminAgendaPage() {
               <span className="eyebrow">Repositório</span>
               <h2>Aguardando agendamento</h2>
             </div>
-            {repositoryEpisodes.length === 0 ? (
-              <div className="empty-repository">Não há episódios aguardando agendamento.</div>
+            {filteredRepositoryEpisodes.length === 0 ? (
+              <div className="empty-repository">
+                {repositoryEpisodes.length === 0 ? 'Não há episódios aguardando agendamento.' : 'Nenhum episódio encontrado com os filtros atuais.'}
+              </div>
             ) : (
               <div className="repository-list">
-                {repositoryEpisodes.map((ep) => (
+                {filteredRepositoryEpisodes.map((ep) => (
                   <div key={ep.id} className="repo-card">
                     <div className="repo-card-header">
                       <span className="repo-series">
@@ -1188,6 +1344,140 @@ const styles = `
   .back-link { display: block; margin-top: 20px; color: #94a3b8; font-weight: 800; font-size: 0.85rem; text-align: center; text-decoration: none; }
   .back-link:hover { color: #cbd5e1; }
 
-  @media (max-width: 900px) { .agenda-layout { grid-template-columns: 1fr; } .summary-cards { grid-template-columns: repeat(3, 1fr); } }
+  /* ---------- Filters ---------- */
+  .filters-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 20px;
+    align-items: center;
+  }
+
+  .filter-search {
+    flex: 1;
+    min-width: 200px;
+  }
+
+  .filter-search-input {
+    width: 100%;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: rgba(2, 6, 23, 0.58);
+    color: #f8fafc;
+    border-radius: 14px;
+    padding: 10px 14px;
+    outline: none;
+    font-size: 0.85rem;
+    font-weight: 700;
+  }
+
+  .filter-search-input:focus {
+    border-color: rgba(96, 165, 250, 0.6);
+    background: rgba(2, 6, 23, 0.8);
+  }
+
+  .filter-search-input::placeholder {
+    color: #64748b;
+  }
+
+  .filter-selects {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .filter-select {
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: rgba(2, 6, 23, 0.7);
+    color: #f8fafc;
+    border-radius: 12px;
+    padding: 10px 12px;
+    outline: none;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+    min-width: 120px;
+  }
+
+  .filter-select:focus {
+    border-color: rgba(96, 165, 250, 0.6);
+  }
+
+  .filter-select option {
+    background: #0f172a;
+    color: #f8fafc;
+  }
+
+  .clear-filters-button {
+    padding: 10px 14px;
+    font-size: 0.75rem;
+    border-radius: 12px;
+    background: rgba(127, 29, 29, 0.2);
+    border-color: rgba(248, 113, 113, 0.2);
+    color: #fca5a5;
+    white-space: nowrap;
+  }
+
+  .clear-filters-button:hover {
+    background: rgba(127, 29, 29, 0.35);
+    border-color: rgba(248, 113, 113, 0.35);
+  }
+
+  .filter-empty-state {
+    text-align: center;
+    padding: 28px 16px;
+    color: #64748b;
+    font-size: 0.9rem;
+    font-weight: 700;
+    border-radius: 18px;
+    border: 1px dashed rgba(148, 163, 184, 0.1);
+    margin-top: 20px;
+  }
+
+  /* ---------- Legend ---------- */
+  .legend-bar {
+    display: flex;
+    gap: 20px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+  }
+
+  .legend-item {
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  .repo-dot { background: #fbbf24; }
+  .scheduled-dot { background: #60a5fa; }
+  .published-dot { background: #5eead4; }
+
+  .day-episode-chip.scheduled-chip {
+    background: rgba(59, 130, 246, 0.18);
+    border-color: rgba(96, 165, 250, 0.2);
+  }
+
+  .chip-scheduled-label {
+    display: inline-block;
+    font-size: 0.5rem;
+    font-weight: 900;
+    color: #93c5fd;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  @media (max-width: 900px) { .agenda-layout { grid-template-columns: 1fr; } .summary-cards { grid-template-columns: repeat(3, 1fr); } .filters-bar { flex-direction: column; } .filter-selects { width: 100%; } }
   @media (max-width: 600px) { .summary-cards { grid-template-columns: 1fr; } .calendar-cell { min-height: 70px; padding: 4px; } .day-episode-chip { display: none; } .calendar-cell.today .day-episode-chip { display: block; } }
 `
