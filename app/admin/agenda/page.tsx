@@ -727,6 +727,11 @@ export default function AdminAgendaPage() {
 
         {loadError && <div className="alert">{loadError}</div>}
 
+        {/* ---- Auto-publish notice ---- */}
+        <div className="auto-publish-notice">
+          Publicação automática: controlada por configuração do servidor.
+        </div>
+
         {/* ---- Filters ---- */}
         <section className="filters-bar">
           <div className="filter-search">
@@ -1421,6 +1426,20 @@ const styles = `
   .clear-filters-button:hover {
     background: rgba(127, 29, 29, 0.35);
     border-color: rgba(248, 113, 113, 0.35);
+  }
+
+
+  /* ---- Auto-publish notice ---- */
+  .auto-publish-notice {
+    margin-top: 16px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: rgba(59, 130, 246, 0.08);
+    border: 1px solid rgba(96, 165, 250, 0.12);
+    color: #93c5fd;
+    font-size: 0.75rem;
+    font-weight: 800;
+    text-align: center;
   }
 
   .filter-empty-state {
