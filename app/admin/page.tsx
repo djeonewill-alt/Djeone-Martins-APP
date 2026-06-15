@@ -279,6 +279,13 @@ export default function AdminDashboardPage() {
       tone: "green",
     },
     {
+      title: "Agenda",
+      description: "Organizar episódios prontos, visualizar calendário e agendar publicações.",
+      href: "/admin/agenda",
+      icon: "📅",
+      tone: "purple",
+    },
+    {
       title: "Ver app",
       description: "Abrir a experiência pública do aplicativo.",
       href: "/",
