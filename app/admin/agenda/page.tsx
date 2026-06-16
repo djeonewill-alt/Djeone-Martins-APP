@@ -163,6 +163,28 @@ export default function AdminAgendaPage() {
   const [returning, setReturning] = useState(false)
   const [showEditConflictWarning, setShowEditConflictWarning] = useState(false)
 
+  // Drag-and-drop state
+  const [dragState, setDragState] = useState<{
+    isDragging: boolean
+    episodeId: string | null
+    source: 'repository' | 'calendar' | null
+    originalTime: string
+  }>({ isDragging: false, episodeId: null, source: null, originalTime: '06:00' })
+  const [dragOverDate, setDragOverDate] = useState<Date | null>(null)
+
+  // Drag confirm modal state
+  const [dragConfirmModal, setDragConfirmModal] = useState<{
+    open: boolean
+    episode: EpisodeWithSeries | null
+    date: Date | null
+    time: string
+    source: 'repository' | 'calendar' | null
+  }>({ open: false, episode: null, date: null, time: '06:00', source: null })
+  const [dragConfirmScheduling, setDragConfirmScheduling] = useState(false)
+  const [dragConfirmError, setDragConfirmError] = useState('')
+  const [dragConfirmSuccess, setDragConfirmSuccess] = useState('')
+  const [showDragConflictWarning, setShowDragConflictWarning] = useState(false)
+
   // Publishing state
   const [publishing, setPublishing] = useState(false)
   const [publishError, setPublishError] = useState('')
@@ -530,8 +552,182 @@ export default function AdminAgendaPage() {
   }
 
   function handleChipClick(ep: EpisodeWithSeries, event: React.MouseEvent) {
+    // Ignore if this was part of a drag operation
+    if (dragState.isDragging) return
     event.stopPropagation()
     openEditModal(ep)
+  }
+
+  // ---- Drag-and-drop handlers ----
+  function getDragTime(ep: EpisodeWithSeries): string {
+    const parsed = parseCalendarScheduledAt(ep.calendar_scheduled_at)
+    return parsed ? parsed.timeStr : '06:00'
+  }
+
+  function handleDragStart(ep: EpisodeWithSeries, source: 'repository' | 'calendar', e: React.DragEvent) {
+    e.dataTransfer.setData('text/plain', ep.id)
+    e.dataTransfer.effectAllowed = 'move'
+    const time = source === 'calendar' ? getDragTime(ep) : '06:00'
+    setDragState({ isDragging: true, episodeId: ep.id, source, originalTime: time })
+  }
+
+  function handleDragOver(e: React.DragEvent, dateObj: Date) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverDate(dateObj)
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    // Only clear if we're leaving the cell (not entering a child)
+    const target = e.currentTarget
+    const related = e.relatedTarget as Node | null
+    if (related && target.contains(related)) return
+    setDragOverDate((prev) => prev === null ? null : prev)
+  }
+
+  function handleDragEnd() {
+    setDragState({ isDragging: false, episodeId: null, source: null, originalTime: '06:00' })
+    setDragOverDate(null)
+  }
+
+  function handleDrop(e: React.DragEvent, targetDate: Date) {
+    e.preventDefault()
+    setDragOverDate(null)
+
+    if (!dragState.isDragging || !dragState.episodeId) {
+      setDragState({ isDragging: false, episodeId: null, source: null, originalTime: '06:00' })
+      return
+    }
+
+    const epId = e.dataTransfer.getData('text/plain')
+    if (!epId) {
+      setDragState({ isDragging: false, episodeId: null, source: null, originalTime: '06:00' })
+      return
+    }
+
+    // Find the episode
+    const repoEp = repositoryEpisodes.find((e) => e.id === epId)
+    const calEp = calendarEpisodes.find((e) => e.id === epId)
+    const ep = repoEp || calEp
+    if (!ep) {
+      setDragState({ isDragging: false, episodeId: null, source: null, originalTime: '06:00' })
+      return
+    }
+
+    // Don't allow dropping published episodes
+    if (ep.status === 'published' || ep.editorial_status === 'published') {
+      setDragState({ isDragging: false, episodeId: null, source: null, originalTime: '06:00' })
+      return
+    }
+
+    // Determine time and source
+    let time = '06:00'
+    let source: 'repository' | 'calendar' = 'repository'
+    if (calEp) {
+      source = 'calendar'
+      time = getDragTime(calEp)
+    }
+
+    const hasConflict = checkTimeConflict(targetDate, time, epId)
+
+    setDragConfirmModal({
+      open: true,
+      episode: ep,
+      date: targetDate,
+      time,
+      source,
+    })
+    setShowDragConflictWarning(hasConflict)
+    setDragConfirmError('')
+    setDragConfirmSuccess('')
+
+    // Reset drag state
+    setDragState({ isDragging: false, episodeId: null, source: null, originalTime: '06:00' })
+  }
+
+  function closeDragConfirmModal() {
+    setDragConfirmModal({ ...dragConfirmModal, open: false })
+    setDragConfirmError('')
+    setDragConfirmSuccess('')
+  }
+
+  function handleDragTimeChange(time: string) {
+    setDragConfirmModal((prev) => ({ ...prev, time }))
+    if (dragConfirmModal.date) {
+      setShowDragConflictWarning(checkTimeConflict(dragConfirmModal.date, time, dragConfirmModal.episode?.id))
+    }
+  }
+
+  // ---- Drag confirm mutation ----
+  async function handleDragConfirm() {
+    const { episode, date, time, source } = dragConfirmModal
+    if (!episode || !date) return
+
+    setDragConfirmScheduling(true)
+    setDragConfirmError('')
+
+    const isoOffset = makeIsoOffset(date, time)
+
+    try {
+      if (source === 'repository') {
+        // Schedule from repository
+        const { error } = await supabase
+          .from('episodes')
+          .update({
+            editorial_status: 'calendar_scheduled',
+            calendar_scheduled_at: isoOffset,
+          })
+          .eq('id', episode.id)
+          .eq('editorial_status', 'repository')
+
+        if (error) throw error
+
+        // Update local state
+        setRepositoryEpisodes((prev) => prev.filter((e) => e.id !== episode.id))
+        const updatedEp: EpisodeWithSeries = {
+          ...episode,
+          editorial_status: 'calendar_scheduled',
+          calendar_scheduled_at: isoOffset,
+        }
+        setCalendarEpisodes((prev) =>
+          [...prev, updatedEp].sort((a, b) => {
+            if (!a.calendar_scheduled_at) return 1
+            if (!b.calendar_scheduled_at) return -1
+            return new Date(a.calendar_scheduled_at).getTime() - new Date(b.calendar_scheduled_at).getTime()
+          })
+        )
+
+        setDragConfirmSuccess('Episódio agendado no calendário. Ele ainda não está público.')
+      } else {
+        // Move existing scheduled episode to new date
+        const { error } = await supabase
+          .from('episodes')
+          .update({ calendar_scheduled_at: isoOffset })
+          .eq('id', episode.id)
+          .eq('editorial_status', 'calendar_scheduled')
+
+        if (error) throw error
+
+        // Update local state
+        const updatedEp: EpisodeWithSeries = { ...episode, calendar_scheduled_at: isoOffset }
+        setCalendarEpisodes((prev) =>
+          prev.map((e) => (e.id === episode.id ? updatedEp : e)).sort((a, b) => {
+            if (!a.calendar_scheduled_at) return 1
+            if (!b.calendar_scheduled_at) return -1
+            return new Date(a.calendar_scheduled_at).getTime() - new Date(b.calendar_scheduled_at).getTime()
+          })
+        )
+
+        setDragConfirmSuccess('Agendamento atualizado. O episódio ainda não está público.')
+      }
+
+      setTimeout(() => closeDragConfirmModal(), 2000)
+    } catch (err) {
+      console.error('Erro na operação de drag:', err)
+      setDragConfirmError('Não foi possível concluir a operação.')
+    } finally {
+      setDragConfirmScheduling(false)
+    }
   }
 
   function showReturnConfirmation() {
@@ -831,33 +1027,43 @@ export default function AdminAgendaPage() {
                   }
                   return true
                 })
+                const isDragOver = dragOverDate !== null && day.isCurrentMonth && isSameDay(day.dateObj, dragOverDate)
                 return (
                   <div
                     key={idx}
-                    className={`calendar-cell ${day.isCurrentMonth ? '' : 'other-month'} ${day.isToday ? 'today' : ''}`}
+                    className={`calendar-cell ${day.isCurrentMonth ? '' : 'other-month'} ${day.isToday ? 'today' : ''} ${isDragOver && day.isCurrentMonth ? 'drag-over' : ''}`}
                     onClick={() => day.isCurrentMonth && handleDayClick(day.dateObj)}
+                    onDragOver={(e) => day.isCurrentMonth && handleDragOver(e, day.dateObj)}
+                    onDragLeave={(e) => day.isCurrentMonth && handleDragLeave(e)}
+                    onDrop={(e) => day.isCurrentMonth && handleDrop(e, day.dateObj)}
                   >
                     <span className="day-number">{day.date}</span>
                     <div className="day-episodes">
-                      {filteredDayEps.slice(0, 2).map((ep) => (
-                        <div
-                          key={ep.id}
-                          className={`day-episode-chip ${ep.status === 'published' ? 'published-chip' : ''} ${ep.editorial_status === 'calendar_scheduled' ? 'scheduled-chip' : ''}`}
-                          title={ep.title}
-                          onClick={(e) => handleChipClick(ep, e)}
-                        >
-                          <span className="chip-series">
-                            {ep.series?.[0]?.title || 'Sem série'} — Ep. {ep.episode_number ?? '?'}
-                          </span>
-                          <span className="chip-title">{ep.title}</span>
-                          {ep.status === 'published' && (
-                            <span className="chip-published-label">Publicado</span>
-                          )}
-                          {ep.editorial_status === 'calendar_scheduled' && ep.status !== 'published' && (
-                            <span className="chip-scheduled-label">Agendado</span>
-                          )}
-                        </div>
-                      ))}
+                      {filteredDayEps.slice(0, 2).map((ep) => {
+                        const canDrag = ep.editorial_status === 'calendar_scheduled' && ep.status !== 'published'
+                        return (
+                          <div
+                            key={ep.id}
+                            className={`day-episode-chip ${ep.status === 'published' ? 'published-chip' : ''} ${ep.editorial_status === 'calendar_scheduled' ? 'scheduled-chip' : ''}`}
+                            title={ep.title}
+                            onClick={(e) => handleChipClick(ep, e)}
+                            draggable={canDrag}
+                            onDragStart={(e) => canDrag && handleDragStart(ep, 'calendar', e)}
+                            onDragEnd={canDrag ? handleDragEnd : undefined}
+                          >
+                            <span className="chip-series">
+                              {ep.series?.[0]?.title || 'Sem série'} — Ep. {ep.episode_number ?? '?'}
+                            </span>
+                            <span className="chip-title">{ep.title}</span>
+                            {ep.status === 'published' && (
+                              <span className="chip-published-label">Publicado</span>
+                            )}
+                            {ep.editorial_status === 'calendar_scheduled' && ep.status !== 'published' && (
+                              <span className="chip-scheduled-label">Agendado</span>
+                            )}
+                          </div>
+                        )
+                      })}
                       {filteredDayEps.length > 2 && (
                         <div className="day-episode-more">+{filteredDayEps.length - 2} episódios</div>
                       )}
@@ -883,7 +1089,13 @@ export default function AdminAgendaPage() {
             ) : (
               <div className="repository-list">
                 {filteredRepositoryEpisodes.map((ep) => (
-                  <div key={ep.id} className="repo-card">
+                  <div
+                    key={ep.id}
+                    className={`repo-card ${dragState.isDragging && dragState.episodeId === ep.id ? 'repo-card-dragging' : ''}`}
+                    draggable
+                    onDragStart={(e) => handleDragStart(ep, 'repository', e)}
+                    onDragEnd={handleDragEnd}
+                  >
                     <div className="repo-card-header">
                       <span className="repo-series">
                         {ep.series?.[0]?.title || 'Sem série'} — Ep. {ep.episode_number ?? '?'}
@@ -1099,12 +1311,84 @@ export default function AdminAgendaPage() {
         </div>
       )}
 
+      {/* ---- Drag Confirm Modal ---- */}
+      {dragConfirmModal.open && (
+        <div className="modal-overlay" onClick={closeDragConfirmModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{dragConfirmModal.source === 'repository' ? 'Agendar episódio' : 'Mover agendamento'}</h2>
+              <button type="button" className="modal-close" onClick={closeDragConfirmModal}>✕</button>
+            </div>
+
+            {dragConfirmModal.episode && (
+              <div className="edit-episode-info">
+                <p className="edit-ep-title">{dragConfirmModal.episode.title}</p>
+                <p className="edit-ep-series">
+                  {dragConfirmModal.episode.series?.[0]?.title || 'Sem série'} — Ep. {dragConfirmModal.episode.episode_number ?? '?'}
+                </p>
+              </div>
+            )}
+
+            {dragConfirmModal.date && (
+              <p className="modal-date">
+                {dragConfirmModal.source === 'repository'
+                  ? `Deseja agendar este episódio para ${formatDateBr(dragConfirmModal.date)} às ${dragConfirmModal.time}?`
+                  : `Deseja mover este episódio para ${formatDateBr(dragConfirmModal.date)} às ${dragConfirmModal.time}?`}
+              </p>
+            )}
+
+            <div className="modal-field">
+              <label htmlFor="drag-time">Horário</label>
+              <input id="drag-time" type="time" value={dragConfirmModal.time} onChange={(e) => handleDragTimeChange(e.target.value)} className="modal-input" />
+            </div>
+
+            {showDragConflictWarning && <div className="modal-warning">Já existe um episódio nesse horário.</div>}
+            {dragConfirmSuccess && <div className="modal-success">{dragConfirmSuccess}</div>}
+            {dragConfirmError && <div className="modal-error">{dragConfirmError}</div>}
+
+            <div className="modal-actions">
+              <button type="button" className="modal-cancel" onClick={closeDragConfirmModal} disabled={dragConfirmScheduling}>Cancelar</button>
+              <button type="button" className="modal-submit" onClick={handleDragConfirm} disabled={dragConfirmScheduling || !dragConfirmModal.episode}>
+                {dragConfirmScheduling ? 'Confirmando...' : 'Confirmar agendamento'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style jsx>{styles}</style>
     </main>
   )
 }
 
 const styles = `
+  /* ---- Drag-over highlight ---- */
+  .calendar-cell.drag-over {
+    border-color: rgba(96, 165, 250, 0.6) !important;
+    background: rgba(37, 99, 235, 0.15) !important;
+    box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.25);
+  }
+
+  .repo-card[draggable="true"] {
+    cursor: grab;
+  }
+
+  .repo-card[draggable="true"]:active {
+    cursor: grabbing;
+  }
+
+  .repo-card-dragging {
+    opacity: 0.4;
+  }
+
+  .day-episode-chip[draggable="true"] {
+    cursor: grab;
+  }
+
+  .day-episode-chip[draggable="true"]:active {
+    cursor: grabbing;
+  }
+  
   .admin-page {
     min-height: 100vh;
     background:
