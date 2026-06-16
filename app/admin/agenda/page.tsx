@@ -718,6 +718,9 @@ export default function AdminAgendaPage() {
             <p>Organize os episódios prontos antes de publicar.</p>
           </div>
           <div className="header-actions">
+            <Link href="/admin" className="back-to-menu-button">
+              ← Voltar ao menu
+            </Link>
             <button type="button" onClick={loadData} disabled={loading}>
               {loading ? 'Atualizando...' : 'Atualizar'}
             </button>
@@ -1155,6 +1158,29 @@ const styles = `
   button:disabled { cursor: not-allowed; opacity: 0.6; transform: none; }
 
   .logout-button { background: rgba(136, 19, 55, 0.3); border-color: rgba(244, 63, 94, 0.28); }
+
+  .back-to-menu-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    background: rgba(15, 23, 42, 0.7);
+    color: #93c5fd;
+    border-radius: 16px;
+    padding: 12px 18px;
+    font-weight: 900;
+    font-size: 0.85rem;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+    white-space: nowrap;
+  }
+
+  .back-to-menu-button:hover {
+    transform: translateY(-1px);
+    border-color: rgba(147, 197, 253, 0.5);
+    background: rgba(30, 41, 59, 0.9);
+  }
 
   .alert {
     margin-top: 22px; padding: 14px 18px; border-radius: 18px;
