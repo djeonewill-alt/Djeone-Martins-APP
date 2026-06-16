@@ -494,8 +494,30 @@ export default function NovoEpisodio() {
     if (formData.series_id) {
       const selectedSeries = series.find((s) => s.id === formData.series_id)
       setSelectedSeriesImage(selectedSeries?.cover_image_url || null)
+      suggestNextEpisodeNumber(formData.series_id)
     }
   }, [formData.series_id, series])
+
+  async function suggestNextEpisodeNumber(seriesId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('episodes')
+        .select('episode_number')
+        .eq('series_id', seriesId)
+        .not('episode_number', 'is', null)
+        .order('episode_number', { ascending: false })
+        .limit(1)
+
+      if (error) throw error
+
+      const maxNumber = data && data.length > 0 ? (data[0].episode_number as number) : 0
+      const nextNumber = maxNumber + 1
+
+      setFormData((prev) => ({ ...prev, episode_number: nextNumber }))
+    } catch (error) {
+      console.error('Erro ao sugerir próximo número de episódio:', error)
+    }
+  }
 
   const resetCardData = () => {
     setCardOptions([])
@@ -695,6 +717,7 @@ export default function NovoEpisodio() {
       const { data, error } = await supabase
         .from('series')
         .select('id, title, cover_image_url')
+        .eq('is_open', true)
         .order('created_at', { ascending: false })
 
       if (error) throw error

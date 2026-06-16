@@ -15,6 +15,7 @@ type SeriesRow = {
   icon_emoji: string | null
   is_free: boolean | null
   is_current: boolean | null
+  is_open: boolean | null
   total_episodes: number | null
   order_index: number | null
   created_at: string | null
@@ -300,6 +301,16 @@ export default function AdminSeriesPage() {
                         {serie.is_current && (
                           <span className="rounded-full border border-emerald-300/20 bg-emerald-500/10 px-3 py-1 text-xs font-black text-emerald-100">
                             Destaque atual
+                          </span>
+                        )}
+
+                        {serie.is_open !== false ? (
+                          <span className="rounded-full border border-blue-300/20 bg-blue-500/10 px-3 py-1 text-xs font-black text-blue-100">
+                            Aberta
+                          </span>
+                        ) : (
+                          <span className="rounded-full border border-slate-300/20 bg-slate-500/10 px-3 py-1 text-xs font-black text-slate-400">
+                            Fechada
                           </span>
                         )}
 

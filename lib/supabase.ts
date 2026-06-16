@@ -69,6 +69,7 @@ export type Series = {
   gradient_colors?: string | null;
   is_free?: boolean | null;
   is_current?: boolean | null;
+  is_open?: boolean | null;
   total_episodes?: number | null;
   episode_count?: number | null;
   order_index?: number | null;

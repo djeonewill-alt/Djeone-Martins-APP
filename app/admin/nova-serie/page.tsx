@@ -39,6 +39,7 @@ export default function NovaSeriePage() {
     description: '',
     icon_emoji: '📖',
     is_current: false,
+    is_open: true,
     order_index: 0,
   })
 
@@ -106,6 +107,7 @@ export default function NovaSeriePage() {
         icon_emoji: formData.icon_emoji.trim() || '📖',
         is_free: accessType === 'free',
         is_current: formData.is_current,
+        is_open: formData.is_open,
         total_episodes: 0,
         order_index: Number(formData.order_index) || 0,
       })
@@ -332,6 +334,28 @@ export default function NovaSeriePage() {
                   </span>
                   <span className="mt-1 block text-xs leading-5 text-slate-400">
                     Ela aparecerá com destaque principal na aba Podcasts.
+                  </span>
+                </span>
+              </label>
+
+              <label className="mt-4 flex cursor-pointer gap-3 rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+                <input
+                  type="checkbox"
+                  checked={formData.is_open}
+                  onChange={(event) =>
+                    setFormData({
+                      ...formData,
+                      is_open: event.target.checked,
+                    })
+                  }
+                  className="mt-1 h-4 w-4 accent-blue-400"
+                />
+                <span>
+                  <span className="block text-sm font-black text-white">
+                    Série aberta para novos episódios
+                  </span>
+                  <span className="mt-1 block text-xs leading-5 text-slate-400">
+                    Séries fechadas não aparecem na tela de Novo Episódio.
                   </span>
                 </span>
               </label>

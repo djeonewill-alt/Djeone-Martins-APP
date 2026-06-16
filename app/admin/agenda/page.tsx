@@ -1508,6 +1508,8 @@ const styles = `
     min-height: 100px; padding: 6px; border-radius: 10px;
     background: rgba(2, 6, 23, 0.4); border: 1px solid rgba(148, 163, 184, 0.06);
     display: flex; flex-direction: column; cursor: pointer; transition: background 0.15s ease;
+    overflow: hidden;
+    max-height: 140px;
   }
 
   .calendar-cell:hover { background: rgba(30, 41, 59, 0.5); border-color: rgba(96, 165, 250, 0.2); }
@@ -1521,9 +1523,10 @@ const styles = `
   .day-episodes { display: flex; flex-direction: column; gap: 3px; flex: 1; }
 
   .day-episode-chip {
-    padding: 3px 6px; border-radius: 6px;
+    padding: 2px 5px; border-radius: 5px;
     background: rgba(59, 130, 246, 0.14); border: 1px solid rgba(96, 165, 250, 0.15);
-    cursor: pointer; overflow: hidden; min-height: 0; transition: background 0.15s ease;
+    cursor: pointer; overflow: hidden; min-height: 0; flex-shrink: 0;
+    max-height: 28px; transition: background 0.15s ease;
   }
 
   .day-episode-chip:hover { background: rgba(59, 130, 246, 0.25); }

@@ -31,6 +31,7 @@ type SeriesFormState = {
   description: string
   icon_emoji: string
   is_current: boolean
+  is_open: boolean
   order_index: number
 }
 
@@ -52,6 +53,7 @@ export default function EditarSeriePage() {
     description: '',
     icon_emoji: '📖',
     is_current: false,
+    is_open: true,
     order_index: 0,
   })
 
@@ -86,6 +88,7 @@ export default function EditarSeriePage() {
         description: data.description || '',
         icon_emoji: data.icon_emoji || '📖',
         is_current: Boolean(data.is_current),
+        is_open: data.is_open !== false,
         order_index: Number(data.order_index) || 0,
       })
     } catch (error) {
@@ -163,6 +166,7 @@ export default function EditarSeriePage() {
           icon_emoji: formData.icon_emoji.trim() || '📖',
           is_free: accessType === 'free',
           is_current: formData.is_current,
+          is_open: formData.is_open,
           order_index: Number(formData.order_index) || 0,
           updated_at: new Date().toISOString(),
         })
@@ -406,6 +410,28 @@ export default function EditarSeriePage() {
                   </span>
                   <span className="mt-1 block text-xs leading-5 text-slate-400">
                     Ela aparecerá com destaque principal na aba Podcasts.
+                  </span>
+                </span>
+              </label>
+
+              <label className="mt-4 flex cursor-pointer gap-3 rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+                <input
+                  type="checkbox"
+                  checked={formData.is_open}
+                  onChange={(event) =>
+                    setFormData({
+                      ...formData,
+                      is_open: event.target.checked,
+                    })
+                  }
+                  className="mt-1 h-4 w-4 accent-blue-400"
+                />
+                <span>
+                  <span className="block text-sm font-black text-white">
+                    Série aberta para novos episódios
+                  </span>
+                  <span className="mt-1 block text-xs leading-5 text-slate-400">
+                    Séries fechadas não aparecem na tela de Novo Episódio.
                   </span>
                 </span>
               </label>
