@@ -5,6 +5,8 @@ import Link from 'next/link'
 
 import { supabase } from '@/lib/supabase'
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SeriesJoin = any
 type EpisodeWithSeries = {
   id: string
   title: string
@@ -16,7 +18,9 @@ type EpisodeWithSeries = {
   editorial_status: string | null
   calendar_scheduled_at: string | null
   created_at: string | null
-  series: { title: string | null }[] | null
+  // Supabase join can return object (has-one) or array (has-many)
+  series: SeriesJoin
+  series_title?: string | null
 }
 
 type CalendarDay = {
@@ -120,6 +124,15 @@ function parseCalendarScheduledAt(iso: string | null | undefined): { date: Date;
   }
 }
 
+function getSeriesTitle(ep: EpisodeWithSeries): string {
+  if (!ep.series) return 'Sem série'
+  // Supabase join can return an object (has-one) or array (has-many)
+  if (Array.isArray(ep.series)) {
+    return ep.series[0]?.title || 'Sem série'
+  }
+  return ep.series.title || 'Sem série'
+}
+
 export default function AdminAgendaPage() {
   const [isLogged, setIsLogged] = useState(false)
   const [password, setPassword] = useState('')
@@ -203,7 +216,7 @@ export default function AdminAgendaPage() {
     for (const ep of all) {
       if (ep.series_id && !seen.has(ep.series_id)) {
         seen.add(ep.series_id)
-        result.push({ id: ep.series_id, title: ep.series?.[0]?.title || 'Sem nome' })
+        result.push({ id: ep.series_id, title: getSeriesTitle(ep) })
       }
     }
     return result.sort((a, b) => a.title.localeCompare(b.title))

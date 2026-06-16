@@ -82,6 +82,31 @@ export default function AdminSeriesPage() {
     }
   }
 
+  async function handleToggleOpen(serie: SeriesRow, open: boolean) {
+    if (!open) {
+      const confirmed = confirm(
+        `Fechar a série "${serie.title}" para novos episódios?\n\nEla não aparecerá na tela de Novo Episódio.`
+      )
+      if (!confirmed) return
+    }
+
+    try {
+      const { error } = await supabase
+        .from('series')
+        .update({ is_open: open })
+        .eq('id', serie.id)
+
+      if (error) throw error
+
+      setSeries((prev) =>
+        prev.map((s) => (s.id === serie.id ? { ...s, is_open: open } : s))
+      )
+    } catch (error) {
+      console.error('Erro ao atualizar série:', error)
+      alert('Não foi possível atualizar a série.')
+    }
+  }
+
   async function handleDelete(serie: SeriesRow) {
     if ((serie.episode_count || 0) > 0) {
       alert(
@@ -369,6 +394,24 @@ export default function AdminSeriesPage() {
                       >
                         Novo episódio
                       </Link>
+
+                      {serie.is_open !== false ? (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleOpen(serie, false)}
+                          className="rounded-2xl border border-amber-300/20 bg-amber-500/10 px-4 py-3 text-sm font-black text-amber-100 active:scale-[0.98]"
+                        >
+                          Fechar série
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleOpen(serie, true)}
+                          className="rounded-2xl border border-emerald-300/20 bg-emerald-500/10 px-4 py-3 text-sm font-black text-emerald-100 active:scale-[0.98]"
+                        >
+                          Reabrir série
+                        </button>
+                      )}
 
                       <button
                         type="button"
