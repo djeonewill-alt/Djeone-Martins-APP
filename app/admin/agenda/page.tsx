@@ -1523,10 +1523,10 @@ const styles = `
   .day-episodes { display: flex; flex-direction: column; gap: 3px; flex: 1; }
 
   .day-episode-chip {
-    padding: 2px 5px; border-radius: 5px;
+    padding: 4px 6px; border-radius: 6px;
     background: rgba(59, 130, 246, 0.14); border: 1px solid rgba(96, 165, 250, 0.15);
     cursor: pointer; overflow: hidden; min-height: 0; flex-shrink: 0;
-    max-height: 28px; transition: background 0.15s ease;
+    max-height: 56px; transition: background 0.15s ease;
   }
 
   .day-episode-chip:hover { background: rgba(59, 130, 246, 0.25); }
@@ -1537,7 +1537,7 @@ const styles = `
   }
 
   .chip-series { display: block; font-size: 0.6rem; font-weight: 900; color: #93c5fd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; letter-spacing: 0.04em; }
-  .chip-title { display: block; font-size: 0.65rem; font-weight: 700; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chip-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 0.65rem; font-weight: 700; color: #e2e8f0; white-space: normal; line-height: 1.2; }
 
   .chip-published-label {
     display: inline-block;
