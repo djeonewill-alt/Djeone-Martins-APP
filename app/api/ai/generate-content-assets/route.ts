@@ -3410,6 +3410,15 @@ async function generateVisualStoryboardWithOpenAI(params: {
 
   const jsonStr = jsonMatch[0]
 
+  // Diagnóstico do stream bruto vindo do DeepSeek Pro
+  console.log("=== [DIAGNÓSTICO STREAM BRUTO] ===")
+  console.log("Tamanho total acumulado:", accumulatedContent.length, "caracteres")
+  console.log("Primeiros 300 caracteres:", accumulatedContent.slice(0, 300))
+  console.log("Últimos 300 caracteres:", accumulatedContent.slice(-300))
+  console.log("Conteúdo completo:")
+  console.log(accumulatedContent)
+  console.log("=== [FIM DIAGNÓSTICO] ===")
+
   // 3. Tenta parsear com limpeza progressiva
   function parseJsonRobustly(input: string): unknown {
     // Tentativa 1: parse direto
