@@ -3180,16 +3180,12 @@ function buildVisualStoryboardPrompt(params: {
   editorialAlert?: string
 }) {
   const cutDuration = Math.max(1, params.selectedCut.end - params.selectedCut.start)
-  const sceneGuidance =
-    cutDuration <= 25 ? '3 a 4 cenas' :
-      cutDuration <= 45 ? '4 a 6 cenas' :
-        cutDuration <= 60 ? '5 a 7 cenas' :
-          cutDuration <= 90 ? '6 a 9 cenas' :
-            'ate 12 cenas, com aviso de corte longo'
+  const minScenes = cutDuration <= 25 ? 4 : cutDuration <= 45 ? 5 : cutDuration <= 60 ? 6 : cutDuration <= 90 ? 7 : 10
+  const maxScenes = cutDuration <= 25 ? 5 : cutDuration <= 45 ? 7 : cutDuration <= 60 ? 8 : cutDuration <= 90 ? 10 : 12
 
   return `
 Voce e um diretor criativo de videos biblicos/devocionais verticais.
-Crie um storyboard visual para um Short/Reels/TikTok com base no corte selecionado.
+Crie um storyboard visual completo e denso para um Short/Reels/TikTok com base no corte selecionado.
 
 Tom: biblico, reverente, cinematografico, pastoral, sem sensacionalismo, sem teatralidade exagerada.
 Nao gere imagem. Nao chame API de imagem. Crie apenas planejamento textual.
@@ -3202,7 +3198,7 @@ Regras:
 5. Nao incluir letras/texto dentro das imagens geradas.
 6. O texto na tela deve ser aplicado pelo editor/app, nao gerado na imagem.
 7. Priorize hook visual nos primeiros 3 segundos, variacao visual a cada 5 a 8 segundos, motion suave, pausas dramaticas e texto curto na tela.
-8. Crie ${sceneGuidance} para este corte.
+8. CRITICO: gere ${minScenes} a ${maxScenes} cenas para este corte. Nao gere menos que ${minScenes}. Cada cena precisa de visual_description e image_prompt completos. O storyboard NUNCA pode ter menos de 2 cenas validas.
 9. Todo image_prompt deve mencionar vertical 9:16, cinematic biblical realism e no text in image / sem texto na imagem.
 
 EPISODIO: ${params.title}
