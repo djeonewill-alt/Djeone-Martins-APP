@@ -3,9 +3,16 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { DailyQuote } from '@/lib/supabase'
-import { formatQuoteTextForDisplay } from '@/lib/daily-quote-card-generator'
 import { trackAppEvent } from '@/lib/analytics/client'
 import { getPublicAppUrl } from '@/lib/appUrl'
+
+function formatQuoteTextForDisplay(text: string) {
+  const trimmedText = text.trim()
+  if (!trimmedText) return ''
+  const quoteMarkPattern = /^["'""''«»].*["'""''«»]$/
+  if (quoteMarkPattern.test(trimmedText)) return trimmedText
+  return `"${trimmedText}"`
+}
 
 type DailyQuoteCardProps = {
   className?: string

@@ -1,18 +1,23 @@
 /**
  * AI-PROVIDER-004 — Rota migrada para usar a camada abstrata de IA.
+ * AI-MEDIA-002 — Integração com Fal.ai FLUX Schnell para geração de imagens.
  *
- * Provedor primário: DeepSeek Flash
+ * Provedor primário de texto: DeepSeek Flash
  * Fallback automático: OpenAI (via AIClient)
+ * Geração de imagem: Fal.ai FLUX Schnell → compressão WebP → upload R2
  *
- * Comportamento idêntico ao anterior. Nenhum prompt ou lógica de resposta foi alterado.
+ * Comportamento: gera prompt estruturado com DeepSeek e, quando solicitado,
+ * chama o FLUX Schnell para gerar a imagem final com texto embutido.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 
+import { generateAndUploadFluxImage } from '@/lib/ai/fal'
 import { getAIProvider } from '@/lib/ai/provider'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 
 export const runtime = 'nodejs'
+export const maxDuration = 120
 
 type ImagePromptFormat = 'episode_cover' | 'daily_quote_card' | 'series_cover'
 
@@ -365,6 +370,8 @@ export async function POST(request: NextRequest) {
     const includeTextOverlay = typeof body.includeTextOverlay === 'boolean'
       ? body.includeTextOverlay
       : false
+    const episodeId = cleanText(String(body.episodeId || ''))
+    const seriesId = cleanText(String(body.seriesId || ''))
     const combinedContext = [
       title,
       bibleReference,
@@ -393,6 +400,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // -----------------------------------------------------------------------
+    // ETAPA 1: Gerar prompt estruturado com DeepSeek
+    // -----------------------------------------------------------------------
+
+    console.log('[IMAGE-PROMPT] Etapa 1: Gerando prompt estruturado com DeepSeek...')
+
     const ai = getAIProvider({
       textProvider: 'deepseek-flash',
       fallbackProvider: 'openai',
@@ -407,10 +420,10 @@ export async function POST(request: NextRequest) {
         '- Subtle symbolism: light vs shadow, open doorways, humble objects, dust motes, olive trees, stone paths.\n' +
         '- Biblical realism: first-century Judea, linen/wool/stone/wood textures, authentic settings.\n' +
         '- Tone: reverent, quiet awe, not theatrical or exaggerated.\n' +
-        '- No text inside the generated image.\n' +
+        '- The image WILL contain text (title, subtitle) embedded natively by the image model (FLUX Schnell).\n' +
         '- Every image must be grounded in a specific biblical scene or theme.\n\n' +
         'GOOD example:\n' +
-        '"Humble interior in Bethany at dusk. Warm oil lamp on a stone table. An alabaster jar rests in the foreground. Soft golden light enters through an open doorway. Mary kneels at Jesus\' feet. Atmosphere of sacrificial worship, reverent stillness, 4K photorealistic, cinematic depth of field."\n\n' +
+        '"Humble interior in Bethany at dusk. Warm oil lamp on a stone table. An alabaster jar rests in the foreground. Soft golden light enters through an open doorway. Mary kneels at Jesus\' feet. Atmosphere of sacrificial worship, reverent stillness, 4K photorealistic, cinematic depth of field. Text overlay: \'O Rei que Chora\' centered at top in elegant serif font."\n\n' +
         'BAD example:\n' +
         '"A beautiful spiritual landscape with light shining down. A person praying in a field. Peaceful and serene."\n\n' +
         'Return valid JSON only. Do not generate images.',
@@ -436,12 +449,80 @@ export async function POST(request: NextRequest) {
       maxTokens: 4096,
     })
 
+    console.log('[IMAGE-PROMPT] Prompt gerado com sucesso | modelo=', ai.activeTextModel)
+
+    // -----------------------------------------------------------------------
+    // ETAPA 2: Gerar imagem com FLUX Schnell (apenas para capas de episódio/série)
+    // -----------------------------------------------------------------------
+
+    let fluxResult: Awaited<ReturnType<typeof generateAndUploadFluxImage>> | null = null
+
+    if ((format === 'episode_cover' || format === 'series_cover') && promptData.full_prompt_with_text) {
+      try {
+        console.log('[IMAGE-PROMPT] Etapa 2: Gerando imagem com FLUX Schnell...')
+
+        // Mapeia o formato para o tamanho de imagem adequado
+        const imageSize = format === 'series_cover'
+          ? 'square_hd' as const
+          : 'landscape_16_9' as const
+
+        const r2Prefix = format === 'episode_cover' ? 'covers/episodes' : 'covers/series'
+
+        fluxResult = await generateAndUploadFluxImage(promptData.full_prompt_with_text, {
+          imageSize,
+          r2Prefix,
+        })
+
+        console.log('[IMAGE-PROMPT] FLUX concluído | r2Url=', fluxResult.r2Url)
+
+        // Salva no Supabase conforme o formato
+        const supabase = await createSupabaseServerClient()
+
+        if (format === 'episode_cover' && episodeId) {
+          const { error: updateError } = await supabase
+            .from('episodes')
+            .update({ cover_image_url: fluxResult.r2Url })
+            .eq('id', episodeId)
+
+          if (updateError) {
+            console.error('[IMAGE-PROMPT] Erro ao salvar cover_image_url no episódio:', updateError)
+          } else {
+            console.log('[IMAGE-PROMPT] cover_image_url salvo no episódio', episodeId)
+          }
+        }
+
+        if (format === 'series_cover' && seriesId) {
+          const { error: updateError } = await supabase
+            .from('series')
+            .update({ cover_image_url: fluxResult.r2Url })
+            .eq('id', seriesId)
+
+          if (updateError) {
+            console.error('[IMAGE-PROMPT] Erro ao salvar cover_image_url na série:', updateError)
+          } else {
+            console.log('[IMAGE-PROMPT] cover_image_url salvo na série', seriesId)
+          }
+        }
+      } catch (fluxError) {
+        console.error('[IMAGE-PROMPT] Erro ao gerar imagem com FLUX:', fluxError)
+        // Não quebra a rota — retorna o prompt mesmo sem a imagem
+      }
+    }
+
     return NextResponse.json({
       success: true,
       model: ai.activeTextModel,
       format,
       includeTextOverlay,
       ...promptData,
+      ...(fluxResult
+        ? {
+            flux_image_url: fluxResult.r2Url,
+            flux_image_size_bytes: fluxResult.sizeBytes,
+            flux_image_width: fluxResult.width,
+            flux_image_height: fluxResult.height,
+          }
+        : {}),
     })
   } catch (error) {
     console.error('Erro ao gerar prompt premium de imagem:', error)

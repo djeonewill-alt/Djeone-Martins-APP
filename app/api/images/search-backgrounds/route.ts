@@ -1,301 +1,53 @@
+/**
+ * AI-MEDIA-003 — Rota de fundo da Palavra do Dia migrada para FLUX Schnell.
+ *
+ * Remove completamente a dependência da API do Pexels e do catálogo curado.
+ * Agora gera imagens conceituais únicas via Fal.ai FLUX Schnell com o
+ * texto da frase embutido nativamente na imagem.
+ *
+ * Fluxo:
+ * 1. Recebe a frase escolhida (quoteText) + contexto do episódio
+ * 2. Constrói um prompt conceitual profundo otimizado para FLUX
+ * 3. Chama generateAndUploadFluxImage() → compressão WebP → upload R2
+ * 4. Salva histórico no Supabase (daily_quote_image_history)
+ * 5. Atualiza daily_quotes com background_image_url
+ * 6. Retorna a URL da imagem + metadados
+ */
+
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+import { generateAndUploadFluxImage } from '@/lib/ai/fal'
 
-type BackgroundImage = {
+// ---------------------------------------------------------------------------
+// Tipos
+// ---------------------------------------------------------------------------
+
+type GeneratedBackground = {
   id: string
-  provider: 'curated' | 'pexels' | 'fallback'
+  provider: 'flux'
   url: string
   preview_url: string
-  photographer?: string
-  photographer_url?: string
-  source_page_url?: string
-  alt?: string
   query: string
   theme_keywords: string[]
-  searchQueryUsed?: string
-  visualTheme?: string
-  matchedReason?: string
+  searchQueryUsed: string
+  visualTheme: string
+  matchedReason: string
+  /** ID do registro de histórico no Supabase */
   quote_background_id?: string | null
-  pexels_photo_id?: string | null
 }
 
-type PexelsPhoto = {
-  id: number
-  url: string
-  alt: string | null
-  photographer: string
-  photographer_url: string
-  src: {
-    original: string
-    large2x?: string
-    large?: string
-    medium?: string
-    portrait?: string
-    landscape?: string
-  }
-}
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-type QuoteBackgroundRow = {
-  id: string
-  image_url: string
-  preview_url: string | null
-  theme: string
-  theme_keywords: string[] | null
-  source: string | null
-  source_image_provider: string | null
-  source_page_url: string | null
-  pexels_photo_id: string | null
-  photographer: string | null
-  photographer_url: string | null
-  query_used: string | null
-  last_used_date: string | null
-  use_count: number | null
-  is_active: boolean | null
-  is_approved: boolean | null
-}
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
-type ImageHistoryRow = {
-  pexels_photo_id: string | null
-  source_image_url: string | null
-  quote_background_id: string | null
-  photographer: string | null
-}
-
-type DetectedTheme = {
-  query: string
-  queries: string[]
-  theme_keywords: string[]
-  avoid_keywords?: string[]
-  visual_theme?: string
-  matched_reason?: string
-}
-
-type SearchDebug = {
-  pexels_key_configured: boolean
-  queries_used: string[]
-  pexels_total_received: number
-  curated_total_received: number
-  removed_by_history: number
-  removed_by_content_filter: number
-  final_valid_images: number
-  fallback_used: boolean
-  warning_reason: string
-}
-
-const DAYS_WITHOUT_REPEAT = 120
-
-const SAFE_DAILY_QUOTE_QUERIES = [
-  'open bible morning light peaceful',
-  'warm sunrise ancient path hope',
-  'candle light quiet room devotion',
-  'stone path sunrise peaceful',
-  'humble doorway warm light',
-  'golden field sunrise hope',
-  'soft morning light peaceful landscape',
-  'olive tree sunrise path',
-]
-
-const WATER_AVOID_KEYWORDS = [
-  'mar',
-  'barco',
-  'agua',
-  'aguas',
-  'ocean',
-  'sea',
-  'boat',
-  'ship',
-  'storm',
-  'waves',
-  'water',
-  'shipwreck',
-]
-
-const WATER_ALLOWED_QUERIES = [
-  'stormy sea shoreline',
-  'shipwreck shore sunrise',
-  'broken wood waves shore',
-  'survivors shoreline storm',
-  'dramatic coast storm light',
-]
-
-const THEME_MAP = [
-  {
-    keywords: ['jesus', 'cristo', 'senhor', 'salvador', 'messias', 'cordeiro', 'filho de deus'],
-    query: 'wooden cross sunrise field',
-    safeQueries: [
-      'wooden cross sunrise field',
-      'cross in field sunrise',
-      'bright cross sunrise',
-    ],
-    theme: 'Jesus',
-  },
-  {
-    keywords: ['palavra', 'verbo', 'bíblia', 'biblia', 'escritura', 'verdade', 'revelação', 'revelacao'],
-    query: 'open bible sunlight morning',
-    safeQueries: [
-      'open bible sunlight morning',
-      'open bible hands sunlight',
-      'bible window light peaceful',
-    ],
-    theme: 'Palavra',
-  },
-  {
-    keywords: ['vida', 'viver', 'vivificar', 'renovo', 'novo nascimento', 'ressurreição', 'ressurreicao'],
-    query: 'sunrise nature new life',
-    safeQueries: [
-      'sunrise nature new life',
-      'green field sunrise hope',
-      'morning light nature peaceful',
-    ],
-    theme: 'vida',
-  },
-  {
-    keywords: ['liberdade', 'liberta', 'libertação', 'libertacao', 'livre', 'prisão', 'prisao', 'correntes', 'cativo', 'cativeiro'],
-    query: 'birds flying sunrise sky freedom',
-    safeQueries: [
-      'birds flying sunrise sky freedom',
-      'open sky birds sunrise',
-      'wide open road sunrise freedom',
-    ],
-    theme: 'liberdade',
-  },
-  {
-    keywords: ['salvação', 'salvacao', 'salva', 'evangelho', 'redenção', 'redencao', 'cruz', 'perdão', 'perdao'],
-    query: 'wooden cross sunrise hope',
-    safeQueries: [
-      'wooden cross sunrise hope',
-      'cross in field sunrise',
-      'bright cross sunrise landscape',
-    ],
-    theme: 'salvação',
-  },
-  {
-    keywords: ['luz', 'trevas', 'clareza', 'iluminar', 'resplandecer', 'brilhar', 'glória', 'gloria'],
-    query: 'sun rays peaceful sky',
-    safeQueries: [
-      'sun rays peaceful sky',
-      'golden sunrise light',
-      'sunlight forest peaceful',
-    ],
-    theme: 'luz',
-  },
-  {
-    keywords: ['tempestade', 'crise', 'vento', 'mar', 'ondas', 'medo', 'tribulação', 'tribulacao', 'luta'],
-    query: 'storm sea light hope',
-    safeQueries: [
-      'storm sea light hope',
-      'storm clouds sunlight ocean',
-      'sea storm sunrise hope',
-    ],
-    theme: 'tempestade',
-  },
-  {
-    keywords: ['deserto', 'solidão', 'solidao', 'seco', 'caminho', 'provação', 'provacao', 'processo'],
-    query: 'desert road sunrise hope',
-    safeQueries: [
-      'desert road sunrise hope',
-      'desert path sunrise',
-      'empty road desert sunrise',
-    ],
-    theme: 'deserto',
-  },
-  {
-    keywords: ['esperança', 'esperanca', 'novo', 'amanhã', 'amanha', 'recomeço', 'recomeco', 'renovo', 'alegria'],
-    query: 'sunrise hope peaceful sky',
-    safeQueries: [
-      'sunrise hope peaceful sky',
-      'peaceful sunrise landscape',
-      'golden sunrise mountains',
-    ],
-    theme: 'esperança',
-  },
-  {
-    keywords: ['direção', 'direcao', 'guiar', 'caminho', 'passos', 'decisão', 'decisao', 'jornada', 'rumo'],
-    query: 'path road sunrise peaceful',
-    safeQueries: [
-      'path road sunrise peaceful',
-      'road sunrise mountains',
-      'forest path sunlight',
-    ],
-    theme: 'direção',
-  },
-  {
-    keywords: ['oração', 'oracao', 'orar', 'presença', 'presenca', 'intimidade', 'altar', 'buscar'],
-    query: 'prayer hands sunlight peaceful',
-    safeQueries: [
-      'prayer hands sunlight peaceful',
-      'hands praying sunlight',
-      'quiet prayer light',
-    ],
-    theme: 'oração',
-  },
-  {
-    keywords: ['fé', 'fe', 'crer', 'confiança', 'confianca', 'promessa', 'perseverar', 'permanecer'],
-    query: 'mountain sunrise faith hope',
-    safeQueries: [
-      'mountain sunrise faith hope',
-      'sunrise mountains hope',
-      'person mountain sunrise silhouette',
-    ],
-    theme: 'fé',
-  },
-  {
-    keywords: ['cura', 'restauração', 'restauracao', 'ferida', 'dor', 'consolo', 'paz', 'sarado'],
-    query: 'peaceful nature healing light',
-    safeQueries: [
-      'peaceful nature healing light',
-      'calm lake sunrise peaceful',
-      'soft light nature healing',
-    ],
-    theme: 'cura',
-  },
-  {
-    keywords: ['graça', 'graca', 'misericórdia', 'misericordia', 'perdão', 'perdao', 'amor', 'bondade'],
-    query: 'soft light peaceful nature',
-    safeQueries: [
-      'soft light peaceful nature',
-      'gentle sunlight flowers',
-      'peaceful sky soft light',
-    ],
-    theme: 'graça',
-  },
-  {
-    keywords: ['vitória', 'vitoria', 'vencer', 'força', 'forca', 'guerrear', 'coragem', 'levantar'],
-    query: 'mountain peak sunrise victory',
-    safeQueries: [
-      'mountain peak sunrise victory',
-      'mountain summit sunrise',
-      'sunrise peak victory',
-    ],
-    theme: 'vitória',
-  },
-]
-
-const FALLBACK_IMAGES: BackgroundImage[] = [
-  {
-    id: 'fallback-hope-1',
-    provider: 'fallback',
-    url: '/vencendo-tempestades.jpg',
-    preview_url: '/vencendo-tempestades.jpg',
-    alt: 'Imagem padrão devocional',
-    query: 'default',
-    theme_keywords: ['esperança'],
-    quote_background_id: null,
-    pexels_photo_id: null,
-  },
-]
-
-function cleanText(text: string) {
-  return text
-    .replace(/\s+/g, ' ')
-    .replace(/[“”]/g, '"')
-    .replace(/[‘’]/g, "'")
-    .trim()
+function cleanText(value: string, maxLength = 12000) {
+  return value.replace(/\s+/g, ' ').trim().slice(0, maxLength)
 }
 
 function normalizeText(text: string) {
@@ -305,732 +57,220 @@ function normalizeText(text: string) {
     .replace(/[\u0300-\u036f]/g, '')
 }
 
-function getCutoffDate() {
-  const date = new Date()
-  date.setDate(date.getDate() - DAYS_WITHOUT_REPEAT)
-  return date.toISOString().split('T')[0]
-}
-
-function getRandomPage() {
-  return Math.floor(Math.random() * 5) + 1
-}
-
-function shuffleArray<T>(array: T[]) {
-  return [...array].sort(() => Math.random() - 0.5)
-}
-
-function uniqueList(values: string[]) {
-  return Array.from(new Set(values.map((value) => cleanText(value)).filter(Boolean)))
-}
-
-function hasExplicitWaterTheme(text: string) {
-  const normalized = normalizeText(text)
-
-  const patterns = [
-    /\batos\s*27\b/,
-    /\bpaulo\b.*\b(viagem|navio|naufragio|mar)\b/,
-    /\bcenturiao\b.*\b(naufragio|navio|mar|prisioneiros?)\b/,
-    /\bmar\b/,
-    /\bbarco\b/,
-    /\bnavio\b/,
-    /\bnaufragio\b/,
-    /\baguas?\b/,
-    /\bondas?\b/,
-    /\btempestade\b/,
-    /\bnadar\b/,
-    /\bnadando\b/,
-    /\bpraia\b/,
-    /\bcosta\b/,
-    /\bterra firme\b/,
-  ]
-
-  return patterns.some((pattern) => pattern.test(normalized))
-}
-
-function queryHasAvoidedTheme(query: string, avoidThemes: string[]) {
-  const normalizedQuery = normalizeText(query)
-
-  return avoidThemes.some((theme) => {
-    const normalizedTheme = normalizeText(theme)
-
-    return normalizedTheme && normalizedQuery.includes(normalizedTheme)
-  })
-}
-
-function filterQueriesByAvoidThemes(queries: string[], avoidThemes: string[]) {
-  const filtered = uniqueList(queries).filter((query) => !queryHasAvoidedTheme(query, avoidThemes))
-
-  return filtered.length > 0 ? filtered : SAFE_DAILY_QUOTE_QUERIES
-}
-
-function getConcreteVisualTheme(contextText: string): DetectedTheme | null {
-  const normalized = normalizeText(contextText)
-
-  const mappings: Array<{
-    theme: string
-    reason: string
-    patterns: RegExp[]
-    queries: string[]
-    keywords: string[]
-  }> = [
-    {
-      theme: 'alabastro',
-      reason: 'Frase/trecho menciona Maria, nardo, perfume, aroma ou vaso de alabastro.',
-      patterns: [/\bnardo\b/, /\balabastro\b/, /\bperfume\b/, /\baroma\b/, /\bungiu\b/, /\boleo\b/],
-      queries: [
-        'alabaster jar warm light',
-        'perfume oil candle light',
-        'ancient jar devotional light',
-        'warm ancient house candle',
-        'worship offering warm light',
-      ],
-      keywords: ['alabastro', 'nardo', 'perfume', 'adoracao'],
-    },
-    {
-      theme: 'betania',
-      reason: 'Contexto visual aponta para Betania, Lazaro, Marta, Maria ou casa da aflicao.',
-      patterns: [/\bbetania\b/, /\blazaro\b/, /\bmarta\b/, /\bmaria\b/, /\bcasa da aflicao\b/],
-      queries: [
-        'ancient village house warm light',
-        'biblical stone house doorway',
-        'humble home sunset',
-        'old village road warm light',
-        'doorway light hope',
-      ],
-      keywords: ['betania', 'casa', 'esperanca'],
-    },
-    {
-      theme: 'entrada_triunfal',
-      reason: 'Contexto visual aponta para jumentinho, Jerusalem, ramos ou entrada triunfal.',
-      patterns: [/\bjumentinho\b/, /\bjumento\b/, /\bjerusalem\b/, /\bramos?\b/, /\bentrada triunfal\b/],
-      queries: [
-        'donkey ancient road',
-        'palm branches ancient road',
-        'jerusalem road sunrise',
-        'humble king road',
-        'biblical city gate road',
-      ],
-      keywords: ['jumentinho', 'jerusalem', 'ramos'],
-    },
-    {
-      theme: 'grao_de_trigo',
-      reason: 'Contexto visual aponta para grao de trigo, semente, morrer ou frutificar.',
-      patterns: [/\bgrao\b/, /\btrigo\b/, /\bsemente\b/, /\bfrutificar\b/, /\bmorrer\b/],
-      queries: [
-        'wheat grain soil close up',
-        'seed in soil sunlight',
-        'golden wheat field sunrise',
-        'sprout growing from soil',
-        'wheat harvest golden light',
-      ],
-      keywords: ['trigo', 'semente', 'frutificacao'],
-    },
-    {
-      theme: 'templo_jerusalem',
-      reason: 'Contexto visual aponta para templo, Jerusalem ou presenca de Deus.',
-      patterns: [/\btemplo\b/, /\bjerusalem\b/, /\bpresenca de deus\b/, /\blugar sagrado\b/],
-      queries: [
-        'ancient stone temple light',
-        'jerusalem old city warm light',
-        'ancient doorway sunlight',
-        'stone path sunrise',
-        'sacred place warm light',
-      ],
-      keywords: ['templo', 'jerusalem', 'presenca'],
-    },
-    {
-      theme: 'naufragio',
-      reason: 'Contexto explicito de Atos 27, naufragio, mar, centuriao, Paulo ou terra firme.',
-      patterns: [/\batos\s*27\b/, /\bnaufragio\b/, /\bnavio\b/, /\bmar\b/, /\bcenturiao\b/, /\bterra firme\b/],
-      queries: WATER_ALLOWED_QUERIES,
-      keywords: ['naufragio', 'mar', 'terra firme', 'atos 27'],
-    },
-  ]
-
-  const match = mappings.find((mapping) =>
-    mapping.patterns.some((pattern) => pattern.test(normalized))
-  )
-
-  if (!match) return null
-
-  return {
-    query: match.queries[0],
-    queries: match.queries,
-    theme_keywords: match.keywords,
-    avoid_keywords: [],
-    visual_theme: match.theme,
-    matched_reason: match.reason,
-  }
-}
-
-function shouldAvoidPhoto(photo: PexelsPhoto, themeKeywords: string[], avoidKeywords: string[] = []) {
-  const allowDramatic =
-    themeKeywords.includes('tempestade') ||
-    themeKeywords.includes('deserto')
-
-  if (allowDramatic) {
-    return avoidKeywords.some((word) =>
-      normalizeText(photo.alt || '').includes(normalizeText(word))
-    )
-  }
-
-  const alt = normalizeText(photo.alt || '')
-
-  const blockedWords = [
-    'city',
-    'urban',
-    'street',
-    'building',
-    'neon',
-    'night',
-    'dark',
-    'storm',
-    'lightning',
-    'thunder',
-    'rain',
-    'crowd',
-    'party',
-    'bar',
-    'club',
-    'cidade',
-    'rua',
-    'noite',
-    'escuro',
-    'tempestade',
-    'chuva',
-  ]
-
-  const episodeThumbnailBlockedWords = themeKeywords.includes('episode_thumbnail')
-    ? [
-        'portrait',
-        'posing',
-        'business',
-        'office',
-        'corporate',
-        'technology',
-        'computer',
-        'phone',
-        'food',
-        'restaurant',
-        'party',
-        'animal',
-        'dog',
-        'cat',
-      ]
-    : []
-
-  return [...blockedWords, ...episodeThumbnailBlockedWords, ...avoidKeywords].some((word) =>
-    alt.includes(normalizeText(word))
-  )
-}
-
 function getStringArray(value: unknown) {
   return Array.isArray(value)
-    ? value
-        .map((item) => cleanText(String(item || '')))
-        .filter(Boolean)
+    ? value.map((item) => cleanText(String(item || ''))).filter(Boolean)
     : []
 }
 
-function detectThemeFromQuote(quoteText: string): DetectedTheme {
+// ---------------------------------------------------------------------------
+// Construção de prompt conceitual para FLUX (Palavra do Dia)
+// ---------------------------------------------------------------------------
+
+/**
+ * Constrói um prompt conceitual profundo para o FLUX Schnell gerar uma
+ * imagem de fundo que combine elementos bíblicos visuais com o texto
+ * da frase sobreposto nativamente.
+ */
+function buildFluxDailyQuotePrompt(
+  quoteText: string,
+  context?: {
+    bibleReference?: string
+    sourceExcerpt?: string
+    title?: string
+    themeKeywords?: string[]
+  }
+): string {
+  const reference = context?.bibleReference || ''
+  const excerpt = context?.sourceExcerpt || ''
+  const title = context?.title || ''
+  const themes = (context?.themeKeywords || []).join(', ')
+
+  // Detecta temas visuais na frase para enriquecer o prompt
   const normalized = normalizeText(quoteText)
 
-  const scores = THEME_MAP.map((item) => {
-    let score = 0
-
-    item.keywords.forEach((keyword) => {
-      const normalizedKeyword = normalizeText(keyword)
-
-      if (normalized.includes(normalizedKeyword)) {
-        score += 1
-      }
-    })
-
-    return {
-      ...item,
-      score,
-    }
-  })
-
-  const matchedThemes = scores
-    .filter((item) => item.score > 0)
-    .sort((a, b) => b.score - a.score)
-
-  if (matchedThemes.length === 0) {
-    return {
-      query: SAFE_DAILY_QUOTE_QUERIES[0],
-      queries: SAFE_DAILY_QUOTE_QUERIES,
-      theme_keywords: ['esperança'],
-    }
-  }
-
-  const themeNames = matchedThemes.slice(0, 4).map((item) => item.theme)
-
-  const hasJesus = themeNames.includes('Jesus')
-  const hasPalavra = themeNames.includes('Palavra')
-  const hasVida = themeNames.includes('vida')
-  const hasLiberdade = themeNames.includes('liberdade')
-  const hasLuz = themeNames.includes('luz')
-  const hasSalvacao = themeNames.includes('salvação')
-
-  if (hasJesus && hasPalavra && hasLiberdade) {
-    return {
-      query: 'open bible cross sunrise freedom',
-      queries: [
-        'open bible sunlight morning',
-        'wooden cross sunrise field',
-        'birds flying sunrise sky freedom',
-      ],
-      theme_keywords: themeNames,
-    }
-  }
-
-  if (hasJesus && hasPalavra && hasVida) {
-    return {
-      query: 'open bible cross sunrise life',
-      queries: [
-        'open bible sunlight morning',
-        'wooden cross sunrise field',
-        'sunrise nature new life',
-      ],
-      theme_keywords: themeNames,
-    }
-  }
-
-  if (hasJesus && hasPalavra) {
-    return {
-      query: 'open bible cross sunlight',
-      queries: [
-        'open bible sunlight morning',
-        'wooden cross sunrise field',
-        'open bible hands sunlight',
-      ],
-      theme_keywords: themeNames,
-    }
-  }
-
-  if (hasJesus && (hasVida || hasLiberdade || hasLuz || hasSalvacao)) {
-    return {
-      query: 'cross sunrise light hope',
-      queries: [
-        'wooden cross sunrise field',
-        'golden sunrise light',
-        'birds flying sunrise sky freedom',
-      ],
-      theme_keywords: themeNames,
-    }
-  }
-
-  if (hasPalavra && (hasVida || hasLuz)) {
-    return {
-      query: 'open bible sunlight',
-      queries: [
-        'open bible sunlight morning',
-        'open bible hands sunlight',
-        'bible window light peaceful',
-      ],
-      theme_keywords: themeNames,
-    }
-  }
-
-  if (hasLiberdade) {
-    return {
-      query: 'birds flying sunrise sky freedom',
-      queries: [
-        'birds flying sunrise sky freedom',
-        'open sky birds sunrise',
-        'wide open road sunrise freedom',
-      ],
-      theme_keywords: themeNames,
-    }
-  }
-
-  const firstTheme = matchedThemes[0]
-
-  const queries = [
-    ...firstTheme.safeQueries,
-    ...matchedThemes.slice(1, 3).flatMap((item) => item.safeQueries.slice(0, 1)),
+  const visualMappings: Array<{ pattern: RegExp; scene: string; mood: string }> = [
+    {
+      pattern: /nardo|perfume|alabastro|ungiu|óleo|oleo|aroma|maria.*pés|pes.*jesus/,
+      scene: 'An alabaster jar of precious nard perfume resting on a stone table. Warm golden light pours through an open doorway in a humble Bethany interior. Subtle fragrance suggested by soft glowing particles in the air.',
+      mood: 'Sacrificial worship, reverent stillness, intimate adoration.',
+    },
+    {
+      pattern: /betânia|betania|lázaro|lazaro|marta|casa da afli[cç][aã]o/,
+      scene: 'A simple stone house in the biblical village of Bethany at dusk. Warm oil lamp glow from within. An open doorway reveals a humble interior. Dust motes dance in golden light. Olive trees frame the scene.',
+      mood: 'Humble refuge, divine presence among the afflicted, quiet hope.',
+    },
+    {
+      pattern: /templo|jerusal[ée]m|presen[cç]a de deus|lugar sagrado/,
+      scene: 'The ancient Jerusalem temple in the distance, glowing in golden sunset light. A stone path leading toward it. Olive trees and ancient walls. Warm light breaking through clouds.',
+      mood: 'Sacred presence, holy ground, reverent awe.',
+    },
+    {
+      pattern: /tempestade|mar|ondas|barco|navio|naufr[áa]gio|naufragio|terra firme|atos 27/,
+      scene: 'A dramatic Mediterranean shoreline at dawn. Golden light breaking through storm clouds after a shipwreck. Broken wood on the beach. Calm sea emerging. Survivors standing on dry land looking toward the horizon.',
+      mood: 'Deliverance, providence, reaching safe ground, hope after the storm.',
+    },
+    {
+      pattern: /grão|grao|trigo|semente|frutificar|morrer.*viver/,
+      scene: 'A single grain of wheat falling into dark rich soil. Golden light from above. A tiny green sprout emerging. Wheat field stretching to the horizon at golden hour.',
+      mood: 'Death and resurrection, fruitfulness, hidden growth, eternal promise.',
+    },
+    {
+      pattern: /cruz|madeiro|sacrif[ií]cio|sacrificio|salva[cç][aã]o|salvacao|reden[cç][aã]o|redencao/,
+      scene: 'A wooden cross silhouetted against a golden sunrise over rolling Judean hills. Warm light breaking through. Ancient olive trees. Stone path leading toward the cross.',
+      mood: 'Redemption, sacrifice, hope, eternal love.',
+    },
+    {
+      pattern: /luz|trevas|amanhecer|resplandecer|brilhar|gl[oó]ria|gloria/,
+      scene: 'Dramatic golden sun rays piercing through dark clouds over a peaceful landscape. Ancient stone path leading toward the light. Olive trees. Warm and reverent atmosphere.',
+      mood: 'Light overcoming darkness, divine revelation, hope, glory.',
+    },
+    {
+      pattern: /deserto|caminho|jornada|passos|dire[cç][aã]o|direcao|rumo/,
+      scene: 'An ancient desert road at sunrise. Golden light stretching across the sand. Distant mountains. A clear path forward. Warm and hopeful atmosphere.',
+      mood: 'Guidance, journey of faith, perseverance, divine direction.',
+    },
+    {
+      pattern: /ora[cç][aã]o|oracao|orar|intimidade|ajoelhar|altar|buscar/,
+      scene: 'A humble prayer space at dawn. Warm golden light through an open window. A simple stone altar or table. Hands folded in prayer. Peaceful and reverent atmosphere.',
+      mood: 'Intimate communion, quiet devotion, sacred stillness.',
+    },
+    {
+      pattern: /f[ée]|fe|crer|confian[cç]a|confianca|promessa|perseverar/,
+      scene: 'Majestic mountain peaks at sunrise. Golden light breaking over the summit. Ancient stone path winding upward. Vast sky with soft clouds. Cinematic and uplifting.',
+      mood: 'Faith, trust, perseverance, reaching higher, divine promises.',
+    },
   ]
 
-  return {
-    query: firstTheme.query,
-    queries: Array.from(new Set(queries)).slice(0, 3),
-    theme_keywords: themeNames,
-  }
-}
+  let scene = 'A peaceful biblical landscape at golden hour. Ancient stone path leading toward the horizon. Warm directional light. Olive trees. Soft clouds. Reverent and contemplative atmosphere.'
+  let mood = 'Spiritual contemplation, hope, divine presence, quiet reflection.'
 
-function improveDailyQuoteQueries(detectedTheme: DetectedTheme): DetectedTheme {
-  const queries = uniqueList([
-    ...detectedTheme.queries,
-    ...SAFE_DAILY_QUOTE_QUERIES,
-  ]).slice(0, 7)
-
-  return {
-    ...detectedTheme,
-    query: queries[0] || detectedTheme.query,
-    queries,
-  }
-}
-
-function themeMatchesBackground(background: QuoteBackgroundRow, themeKeywords: string[]) {
-  const backgroundTheme = normalizeText(background.theme || '')
-  const backgroundKeywords = (background.theme_keywords || []).map((keyword) =>
-    normalizeText(keyword)
-  )
-  const normalizedThemes = themeKeywords.map((theme) => normalizeText(theme))
-
-  return normalizedThemes.some((theme) => {
-    return (
-      backgroundTheme === theme ||
-      backgroundKeywords.includes(theme) ||
-      backgroundTheme.includes(theme) ||
-      theme.includes(backgroundTheme)
-    )
-  })
-}
-
-async function getRecentImageHistory() {
-  const cutoffIso = new Date()
-  cutoffIso.setDate(cutoffIso.getDate() - DAYS_WITHOUT_REPEAT)
-
-  const { data, error } = await supabase
-    .from('daily_quote_image_history')
-    .select('pexels_photo_id, source_image_url, quote_background_id, photographer')
-    .gte('used_at', cutoffIso.toISOString())
-
-  if (error) {
-    console.error('Erro ao buscar histórico de imagens:', error)
-    return [] as ImageHistoryRow[]
+  for (const mapping of visualMappings) {
+    if (mapping.pattern.test(normalized)) {
+      scene = mapping.scene
+      mood = mapping.mood
+      break
+    }
   }
 
-  return (data || []) as ImageHistoryRow[]
+  const quoteDisplay = `"${quoteText}"`
+
+  return [
+    'Cinematic biblical realism. 4K photorealistic.',
+    scene,
+    `Mood: ${mood}.`,
+    'Vertical 9:16 composition. Rule of thirds. Cinematic depth of field.',
+    'Natural colors. Warm golden hour lighting. Soft directional light.',
+    'Reverent tone. Not theatrical or exaggerated.',
+    `Text overlay in elegant serif font: ${quoteDisplay}`,
+    title ? `Subtitle: "${title}"` : '',
+    reference ? `Reference: ${reference}` : '',
+    themes ? `Themes: ${themes}` : '',
+    excerpt ? `Context: ${excerpt.slice(0, 200)}` : '',
+    'No watermarks. No text errors. Clean typography.',
+  ]
+    .filter(Boolean)
+    .join(' ')
 }
 
-function isImageRecentlyUsed(image: BackgroundImage, history: ImageHistoryRow[]) {
-  return history.some((item) => {
-    const sameCuratedImage =
-      image.quote_background_id &&
-      item.quote_background_id &&
-      image.quote_background_id === item.quote_background_id
+// ---------------------------------------------------------------------------
+// Persistência no Supabase (histórico + vínculo com daily_quotes)
+// ---------------------------------------------------------------------------
 
-    const samePexelsPhoto =
-      image.pexels_photo_id &&
-      item.pexels_photo_id &&
-      image.pexels_photo_id === item.pexels_photo_id
+async function saveFluxBackgroundHistory(params: {
+  dailyQuoteId?: string
+  r2Url: string
+  promptUsed: string
+  themeKeywords: string[]
+  quoteText: string
+}): Promise<{ quoteBackgroundId: string }> {
+  const now = new Date().toISOString()
+  const today = now.split('T')[0]
+  const theme = params.themeKeywords[0] || 'devocional'
 
-    const sameImageUrl =
-      image.url &&
-      item.source_image_url &&
-      image.url === item.source_image_url
-
-    return sameCuratedImage || samePexelsPhoto || sameImageUrl
-  })
-}
-
-async function searchCuratedImages(params: {
-  theme_keywords: string[]
-  history: ImageHistoryRow[]
-}) {
-  const cutoffDate = getCutoffDate()
-
-  const { data, error } = await supabase
+  // 1. Cria/atualiza registro em quote_backgrounds
+  const { data: background, error: backgroundError } = await supabase
     .from('quote_backgrounds')
-    .select(`
-      id,
-      image_url,
-      preview_url,
-      theme,
-      theme_keywords,
-      source,
-      source_image_provider,
-      source_page_url,
-      pexels_photo_id,
-      photographer,
-      photographer_url,
-      query_used,
-      last_used_date,
-      use_count,
-      is_active,
-      is_approved
-    `)
-    .eq('is_active', true)
-    .eq('is_approved', true)
-    .order('use_count', { ascending: true })
-    .order('last_used_date', { ascending: true, nullsFirst: true })
-    .limit(80)
-
-  if (error) {
-    console.error('Erro ao buscar imagens curadas:', error)
-    return [] as BackgroundImage[]
-  }
-
-  const rows = ((data || []) as QuoteBackgroundRow[])
-    .filter((background) => {
-      const allowedByDate =
-        !background.last_used_date ||
-        background.last_used_date < cutoffDate
-
-      return allowedByDate && themeMatchesBackground(background, params.theme_keywords)
-    })
-
-  const images: BackgroundImage[] = rows.map((background) => ({
-    id: `curated-${background.id}`,
-    provider: 'curated',
-    url: background.image_url,
-    preview_url: background.preview_url || background.image_url,
-    photographer: background.photographer || undefined,
-    photographer_url: background.photographer_url || undefined,
-    source_page_url: background.source_page_url || undefined,
-    alt: background.theme,
-    query: background.query_used || background.theme,
-    theme_keywords: background.theme_keywords || [background.theme],
-    quote_background_id: background.id,
-    pexels_photo_id: background.pexels_photo_id,
-  }))
-
-  return shuffleArray(images).filter((image) => !isImageRecentlyUsed(image, params.history))
-}
-
-async function fetchPexelsPhotos(params: {
-  query: string
-  theme_keywords: string[]
-  avoid_keywords?: string[]
-  apiKey: string
-  perPage?: number
-  page?: number
-}) {
-  const url = new URL('https://api.pexels.com/v1/search')
-  url.searchParams.set('query', params.query)
-  url.searchParams.set('per_page', String(params.perPage || 8))
-  url.searchParams.set('orientation', 'landscape')
-  url.searchParams.set('size', 'large')
-  url.searchParams.set('locale', 'pt-BR')
-  url.searchParams.set('page', String(params.page || getRandomPage()))
-
-  const response = await fetch(url.toString(), {
-    headers: {
-      Authorization: params.apiKey.trim(),
-    },
-    cache: 'no-store',
-  })
-
-  const data = await response.json()
-
-  if (!response.ok) {
-    console.error('Erro Pexels:', data)
-
-    return {
-      error:
-        data?.message ||
-        data?.error ||
-        'Erro ao buscar imagens no Pexels.',
-      photos: [] as BackgroundImage[],
-      totalReceived: 0,
-      removedByContentFilter: 0,
-    }
-  }
-
-  const rawPhotos = (data.photos || []) as PexelsPhoto[]
-  const photos = rawPhotos.filter(
-    (photo) => !shouldAvoidPhoto(photo, params.theme_keywords, params.avoid_keywords)
-  )
-
-  const images: BackgroundImage[] = photos.map((photo) => ({
-    id: `pexels-${photo.id}`,
-    provider: 'pexels',
-    url:
-      photo.src.landscape ||
-      photo.src.large2x ||
-      photo.src.large ||
-      photo.src.original,
-    preview_url:
-      photo.src.medium ||
-      photo.src.landscape ||
-      photo.src.large ||
-      photo.src.original,
-    photographer: photo.photographer,
-    photographer_url: photo.photographer_url,
-    source_page_url: photo.url,
-    alt: photo.alt || '',
-    query: params.query,
-    theme_keywords: params.theme_keywords,
-    quote_background_id: null,
-    pexels_photo_id: String(photo.id),
-  }))
-
-  return {
-    error: null,
-    photos: images,
-    totalReceived: rawPhotos.length,
-    removedByContentFilter: rawPhotos.length - photos.length,
-  }
-}
-
-function addUniqueImage(
-  collection: BackgroundImage[],
-  image: BackgroundImage
-) {
-  const alreadyExists = collection.some((item) => {
-    const sameId = item.id === image.id
-    const sameUrl = item.url === image.url
-    const samePexels =
-      item.pexels_photo_id &&
-      image.pexels_photo_id &&
-      item.pexels_photo_id === image.pexels_photo_id
-
-    return sameId || sameUrl || samePexels
-  })
-
-  if (!alreadyExists) {
-    collection.push(image)
-  }
-}
-
-async function searchPexelsImages(params: {
-  queries: string[]
-  theme_keywords: string[]
-  avoid_keywords?: string[]
-  history: ImageHistoryRow[]
-}) {
-  const apiKey = process.env.PEXELS_API_KEY
-  const queries = uniqueList(params.queries).slice(0, 5)
-
-  if (!apiKey) {
-    console.warn('PEXELS_API_KEY ausente. Usando fallback interno.')
-
-    return {
-      images: [] as BackgroundImage[],
-      warning: 'PEXELS_API_KEY ausente.',
-      debug: {
-        pexels_key_configured: false,
-        queries_used: queries,
-        pexels_total_received: 0,
-        removed_by_history: 0,
-        removed_by_content_filter: 0,
-        warning_reason: 'PEXELS_API_KEY ausente',
+    .upsert(
+      {
+        image_url: params.r2Url,
+        preview_url: params.r2Url,
+        theme,
+        theme_keywords: params.themeKeywords,
+        source: 'flux',
+        source_image_provider: 'flux',
+        source_page_url: null,
+        query_used: params.promptUsed.slice(0, 500),
+        last_used_date: today,
+        use_count: 1,
+        is_active: true,
+        is_approved: true,
+        updated_at: now,
       },
+      {
+        onConflict: 'image_url',
+        ignoreDuplicates: false,
+      }
+    )
+    .select('id')
+    .single()
+
+  if (backgroundError) {
+    console.error('[FLUX-BG] Erro ao salvar quote_backgrounds:', backgroundError)
+    throw backgroundError
+  }
+
+  const quoteBackgroundId = background?.id
+
+  if (!quoteBackgroundId) {
+    throw new Error('Falha ao obter ID do background após upsert.')
+  }
+
+  // 2. Atualiza a daily_quote com o background_image_url
+  if (params.dailyQuoteId) {
+    const { error: quoteUpdateError } = await supabase
+      .from('daily_quotes')
+      .update({
+        background_image_url: params.r2Url,
+        source_image_url: params.r2Url,
+        quote_background_id: quoteBackgroundId,
+      })
+      .eq('id', params.dailyQuoteId)
+
+    if (quoteUpdateError) {
+      console.error('[FLUX-BG] Erro ao atualizar daily_quotes:', quoteUpdateError)
+      // Não quebra — o background já foi salvo
     }
   }
 
-  try {
-    const resultsByQuery: BackgroundImage[][] = []
-    let lastError: string | null = null
-    let hadPexelsError = false
-    let pexelsTotalReceived = 0
-    let removedByContentFilter = 0
-    let removedByHistory = 0
-
-    const searchRound = async (pagesByQuery: number[]) => {
-      for (const query of queries) {
-        for (const page of pagesByQuery) {
-          const result = await fetchPexelsPhotos({
-            query,
-            theme_keywords: params.theme_keywords,
-            avoid_keywords: params.avoid_keywords,
-            apiKey,
-            perPage: 10,
-            page,
-          })
-
-          if (result.error) {
-            hadPexelsError = true
-            lastError = result.error
-          }
-
-          pexelsTotalReceived += result.totalReceived
-          removedByContentFilter += result.removedByContentFilter
-
-          const filteredPhotos = result.photos.filter((image) => {
-            const recentlyUsed = isImageRecentlyUsed(image, params.history)
-
-            if (recentlyUsed) {
-              removedByHistory += 1
-            }
-
-            return !recentlyUsed
-          })
-
-          resultsByQuery.push(shuffleArray(filteredPhotos))
-        }
-      }
-    }
-
-    const collectFinalImages = () => {
-      const collected: BackgroundImage[] = []
-
-      for (let queryIndex = 0; queryIndex < resultsByQuery.length; queryIndex += 1) {
-        const firstImage = resultsByQuery[queryIndex][0]
-
-        if (firstImage) {
-          addUniqueImage(collected, firstImage)
-        }
-      }
-
-      for (let imageIndex = 1; imageIndex < 10; imageIndex += 1) {
-        for (let queryIndex = 0; queryIndex < resultsByQuery.length; queryIndex += 1) {
-          const image = resultsByQuery[queryIndex][imageIndex]
-
-          if (image) {
-            addUniqueImage(collected, image)
-          }
-        }
-      }
-
-      return collected
-    }
-
-    await searchRound([getRandomPage()])
-
-    let finalImages = collectFinalImages()
-
-    if (finalImages.length === 0 && removedByHistory > 0) {
-      await searchRound([1, 2, 3])
-      finalImages = collectFinalImages()
-    }
-
-    let warningReason = ''
-
-    if (hadPexelsError) {
-      warningReason = 'Erro HTTP ou rate limit do Pexels'
-    } else if (pexelsTotalReceived === 0) {
-      warningReason = 'Pexels retornou zero imagens'
-    } else if (removedByContentFilter >= pexelsTotalReceived) {
-      warningReason = 'Pexels retornou imagens, mas todas foram removidas por filtro'
-    } else if (finalImages.length === 0 && removedByHistory > 0) {
-      warningReason = 'Pexels retornou imagens, mas todas foram removidas por histórico'
-    } else if (finalImages.length === 0) {
-      warningReason = 'Nenhuma imagem curada ou Pexels válida'
-    }
-
-    return {
-      images: finalImages.slice(0, 9),
-      warning: finalImages.length > 0 ? null : lastError || warningReason,
-      debug: {
-        pexels_key_configured: true,
-        queries_used: queries,
-        pexels_total_received: pexelsTotalReceived,
-        removed_by_history: removedByHistory,
-        removed_by_content_filter: removedByContentFilter,
-        warning_reason: warningReason,
+  // 3. Insere no histórico de imagens
+  const { error: historyError } = await supabase
+    .from('daily_quote_image_history')
+    .insert([
+      {
+        daily_quote_id: params.dailyQuoteId || null,
+        quote_background_id: quoteBackgroundId,
+        source_image_url: params.r2Url,
+        source_image_provider: 'flux',
+        query_used: params.promptUsed.slice(0, 500),
+        theme_keywords: params.themeKeywords,
+        used_at: now,
       },
-    }
-  } catch (error) {
-    console.error('Falha inesperada ao buscar no Pexels:', error)
+    ])
 
-    return {
-      images: [] as BackgroundImage[],
-      warning: 'Falha inesperada no Pexels.',
-      debug: {
-        pexels_key_configured: true,
-        queries_used: queries,
-        pexels_total_received: 0,
-        removed_by_history: 0,
-        removed_by_content_filter: 0,
-        warning_reason: 'Erro HTTP ou rate limit do Pexels',
-      },
-    }
+  if (historyError) {
+    console.error('[FLUX-BG] Erro ao salvar histórico:', historyError)
+    // Não quebra — o background já foi salvo
   }
+
+  console.log('[FLUX-BG] Histórico salvo | quoteBackgroundId=', quoteBackgroundId)
+
+  return { quoteBackgroundId }
 }
+
+// ---------------------------------------------------------------------------
+// Rota principal
+// ---------------------------------------------------------------------------
 
 export async function POST(request: NextRequest) {
   try {
@@ -1044,222 +284,147 @@ export async function POST(request: NextRequest) {
     const sourceExcerpt = cleanText(String(body.sourceExcerpt || ''))
     const reason = cleanText(String(body.reason || ''))
     const specificityReason = cleanText(String(body.specificityReason || ''))
-    const useCase = cleanText(String(body.useCase || ''))
     const transcriptionPreview = cleanText(String(body.transcriptionPreview || ''))
+    const dailyQuoteId = cleanText(String(body.dailyQuoteId || ''))
     const preferredThemes = getStringArray(body.preferredThemes)
-    const visualContext = [
-      quoteText,
-      sourceExcerpt,
-      reason,
-      specificityReason,
-      title,
-      bibleReference,
-      useCase,
-      transcriptionPreview,
-    ].filter(Boolean).join(' ')
-    const explicitWaterTheme = hasExplicitWaterTheme(visualContext || quoteText || manualQuery)
-    const avoidThemes = uniqueList([
-      ...getStringArray(body.avoidThemes),
-      ...(explicitWaterTheme ? [] : WATER_AVOID_KEYWORDS),
-    ])
+    const avoidThemes = getStringArray(body.avoidThemes)
 
-    if (!quoteText && !manualQuery) {
+    const queryToUse = quoteText || manualQuery
+
+    if (!queryToUse) {
       return NextResponse.json(
-        { error: 'Envie quoteText ou query.' },
+        { error: 'Envie quoteText ou query para gerar a imagem.' },
         { status: 400 }
       )
     }
 
-    const detectedThemeBase =
-      purpose === 'episode_thumbnail'
-        ? detectEpisodeThumbnailTheme(quoteText || manualQuery, preferredThemes, avoidThemes)
-        : purpose === 'daily_quote_card'
-        ? getConcreteVisualTheme(visualContext) || detectThemeFromQuote(visualContext || quoteText)
-        : manualQuery
-        ? {
-            query: manualQuery,
-            queries: [manualQuery],
-            theme_keywords: [manualQuery],
-          }
-        : detectThemeFromQuote(quoteText)
+    // Constrói prompt conceitual para FLUX
+    const prompt = buildFluxDailyQuotePrompt(queryToUse, {
+      bibleReference,
+      sourceExcerpt,
+      title,
+      themeKeywords: preferredThemes,
+    })
 
-    const detectedTheme =
-      (purpose === 'daily_quote_card' || (!purpose && !manualQuery))
-        ? improveDailyQuoteQueries(detectedThemeBase)
-        : detectedThemeBase
-    const filteredQueries = filterQueriesByAvoidThemes(
-      detectedTheme.queries,
-      avoidThemes
-    )
-    const finalDetectedTheme = {
-      ...detectedTheme,
-      query: filteredQueries[0] || detectedTheme.query,
-      queries: filteredQueries,
-      avoid_keywords: uniqueList([
-        ...(detectedTheme.avoid_keywords || []),
-        ...avoidThemes,
-      ]),
+    console.log('[FLUX-BG] Gerando imagem para Palavra do Dia...')
+    console.log('[FLUX-BG] Prompt:', prompt.slice(0, 200))
+
+    // Gera imagem via FLUX Schnell → WebP → R2
+    const fluxResult = await generateAndUploadFluxImage(prompt, {
+      imageSize: 'square_hd',
+      r2Prefix: 'backgrounds/daily-quote',
+    })
+
+    console.log('[FLUX-BG] Imagem gerada | r2Url=', fluxResult.r2Url)
+
+    // Detecta temas visuais para metadados
+    const normalizedQuote = normalizeText(queryToUse)
+    const THEME_MAP: Array<{ keywords: string[]; theme: string }> = [
+      { keywords: ['jesus', 'cristo', 'senhor', 'salvador', 'messias', 'cordeiro'], theme: 'Jesus' },
+      { keywords: ['palavra', 'bíblia', 'biblia', 'escritura', 'verdade', 'revelação', 'revelacao', 'verbo'], theme: 'Palavra' },
+      { keywords: ['vida', 'viver', 'renovo', 'ressurreição', 'ressurreicao'], theme: 'vida' },
+      { keywords: ['liberdade', 'liberta', 'libertação', 'libertacao', 'livre'], theme: 'liberdade' },
+      { keywords: ['salvação', 'salvacao', 'evangelho', 'redenção', 'redencao', 'cruz', 'perdão', 'perdao'], theme: 'salvação' },
+      { keywords: ['luz', 'trevas', 'clareza', 'iluminar', 'resplandecer', 'brilhar', 'glória', 'gloria'], theme: 'luz' },
+      { keywords: ['tempestade', 'crise', 'vento', 'mar', 'ondas', 'medo', 'tribulação', 'tribulacao'], theme: 'tempestade' },
+      { keywords: ['deserto', 'solidão', 'solidao', 'seco', 'caminho', 'provação', 'provacao'], theme: 'deserto' },
+      { keywords: ['esperança', 'esperanca', 'novo', 'recomeço', 'recomeco', 'alegria'], theme: 'esperança' },
+      { keywords: ['direção', 'direcao', 'guiar', 'passos', 'decisão', 'decisao', 'jornada'], theme: 'direção' },
+      { keywords: ['oração', 'oracao', 'orar', 'presença', 'presenca', 'intimidade', 'altar'], theme: 'oração' },
+      { keywords: ['fé', 'fe', 'crer', 'confiança', 'confianca', 'promessa', 'perseverar'], theme: 'fé' },
+      { keywords: ['cura', 'restauração', 'restauracao', 'ferida', 'dor', 'consolo', 'paz'], theme: 'cura' },
+      { keywords: ['graça', 'graca', 'misericórdia', 'misericordia', 'amor', 'bondade'], theme: 'graça' },
+      { keywords: ['vitória', 'vitoria', 'vencer', 'força', 'forca', 'coragem', 'levantar'], theme: 'vitória' },
+    ]
+
+    const matchedThemes = THEME_MAP
+      .filter((item) => item.keywords.some((keyword) => normalizedQuote.includes(keyword)))
+      .map((item) => item.theme)
+
+    const themeKeywords = matchedThemes.length > 0
+      ? matchedThemes.slice(0, 4)
+      : ['devocional', 'esperança']
+
+    // Salva histórico no Supabase
+    let quoteBackgroundId: string | null = null
+
+    try {
+      const saved = await saveFluxBackgroundHistory({
+        dailyQuoteId: dailyQuoteId || undefined,
+        r2Url: fluxResult.r2Url,
+        promptUsed: prompt,
+        themeKeywords,
+        quoteText: queryToUse,
+      })
+      quoteBackgroundId = saved.quoteBackgroundId
+    } catch (historyError) {
+      console.error('[FLUX-BG] Erro ao salvar histórico (não-fatal):', historyError)
     }
 
-    const history = await getRecentImageHistory()
-
-    const curatedImages = await searchCuratedImages({
-      theme_keywords: finalDetectedTheme.theme_keywords,
-      history,
-    })
-
-    const pexelsImages = await searchPexelsImages({
-      queries: finalDetectedTheme.queries,
-      theme_keywords: finalDetectedTheme.theme_keywords,
-      avoid_keywords: finalDetectedTheme.avoid_keywords,
-      history,
-    })
-
-    const finalImages: BackgroundImage[] = []
-
-    const allowedCuratedImages = curatedImages.filter((image) => {
-      const searchableText = [
-        image.query,
-        image.alt || '',
-        ...(image.theme_keywords || []),
-      ].join(' ')
-
-      return !queryHasAvoidedTheme(searchableText, finalDetectedTheme.avoid_keywords || [])
-    })
-
-    allowedCuratedImages
-      .slice(0, 3)
-      .forEach((image) => {
-        addUniqueImage(finalImages, image)
-      })
-
-    pexelsImages.images.forEach((image) => {
-      addUniqueImage(finalImages, image)
-    })
-
-    const images =
-      finalImages.length > 0
-        ? finalImages.slice(0, 9)
-        : FALLBACK_IMAGES
-    const imagesWithMetadata = images.map((image) => ({
-      ...image,
-      searchQueryUsed: image.query || finalDetectedTheme.query,
-      visualTheme: finalDetectedTheme.visual_theme || finalDetectedTheme.theme_keywords[0] || '',
-      matchedReason: finalDetectedTheme.matched_reason || 'Busca baseada no contexto visual da Palavra do Dia.',
-    }))
-
-    const provider =
-      allowedCuratedImages.length > 0
-        ? 'curated'
-        : pexelsImages.images.length > 0
-        ? 'pexels'
-        : 'fallback'
-
-    const fallbackUsed = images[0]?.provider === 'fallback'
-    const warningReason =
-      fallbackUsed && !pexelsImages.debug.warning_reason
-        ? 'Nenhuma imagem curada ou Pexels válida'
-        : pexelsImages.debug.warning_reason
-    const debug: SearchDebug = {
-      pexels_key_configured: pexelsImages.debug.pexels_key_configured,
-      queries_used: pexelsImages.debug.queries_used,
-      pexels_total_received: pexelsImages.debug.pexels_total_received,
-      curated_total_received: curatedImages.length,
-      removed_by_history: pexelsImages.debug.removed_by_history,
-      removed_by_content_filter: pexelsImages.debug.removed_by_content_filter,
-      final_valid_images: finalImages.length,
-      fallback_used: fallbackUsed,
-      warning_reason: warningReason,
+    // Constrói resposta
+    const background: GeneratedBackground = {
+      id: `flux-${Date.now()}`,
+      provider: 'flux',
+      url: fluxResult.r2Url,
+      preview_url: fluxResult.r2Url,
+      query: queryToUse.slice(0, 120),
+      theme_keywords: themeKeywords,
+      searchQueryUsed: queryToUse.slice(0, 120),
+      visualTheme: themeKeywords[0] || 'devocional',
+      matchedReason: 'Imagem conceitual gerada por IA (FLUX Schnell) com base no texto da Palavra do Dia.',
+      quote_background_id: quoteBackgroundId,
     }
 
     return NextResponse.json({
       success: true,
-      query: finalDetectedTheme.query,
-      queries: finalDetectedTheme.queries,
-      theme_keywords: finalDetectedTheme.theme_keywords,
-      visual_theme: finalDetectedTheme.visual_theme || finalDetectedTheme.theme_keywords[0] || '',
-      matched_reason: finalDetectedTheme.matched_reason || '',
-      images: imagesWithMetadata,
-      provider,
+      query: queryToUse.slice(0, 120),
+      queries: [queryToUse.slice(0, 120)],
+      theme_keywords: themeKeywords,
+      visual_theme: themeKeywords[0] || 'devocional',
+      matched_reason: background.matchedReason,
+      images: [background],
+      provider: 'flux',
       source_counts: {
-        curated: curatedImages.length,
-        pexels: pexelsImages.images.length,
-        returned: images.length,
-        history: history.length,
+        curated: 0,
+        pexels: 0,
+        flux: 1,
+        returned: 1,
+        history: 0,
       },
-      debug,
-      warning:
-        fallbackUsed
-          ? warningReason || pexelsImages.warning || 'Usando fallback interno.'
-          : pexelsImages.warning,
+      flux_image_url: fluxResult.r2Url,
+      flux_image_size_bytes: fluxResult.sizeBytes,
+      flux_image_width: fluxResult.width,
+      flux_image_height: fluxResult.height,
+      debug: {
+        provider: 'flux',
+        queries_used: [queryToUse.slice(0, 120)],
+        total_received: 1,
+        final_valid_images: 1,
+        fallback_used: false,
+        warning_reason: '',
+      },
     })
   } catch (error) {
-    console.error('Erro ao buscar imagens:', error)
+    console.error('[FLUX-BG] Erro ao gerar fundo:', error)
 
     return NextResponse.json(
       {
         success: false,
-        error: 'Erro ao buscar imagens.',
-        images: FALLBACK_IMAGES,
-        provider: 'fallback',
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Erro ao gerar imagem de fundo.',
+        provider: 'flux',
         debug: {
-          pexels_key_configured: Boolean(process.env.PEXELS_API_KEY),
+          provider: 'flux',
           queries_used: [],
-          pexels_total_received: 0,
-          curated_total_received: 0,
-          removed_by_history: 0,
-          removed_by_content_filter: 0,
+          total_received: 0,
           final_valid_images: 0,
           fallback_used: true,
-          warning_reason: 'Nenhuma imagem curada ou Pexels válida',
-        } satisfies SearchDebug,
+          warning_reason: 'Erro na geração FLUX',
+        },
       },
       { status: 500 }
     )
-  }
-}
-
-function detectEpisodeThumbnailTheme(contextText: string, preferredThemes: string[], avoidThemes: string[]): DetectedTheme {
-  const normalized = normalizeText(contextText)
-  const baseQueries = [
-    'peaceful sunrise landscape path mountains sky hope freedom',
-    'peaceful ocean sunrise light hope landscape',
-    'mountain path sunrise sky freedom peaceful',
-  ]
-
-  let queries = baseQueries
-  let themeKeywords = ['episode_thumbnail', ...preferredThemes]
-
-  if (/(barco|mar|oceano|ondas|aguas|águas|tempestade|vento|naufragio|naufrágio)/.test(normalized)) {
-    queries = [
-      'calm sea sunrise boat hope peaceful',
-      'peaceful ocean sunrise light hope',
-      'boat on calm water sunrise journey',
-    ]
-    themeKeywords = ['episode_thumbnail', 'mar', 'barco', 'esperança', ...preferredThemes]
-  } else if (/(caminho|jornada|passos|direcao|direção|rumo|estrada)/.test(normalized)) {
-    queries = [
-      'peaceful path sunrise mountains journey hope',
-      'open road sunrise freedom landscape',
-      'forest path sunlight peaceful journey',
-    ]
-    themeKeywords = ['episode_thumbnail', 'caminho', 'jornada', 'esperança', ...preferredThemes]
-  } else if (/(montanha|monte|alto|vitoria|vitória|forca|força|coragem)/.test(normalized)) {
-    queries = [
-      'mountain sunrise hope freedom peaceful',
-      'mountain path sunrise sky landscape',
-      'golden sunrise mountains peaceful',
-    ]
-    themeKeywords = ['episode_thumbnail', 'montanhas', 'fé', 'esperança', ...preferredThemes]
-  }
-
-  const uniqueQueries = Array.from(new Set(queries))
-  const uniqueThemes = Array.from(new Set(themeKeywords.filter(Boolean)))
-
-  return {
-    query: uniqueQueries[0],
-    queries: uniqueQueries.slice(0, 3),
-    theme_keywords: uniqueThemes,
-    avoid_keywords: avoidThemes,
   }
 }

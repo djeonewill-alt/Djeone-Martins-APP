@@ -1,10 +1,22 @@
-﻿import { PutObjectCommand } from '@aws-sdk/client-s3'
+﻿/**
+ * AI-MEDIA-004 — Rota de compartilhamento simplificada com FLUX Schnell.
+ *
+ * O FLUX Schnell já gera a imagem final com texto embutido nativamente,
+ * comprimida em WebP (~50-80 KB) e salva no R2. Esta rota apenas
+ * consulta o registro da daily_quote e retorna a URL já existente.
+ *
+ * Não há mais processamento Canvas (@napi-rs/canvas/sharp) — a imagem
+ * já está pronta para compartilhamento no WhatsApp.
+ */
+
 import { NextRequest, NextResponse } from 'next/server'
-import { generateQuoteShareImage } from '@/lib/images/generateQuoteShareImage'
-import { R2_BUCKET_NAME, R2_PUBLIC_URL, r2Client } from '@/lib/r2/client'
 import { createSupabaseAdminClient } from '@/lib/supabase/admin'
 
 export const runtime = 'nodejs'
+
+// ---------------------------------------------------------------------------
+// Tipos
+// ---------------------------------------------------------------------------
 
 type RouteParams = {
   id: string
@@ -29,6 +41,10 @@ type DailyQuoteRecord = {
     } | null
   } | null
 }
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i
 
@@ -62,44 +78,31 @@ function getAdminAuthError(request: NextRequest) {
   return null
 }
 
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error) return error.message
-  return String(error)
-}
-
-function getBaseImageUrl(quote: DailyQuoteRecord) {
-  // Ordem: background > source > episode cover > series cover > card (último fallback)
-  return (
+/**
+ * Resolve a melhor URL de imagem para compartilhamento, na ordem:
+ * 1. background_image_url (FLUX Schnell)
+ * 2. source_image_url
+ * 3. episode cover > series cover
+ * 4. card_image_url
+ * 5. Fallback: imagem padrão do app
+ */
+function getShareImageUrl(quote: DailyQuoteRecord): string {
+  const url =
     quote.background_image_url ||
     quote.source_image_url ||
     quote.episode?.cover_image_url ||
     quote.episode?.series?.cover_image_url ||
-    quote.card_image_url ||
-    null
-  )
+    quote.card_image_url
+
+  if (url) return url
+
+  // Fallback: imagem padrão do app
+  return '/vencendo-tempestades.jpg'
 }
 
-function getShareImageKey(quoteId: string, force: boolean) {
-  if (force) {
-    return `og/quotes/${quoteId}-quote-og-v26-${Date.now()}.png`
-  }
-  return `og/quotes/${quoteId}-quote-og-v26.png`
-}
-
-async function markQuoteError(quoteId: string, message: string) {
-  try {
-    const supabase = createSupabaseAdminClient()
-    await supabase
-      .from('daily_quotes')
-      .update({
-        share_image_status: 'error',
-        share_image_error: message.slice(0, 240),
-      })
-      .eq('id', quoteId)
-  } catch (error) {
-    console.error('[quote-share-image] erro ao salvar status de falha:', error)
-  }
-}
+// ---------------------------------------------------------------------------
+// Rota
+// ---------------------------------------------------------------------------
 
 export async function POST(request: NextRequest, { params }: RouteProps) {
   const authError = getAdminAuthError(request)
@@ -112,14 +115,6 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
   }
 
   try {
-    const body = (await request.json().catch(() => ({}))) as { force?: boolean }
-    const force = body.force === true
-    const publicBaseUrl = R2_PUBLIC_URL.replace(/\/+$/, '')
-
-    if (!publicBaseUrl) {
-      throw new Error('R2_PUBLIC_URL nao configurado.')
-    }
-
     const supabase = createSupabaseAdminClient()
     const { data, error } = await supabase
       .from('daily_quotes')
@@ -144,70 +139,48 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
     if (error) throw error
 
     if (!data) {
-      return NextResponse.json({ error: 'Palavra nao encontrada.' }, { status: 404 })
+      return NextResponse.json(
+        { error: 'Palavra nao encontrada.' },
+        { status: 404 }
+      )
     }
 
     const quote = data as DailyQuoteRecord
+    const shareImageUrl = getShareImageUrl(quote)
 
-    // Se share_image_url já existe e não for force, retornar URL existente
-    if (quote.share_image_url && !force) {
-      return NextResponse.json({
-        ok: true,
-        daily_quote_id: quote.id,
-        share_image_url: quote.share_image_url,
-        reused_existing: true,
-      })
+    // Se share_image_url no banco está desatualizado, atualiza com a URL do FLUX
+    if (shareImageUrl && shareImageUrl !== quote.share_image_url) {
+      try {
+        await supabase
+          .from('daily_quotes')
+          .update({
+            share_image_url: shareImageUrl,
+            share_image_status: 'ready',
+            share_image_error: null,
+            share_image_generated_at: new Date().toISOString(),
+          })
+          .eq('id', quote.id)
+      } catch (updateError) {
+        console.error('[share-image] Erro ao atualizar share_image_url:', updateError)
+        // Não quebra — a URL foi retornada mesmo assim
+      }
     }
-
-    const generated = await generateQuoteShareImage({
-      quoteText: quote.quote_text,
-      bibleReference: quote.episode?.bible_reference,
-      baseImageUrl: getBaseImageUrl(quote),
-    })
-
-    const key = getShareImageKey(quote.id, force)
-    const shareImageUrl = `${publicBaseUrl}/${key}`
-
-    await r2Client.send(
-      new PutObjectCommand({
-        Bucket: R2_BUCKET_NAME,
-        Key: key,
-        Body: generated.buffer,
-        ContentType: 'image/png',
-        CacheControl: 'public, max-age=31536000, immutable',
-      })
-    )
-
-    const generatedAt = new Date().toISOString()
-    const { error: updateError } = await supabase
-      .from('daily_quotes')
-      .update({
-        share_image_url: shareImageUrl,
-        share_image_size_bytes: generated.sizeBytes,
-        share_image_generated_at: generatedAt,
-        share_image_status: 'ready',
-        share_image_error: null,
-      })
-      .eq('id', quote.id)
-
-    if (updateError) throw updateError
 
     return NextResponse.json({
       ok: true,
       daily_quote_id: quote.id,
       share_image_url: shareImageUrl,
-      size_bytes: generated.sizeBytes,
-      content_type: 'image/png',
+      quote_text: quote.quote_text,
+      source: shareImageUrl === (quote.background_image_url || quote.source_image_url)
+        ? 'flux'
+        : 'fallback',
     })
   } catch (error) {
-    const message = getErrorMessage(error)
-    await markQuoteError(id, message)
+    const message = error instanceof Error ? error.message : String(error)
+    console.error('[share-image] Erro:', message)
 
     return NextResponse.json(
-      {
-        error: message,
-        share_image_status: 'error',
-      },
+      { error: message, share_image_status: 'error' },
       { status: 500 }
     )
   }
