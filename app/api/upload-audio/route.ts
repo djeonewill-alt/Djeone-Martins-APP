@@ -15,6 +15,7 @@ const validAudioTypes = [
   'audio/x-m4a',
   'audio/aac',
   'audio/ogg',
+  'application/ogg',
   'audio/wav',
   'audio/webm',
 ]
@@ -33,9 +34,11 @@ const compatibleAudioTypes = [
   'audio/m4a',
   'audio/x-m4a',
   'audio/aac',
+  'audio/ogg',
+  'application/ogg',
 ]
 
-const compatibleAudioExtensions = ['mp3', 'm4a', 'mp4', 'aac']
+const compatibleAudioExtensions = ['mp3', 'm4a', 'mp4', 'aac', 'ogg']
 
 function isCompatibleAudio(contentType: string, extension: string) {
   return (
