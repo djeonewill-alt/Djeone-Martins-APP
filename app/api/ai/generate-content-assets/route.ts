@@ -3343,7 +3343,13 @@ async function generateVisualStoryboardWithOpenAI(params: {
     temperature: 0.35,
   } as any)
 
-  console.log("🚀 [FÁBRICA] 2. streamObject resolveu, await result.object...");
+  console.log("🚀 [FÁBRICA] 2. streamObject resolveu, consumindo partialObjectStream...");
+
+  // Consome o stream de forma assíncrona e segura até o fim
+  for await (const _partial of result.partialObjectStream) {
+    // apenas aguarda o stream completar sem congelar a rota
+  }
+
   const raw = await result.object as unknown as z.infer<typeof visualStoryboardSchema>
   console.log("🚀 [FÁBRICA] 3. result.object resolvido!");
   const model = modelName
