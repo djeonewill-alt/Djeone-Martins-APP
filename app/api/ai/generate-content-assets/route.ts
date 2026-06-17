@@ -3273,19 +3273,41 @@ async function generateVisualStoryboardWithOpenAI(params: {
   cta?: string
   editorialAlert?: string
 }): Promise<VisualStoryboard> {
-  const ai = getAIProvider({
-    textProvider: 'deepseek-flash',
-    fallbackProvider: 'openai',
-  })
+  const apiKey = process.env.DEEPSEEK_API_KEY
+  if (!apiKey) {
+    throw new Error('DEEPSEEK_API_KEY ausente.')
+  }
 
+  const baseUrl = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/+$/, '')
+  const model = 'deepseek-v4-pro'
+  const system = 'Voce e um diretor criativo de videos biblicos verticais. Responda somente JSON valido.'
   const promptText = buildVisualStoryboardPrompt(params)
-
   const cutDuration = params.selectedCut.end - params.selectedCut.start
 
-  const result = await ai.generateJson({
-    system: 'Voce e um diretor criativo de videos biblicos verticais. Responda somente JSON valido.',
-    prompt: promptText,
-    schema: `{
+  const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      stream: true,
+      temperature: 0.35,
+      max_tokens: 8192,
+      messages: [
+        {
+          role: 'system',
+          content: [
+            system,
+            '',
+            'INSTRUÇÃO DE FORMATO:',
+            'Você DEVE responder APENAS com JSON válido.',
+            'Não inclua markdown, explicações ou texto adicional.',
+            'Apenas o JSON puro.',
+            '',
+            'ESQUEMA ESPERADO:',
+            `{
   "visual_storyboard": {
     "mode": "visual_storyboard",
     "version": "cc-f4-visual-storyboard",
@@ -3314,12 +3336,75 @@ async function generateVisualStoryboardWithOpenAI(params: {
     "warnings": string[]
   }
 }`,
-    validate: (raw) => normalizeVisualStoryboard(raw, ai.activeTextModel, cutDuration),
-    temperature: 0.35,
-    maxTokens: 8192,
+          ].join('\n'),
+        },
+        {
+          role: 'user',
+          content: [
+            promptText,
+            '',
+            'Responda APENAS com JSON válido. Sem markdown. Sem texto extra.',
+          ].join('\n'),
+        },
+      ],
+    }),
   })
 
-  return result
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}))
+    throw new Error(
+      errorData?.error?.message || `DeepSeek Pro streaming erro HTTP ${response.status}`
+    )
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) {
+    throw new Error('DeepSeek Pro nao retornou um body para streaming.')
+  }
+
+  const decoder = new TextDecoder()
+  let accumulatedContent = ''
+  const chunks: string[] = []
+
+  // Consumir o stream DeepSeek e acumular o conteudo
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    const text = decoder.decode(value, { stream: true })
+    const lines = text.split('\n').filter((line) => line.trim().startsWith('data: '))
+
+    for (const line of lines) {
+      const data = line.replace(/^data: /, '').trim()
+      if (data === '[DONE]') continue
+
+      try {
+        const parsed = JSON.parse(data)
+        const delta = parsed?.choices?.[0]?.delta?.content || ''
+        if (delta) {
+          accumulatedContent += delta
+          chunks.push(delta)
+        }
+      } catch {
+        // ignora linhas parseaveis do stream
+      }
+    }
+  }
+
+  if (!accumulatedContent) {
+    throw new Error('DeepSeek Pro nao retornou conteudo no stream.')
+  }
+
+  // Extrai e valida o JSON do conteudo acumulado
+  const jsonMatch = accumulatedContent.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) {
+    throw new Error('DeepSeek Pro nao retornou JSON valido no stream.')
+  }
+
+  const rawJson = JSON.parse(jsonMatch[0])
+  const validated = normalizeVisualStoryboard(rawJson, model, cutDuration)
+
+  return validated
 }
 
 function normalizeAiReviewedLineText(text: string) {
