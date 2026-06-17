@@ -18,6 +18,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 import { generateAndUploadFluxImage } from '@/lib/ai/fal'
+import { getAIProvider } from '@/lib/ai/provider'
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -298,19 +299,77 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Constrói prompt conceitual para FLUX
-    const prompt = buildFluxDailyQuotePrompt(queryToUse, {
-      bibleReference,
-      sourceExcerpt,
-      title,
-      themeKeywords: preferredThemes,
+    // -----------------------------------------------------------------------
+    // ETAPA 1: DeepSeek gera flux_visual_prompt com contexto da transcrição
+    // -----------------------------------------------------------------------
+
+    console.log('[FLUX-BG] Etapa 1: Gerando flux_visual_prompt com DeepSeek...')
+
+    const fluxPromptSchema = `{
+  "flux_visual_prompt": "string (English prompt for FLUX image generation)"
+}`
+
+    const ai = getAIProvider({
+      textProvider: 'deepseek-flash',
+      fallbackProvider: 'openai',
     })
 
-    console.log('[FLUX-BG] Gerando imagem para Palavra do Dia...')
-    console.log('[FLUX-BG] Prompt:', prompt.slice(0, 200))
+    const promptData = await ai.generateJson({
+      system: [
+        'You are a cinematic biblical art director and prompt engineer for FLUX Schnell image generation.',
+        '',
+        'Your task: read the episode context and create a powerful, cinematic English prompt that FLUX Schnell will use to generate a devotional background image.',
+        '',
+        'RULES:',
+        '1. Write the entire prompt in ENGLISH.',
+        '2. Capture the real biblical scene from the episode (shipwreck, temple, Bethany, sea, etc).',
+        '3. Use cinematic language: "cinematic biblical realism, 4K photorealistic, golden hour lighting, rule of thirds, cinematic depth of field, reverent tone".',
+        '4. Describe the scene concretely: characters, environment, lighting, mood, colors.',
+        '5. At the END of the prompt, include an EXPLICIT typography instruction for the quote text IN PORTUGUESE.',
+        '6. The typography instruction format must be exactly:',
+        '   "The image must have a clean, centered typography overlay displaying the exact text in Portuguese: \'COLOCAR_A_FRASE_AQUI\'. Elegant serif font, high contrast, no spelling errors, perfectly aligned."',
+        '7. Replace COLOCAR_A_FRASE_AQUI with the actual quote text.',
+        '8. Do NOT translate the quote — keep it in Portuguese.',
+        '9. Return ONLY valid JSON.',
+      ].join('\n'),
+      prompt: [
+        'CONTEXT:',
+        `Quote Text (Portuguese): "${queryToUse}"`,
+        bibleReference ? `Bible Reference: ${bibleReference}` : '',
+        title ? `Episode Title: ${title}` : '',
+        sourceExcerpt ? `Source Excerpt: ${sourceExcerpt}` : '',
+        reason ? `Editorial Reason: ${reason}` : '',
+        specificityReason ? `Specificity Reason: ${specificityReason}` : '',
+        transcriptionPreview ? `Transcription Preview: ${transcriptionPreview.slice(0, 1500)}` : '',
+        '',
+        'Return valid JSON with the field "flux_visual_prompt" containing the complete English prompt.',
+      ].filter(Boolean).join('\n'),
+      schema: fluxPromptSchema,
+      validate: (raw) => {
+        const parsed = raw as { flux_visual_prompt?: string }
+        const prompt = (parsed.flux_visual_prompt || '').trim()
+        if (!prompt || prompt.length < 50) {
+          throw new Error('DeepSeek não gerou um flux_visual_prompt válido.')
+        }
+        return { flux_visual_prompt: prompt }
+      },
+      temperature: 0.6,
+      maxTokens: 2048,
+    })
+
+    const fluxVisualPrompt = promptData.flux_visual_prompt
+
+    console.log('[FLUX-BG] flux_visual_prompt gerado | modelo=', ai.activeTextModel)
+    console.log('[FLUX-BG] Prompt (primeiros 200 chars):', fluxVisualPrompt.slice(0, 200))
+
+    // -----------------------------------------------------------------------
+    // ETAPA 2: FLUX Schnell gera a imagem com o prompt do DeepSeek
+    // -----------------------------------------------------------------------
+
+    console.log('[FLUX-BG] Etapa 2: Gerando imagem com FLUX Schnell...')
 
     // Gera imagem via FLUX Schnell → WebP → R2
-    const fluxResult = await generateAndUploadFluxImage(prompt, {
+    const fluxResult = await generateAndUploadFluxImage(fluxVisualPrompt, {
       imageSize: 'square_hd',
       r2Prefix: 'backgrounds/daily-quote',
     })
@@ -352,7 +411,7 @@ export async function POST(request: NextRequest) {
       const saved = await saveFluxBackgroundHistory({
         dailyQuoteId: dailyQuoteId || undefined,
         r2Url: fluxResult.r2Url,
-        promptUsed: prompt,
+        promptUsed: fluxVisualPrompt,
         themeKeywords,
         quoteText: queryToUse,
       })
