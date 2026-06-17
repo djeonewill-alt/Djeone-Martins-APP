@@ -1754,11 +1754,11 @@ export default function NovoEpisodio() {
 
       const options: CardOption[] = []
 
-      for (let index = 0; index < CARD_TEMPLATES.length; index += 1) {
-        const template = CARD_TEMPLATES[index]
-        const image = images[index] || images[0]
+      // Apenas 1 card (template devocional elegante), não 3 repetidos
+      const template = CARD_TEMPLATES[0]
+      const image = images[0]
 
-        const previewDataUrl = await generateCardDataUrl({
+      const previewDataUrl = await generateCardDataUrl({
           quoteText,
           bibleReference: formData.bible_reference,
           episodeTitle: formData.title,
@@ -1767,7 +1767,7 @@ export default function NovoEpisodio() {
         })
 
         options.push({
-          id: `${template.template}-${Date.now()}-${index}`,
+          id: `${template.template}-${Date.now()}-0`,
           template: template.template,
           label: template.label,
           source_image_url: image.url,
@@ -1781,11 +1781,10 @@ export default function NovoEpisodio() {
           pexels_photo_id: image.pexels_photo_id || null,
           query_used: image.query || data.query || null,
         })
-      }
 
       setCardOptions(options)
       setSelectedCardIndex(0)
-      alert('✅ 3 opções de card foram geradas!')
+      alert('✅ Card gerado com sucesso!')
     } catch (error) {
       console.error('Erro ao gerar cards:', error)
       alert(`❌ ${getErrorMessage(error)}`)
@@ -2798,11 +2797,11 @@ export default function NovoEpisodio() {
                     disabled={!selectedDailyQuote.trim() || generatingCards}
                     className="w-full bg-amber-500 text-slate-950 font-bold py-3 rounded-lg hover:bg-amber-400 transition-colors disabled:opacity-50"
                   >
-                    {generatingCards ? '⏳ Gerando cards...' : '🎨 Gerar 3 cards prontos'}
+                    {generatingCards ? '⏳ Gerando card...' : '🎨 Gerar card pronto'}
                   </button>
 
                   {cardOptions.length > 0 && (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
+                    <div className="mt-5">
                       {cardOptions.map((option, index) => (
                         <button
                           key={option.id}
