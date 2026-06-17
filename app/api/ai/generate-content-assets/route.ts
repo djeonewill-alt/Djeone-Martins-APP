@@ -3345,20 +3345,9 @@ async function generateVisualStoryboardWithOpenAI(params: {
   const raw = result.object as unknown as z.infer<typeof visualStoryboardSchema>
   const model = modelName
 
-  // Diagnóstico de cenas geradas pelo DeepSeek Pro
-  console.log("=== [DIAGNÓSTICO DE CENAS GERADAS] ===");
-  const scenesArray = (raw as any)?.visual_storyboard?.scenes || (raw as any)?.scenes;
-  console.log(`Duração do Corte Solicitada: ${cutDuration} segundos`);
-  console.log(`Quantidade de cenas retornadas pela IA: ${Array.isArray(scenesArray) ? scenesArray.length : 'Não é um array'}`);
-  if (Array.isArray(scenesArray)) {
-    scenesArray.forEach((scene: any, index: number) => {
-      console.log(` -> Cena ${index + 1}: start=${scene?.start}, end=${scene?.end}, title="${scene?.title}"`);
-    });
-  }
-  console.log("=== [FIM DIAGNÓSTICO DE CENAS] ===");
-
-  // O normalizeVisualStoryboard aceita tanto { visual_storyboard: {...} } quanto o objeto direto
-  const validated = normalizeVisualStoryboard(raw, model, cutDuration)
+  // O normalizeVisualStoryboard aceita tanto { visual_storyboard: {...} } quanto objeto plano na raiz
+  const storyboardInput = (raw as any)?.visual_storyboard || raw
+  const validated = normalizeVisualStoryboard(storyboardInput, model, cutDuration)
 
   return validated
 }
