@@ -3396,12 +3396,58 @@ async function generateVisualStoryboardWithOpenAI(params: {
   }
 
   // Extrai e valida o JSON do conteudo acumulado
-  const jsonMatch = accumulatedContent.match(/\{[\s\S]*\}/)
+  // 1. Remove blocos de markdown (```json ... ```)
+  let cleanedJson = accumulatedContent
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim()
+
+  // 2. Extrai o primeiro objeto JSON completo com regex
+  const jsonMatch = cleanedJson.match(/\{[\s\S]*\}/)
   if (!jsonMatch) {
     throw new Error('DeepSeek Pro nao retornou JSON valido no stream.')
   }
 
-  const rawJson = JSON.parse(jsonMatch[0])
+  const jsonStr = jsonMatch[0]
+
+  // 3. Tenta parsear com limpeza progressiva
+  function parseJsonRobustly(input: string): unknown {
+    // Tentativa 1: parse direto
+    try {
+      return JSON.parse(input)
+    } catch {
+      // fallback
+    }
+
+    // Tentativa 2: substituir aspas curvas por retas, escapes duplicados
+    const cleaned = input
+      .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
+      .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035]/g, "'")
+      .replace(/\\(?!["\\/bfnrtu])/g, '\\\\')
+      .replace(/\n/g, '\\n')
+      .replace(/\r/g, '\\r')
+      .replace(/\t/g, '\\t')
+
+    try {
+      return JSON.parse(cleaned)
+    } catch {
+      // fallback
+    }
+
+    // Tentativa 3: regex para capturar o JSON mesmo com erros de formatação
+    const fallbackMatch = input.match(/\{[\s\S]*\}/)
+    if (!fallbackMatch) throw new Error('Nao foi possivel extrair JSON do stream do DeepSeek Pro.')
+
+    const raw = fallbackMatch[0]
+      .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
+      .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035]/g, "'")
+      // Remove quebras de linha dentro de strings que podem quebrar o parse
+      .replace(/(["'])\s*\n\s*/g, '$1 ')
+
+    return JSON.parse(raw)
+  }
+
+  const rawJson = parseJsonRobustly(jsonStr)
   const validated = normalizeVisualStoryboard(rawJson, model, cutDuration)
 
   return validated
