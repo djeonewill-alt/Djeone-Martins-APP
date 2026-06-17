@@ -3331,7 +3331,7 @@ async function generateVisualStoryboardWithOpenAI(params: {
   console.log("🚀 [FÁBRICA] 1. Disparando chamada do streamObject para a IA...");
   const deepseek = createOpenAI({
     apiKey,
-    baseURL: `${baseUrl}/v1`,
+    baseURL: baseUrl,
     name: 'deepseek',
     compatibility: 'compatible',
   } as any)
