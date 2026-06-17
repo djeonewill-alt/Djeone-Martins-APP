@@ -359,6 +359,10 @@ type PremiumImagePromptResponse = {
   keywords?: string[]
   warning?: string
   error?: string
+  flux_image_url?: string
+  flux_image_size_bytes?: number
+  flux_image_width?: number
+  flux_image_height?: number
 }
 
 function getLocalDateString() {
@@ -2862,82 +2866,14 @@ export default function NovoEpisodio() {
 
           <div className="border-t border-slate-800 pt-5">
             <h4 className="text-sm font-semibold text-slate-300 mb-3">
-              🖼️ Imagem do Episódio
+              🖼️ Capa do Episódio (FLUX Schnell)
             </h4>
 
             <div className="space-y-3">
               <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h5 className="text-sm font-bold text-white">
-                      🎧 Thumbnail do Áudio
-                    </h5>
-
-                    <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                      Gere 3 opções com base no título, descrição e transcrição. Este fluxo é separado dos cards da Palavra do Dia. A imagem escolhida aqui será usada no card do áudio.
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleGenerateEpisodeThumbnails}
-                  disabled={generatingEpisodeThumbnails}
-                  className="mt-4 w-full rounded-lg bg-blue-600 py-3 text-sm font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {generatingEpisodeThumbnails
-                    ? '⏳ Buscando thumbnails...'
-                    : '🎨 Sugerir 3 thumbnails com Pexels'}
-                </button>
-
-                {episodeThumbnailOptions.length > 0 && (
-                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    {episodeThumbnailOptions.map((image, index) => (
-                      <button
-                        key={image.id || image.url}
-                        type="button"
-                        onClick={() => handleSelectEpisodeThumbnail(image, index)}
-                        className={
-                          selectedEpisodeThumbnailIndex === index
-                            ? 'overflow-hidden rounded-xl border-2 border-blue-400 bg-slate-900 text-left'
-                            : 'overflow-hidden rounded-xl border-2 border-slate-700 bg-slate-900 text-left hover:border-slate-500'
-                        }
-                      >
-                        <img
-                          src={image.preview_url || image.url}
-                          alt={image.alt || 'Thumbnail sugerida'}
-                          className="h-28 w-full object-cover"
-                        />
-
-                        <div className="p-3">
-                          <p className="text-xs font-semibold text-white">
-                            Opção {index + 1}
-                          </p>
-
-                          <p className="mt-1 text-[11px] text-slate-500">
-                            {selectedEpisodeThumbnailIndex === index
-                              ? '✅ Thumbnail escolhida'
-                              : 'Clique para escolher'}
-                          </p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h5 className="text-sm font-bold text-white">
-                      Prompt premium de imagem
-                    </h5>
-
-                    <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                      Gera apenas o texto do prompt cinematografico. Nenhuma imagem sera criada aqui.
-                    </p>
-                  </div>
-                </div>
+                <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                  Gera a capa do episódio com IA (FLUX Schnell). O sistema usa o diagnóstico profundo de cena via DeepSeek para criar uma arte cinematográfica exclusiva.
+                </p>
 
                 <button
                   type="button"
@@ -2946,259 +2882,54 @@ export default function NovoEpisodio() {
                   className="mt-4 w-full rounded-lg bg-indigo-600 py-3 text-sm font-bold text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
                 >
                   {generatingPremiumImagePrompt
-                    ? 'Gerando prompt premium...'
-                    : 'Gerar prompt premium'}
+                    ? 'Gerando capa premium...'
+                    : '🎬 Gerar Capa do Episódio (Premium)'}
                 </button>
-
-                <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/70 p-3">
-                  <p className="text-sm font-bold text-white">
-                    Imagem premium gerada manualmente
-                  </p>
-
-                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                    Gere a imagem com o prompt acima no ChatGPT Plus ou outra ferramenta. Depois baixe a imagem e envie aqui para usar como capa do episodio.
-                  </p>
-
-                  <input
-                    type="file"
-                    accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
-                    onChange={handlePremiumManualImageUpload}
-                    disabled={uploading}
-                    className="mt-3 w-full rounded-lg border border-slate-700 bg-slate-800 p-2 text-sm text-white disabled:opacity-50"
-                  />
-
-                  <p className="mt-2 text-xs text-slate-500">
-                    Formatos aceitos: PNG, JPG, JPEG ou WEBP. O upload usa o mesmo fluxo de capa do episodio.
-                  </p>
-
-                  {episodeImageUrl && !useSeriesImage && (
-                    <div className="mt-3">
-                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                        Capa atual do episodio
-                      </p>
-
-                      <img
-                        src={episodeImageUrl}
-                        alt="Capa atual do episodio"
-                        className="h-36 w-full rounded-lg object-cover"
-                      />
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setUseSeriesImage(false)
-                          alert('Imagem definida como capa do episodio.')
-                        }}
-                        className="mt-3 w-full rounded-lg border border-indigo-400/30 bg-indigo-500/10 py-2 text-xs font-bold text-indigo-100 hover:bg-indigo-500/20"
-                      >
-                        Usar como capa do episodio
-                      </button>
-                    </div>
-                  )}
-                </div>
 
                 {premiumImagePrompt && (
                   <div className="mt-4 space-y-4">
-                    <div className="rounded-lg border border-indigo-500/20 bg-indigo-500/10 p-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-indigo-200">
-                        Titulo visual sugerido
+                    {premiumImagePrompt.warning && (
+                      <p className="text-xs leading-relaxed text-indigo-100">
+                        {premiumImagePrompt.warning}
                       </p>
-                      <p className="mt-1 text-sm font-semibold text-white">
-                        {premiumImagePrompt.title || 'Capa premium do episodio'}
-                      </p>
-                      {premiumImagePrompt.warning && (
-                        <p className="mt-2 text-xs leading-relaxed text-indigo-100">
-                          {premiumImagePrompt.warning}
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                          Titulo oficial do episodio
-                        </p>
-                        <p className="mt-1 text-xs leading-relaxed text-slate-300">
-                          {premiumImagePrompt.official_episode_title || formData.title || '-'}
-                        </p>
-                      </div>
-
-                      <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                          Titulo curto sugerido para capa
-                        </p>
-                        <p className="mt-1 text-xs leading-relaxed text-slate-300">
-                          {premiumImagePrompt.suggested_cover_title || 'Nao sugerido'}
-                        </p>
-                      </div>
-                    </div>
-
-                    {premiumImagePrompt.scene_diagnosis && (
-                      <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                          Diagnostico da cena
-                        </p>
-
-                        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                          {[
-                            ['Tipo de cena', premiumImagePrompt.scene_diagnosis.dominant_scene_type],
-                            ['Ambiente biblico', premiumImagePrompt.scene_diagnosis.biblical_setting],
-                            ['Personagens', (premiumImagePrompt.scene_diagnosis.main_characters || []).join(', ')],
-                            ['Elementos visuais', (premiumImagePrompt.scene_diagnosis.visual_anchors || []).join(', ')],
-                            ['Elementos permitidos', (premiumImagePrompt.scene_diagnosis.allowed_visual_elements || []).join(', ')],
-                            ['Elementos proibidos', (premiumImagePrompt.scene_diagnosis.forbidden_visual_elements || []).join(', ')],
-                          ].map(([label, value]) => (
-                            value ? (
-                              <div key={label}>
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                                  {label}
-                                </p>
-                                <p className="mt-1 text-xs leading-relaxed text-slate-300">
-                                  {value}
-                                </p>
-                              </div>
-                            ) : null
-                          ))}
-                        </div>
-
-                        {premiumImagePrompt.scene_diagnosis.why_this_scene_matches && (
-                          <div className="mt-3">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                              Por que combina com o episodio
-                            </p>
-                            <p className="mt-1 text-xs leading-relaxed text-slate-300">
-                              {premiumImagePrompt.scene_diagnosis.why_this_scene_matches}
-                            </p>
-                          </div>
-                        )}
-                      </div>
                     )}
 
-                    {premiumImagePrompt.visual_theme && (
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        {[
-                          ['Cena', premiumImagePrompt.visual_theme.scene],
-                          ['Foco central', premiumImagePrompt.visual_theme.central_focus],
-                          ['Atmosfera', premiumImagePrompt.visual_theme.atmosphere],
-                          ['Iluminacao', premiumImagePrompt.visual_theme.lighting],
-                          ['Paleta', premiumImagePrompt.visual_theme.color_palette],
-                          ['Significado teologico', premiumImagePrompt.visual_theme.theological_meaning],
-                        ].map(([label, value]) => (
-                          value ? (
-                            <div key={label} className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                                {label}
-                              </p>
-                              <p className="mt-1 text-xs leading-relaxed text-slate-300">
-                                {value}
-                              </p>
-                            </div>
-                          ) : null
-                        ))}
-                      </div>
-                    )}
-
-                    <div>
-                      <div className="mb-2 flex items-center justify-between gap-3">
-                        <p className="text-xs font-semibold text-slate-300">
-                          Prompt recomendado para gerar fundo sem texto
+                    {premiumImagePrompt.flux_image_url && (
+                      <div className="mt-3">
+                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                          Capa gerada
                         </p>
+                        <img
+                          src={premiumImagePrompt.flux_image_url}
+                          alt="Capa do episódio"
+                          className="h-36 w-full rounded-lg object-cover"
+                        />
                         <button
                           type="button"
-                          onClick={() => copyPromptText('Prompt sem texto', premiumImagePrompt.background_prompt || '')}
-                          className="rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1 text-xs font-semibold text-indigo-100 hover:bg-indigo-500/20"
+                          onClick={() => {
+                            setEpisodeImageUrl(premiumImagePrompt.flux_image_url || '')
+                            setUseSeriesImage(false)
+                            alert('Capa FLUX definida como capa do episódio.')
+                          }}
+                          className="mt-3 w-full rounded-lg border border-indigo-400/30 bg-indigo-500/10 py-2 text-xs font-bold text-indigo-100 hover:bg-indigo-500/20"
                         >
-                          Copiar prompt sem texto
+                          Usar como capa do episódio
                         </button>
-                      </div>
-                      <textarea
-                        readOnly
-                        value={premiumImagePrompt.background_prompt || ''}
-                        className="h-44 w-full rounded-lg border border-slate-700 bg-slate-900 p-3 text-xs leading-relaxed text-slate-200 outline-none"
-                      />
-                    </div>
-
-                    <div>
-                      <div className="mb-2 flex items-center justify-between gap-3">
-                        <p className="text-xs font-semibold text-slate-300">
-                          Prompt completo com texto integrado
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => copyPromptText('Prompt com texto', premiumImagePrompt.full_prompt_with_text || '')}
-                          className="rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1 text-xs font-semibold text-indigo-100 hover:bg-indigo-500/20"
-                        >
-                          Copiar prompt com texto
-                        </button>
-                      </div>
-                      <textarea
-                        readOnly
-                        value={premiumImagePrompt.full_prompt_with_text || ''}
-                        className="h-44 w-full rounded-lg border border-slate-700 bg-slate-900 p-3 text-xs leading-relaxed text-slate-200 outline-none"
-                      />
-                    </div>
-
-                    {premiumImagePrompt.text_overlay && (
-                      <div>
-                        <div className="mb-2 flex items-center justify-between gap-3">
-                          <p className="text-xs font-semibold text-slate-300">
-                            Text overlay sugerido
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => copyPromptText('Overlay', getPremiumOverlayCopy(premiumImagePrompt))}
-                            className="rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1 text-xs font-semibold text-indigo-100 hover:bg-indigo-500/20"
-                          >
-                            Copiar overlay
-                          </button>
-                        </div>
-
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                          {[
-                            ['Topo', premiumImagePrompt.text_overlay.top],
-                            ['Titulo principal no overlay', premiumImagePrompt.text_overlay.main_title],
-                            ['Titulo curto opcional', premiumImagePrompt.text_overlay.suggested_short_title],
-                            ['Subtitulo', premiumImagePrompt.text_overlay.subtitle],
-                            ['Frase inferior', premiumImagePrompt.text_overlay.bottom_quote],
-                          ].map(([label, value]) => (
-                            <div key={label} className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                                {label}
-                              </p>
-                              <p className="mt-1 text-xs text-slate-300">
-                                {value || '-'}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
                       </div>
                     )}
+                  </div>
+                )}
 
-                    <div>
-                      <p className="text-xs font-semibold text-slate-300">
-                        Negative prompt
-                      </p>
-                      <p className="mt-1 rounded-lg border border-slate-800 bg-slate-900/70 p-3 text-xs leading-relaxed text-slate-300">
-                        {premiumImagePrompt.negative_prompt || '-'}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-xs font-semibold text-slate-300">
-                        Keywords
-                      </p>
-                      <p className="mt-1 text-xs leading-relaxed text-slate-400">
-                        {(premiumImagePrompt.keywords || []).join(', ') || '-'}
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => copyPromptText('Prompt completo', JSON.stringify(premiumImagePrompt, null, 2))}
-                      className="w-full rounded-lg border border-indigo-400/30 bg-indigo-500/10 py-2 text-xs font-bold text-indigo-100 hover:bg-indigo-500/20"
-                    >
-                      Copiar tudo
-                    </button>
+                {episodeImageUrl && !useSeriesImage && !premiumImagePrompt?.flux_image_url && (
+                  <div className="mt-3">
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      Capa atual do episódio
+                    </p>
+                    <img
+                      src={episodeImageUrl}
+                      alt="Capa atual do episódio"
+                      className="h-36 w-full rounded-lg object-cover"
+                    />
                   </div>
                 )}
               </div>

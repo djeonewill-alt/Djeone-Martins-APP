@@ -1,13 +1,11 @@
 /**
  * AI-MEDIA-003 — Rota de fundo da Palavra do Dia migrada para FLUX Schnell.
- *
- * Remove completamente a dependência da API do Pexels e do catálogo curado.
- * Agora gera imagens conceituais únicas via Fal.ai FLUX Schnell com o
- * texto da frase embutido nativamente na imagem.
+ * AI-MEDIA-005 — Padrão de Fábrica unificado: ambas as imagens (card e capa)
+ * usam o diagnóstico profundo de cena do DeepSeek (background_prompt).
  *
  * Fluxo:
- * 1. Recebe a frase escolhida (quoteText) + contexto do episódio
- * 2. Constrói um prompt conceitual profundo otimizado para FLUX
+ * 1. Recebe a frase escolhida (quoteText) + background_prompt do DeepSeek
+ * 2. Constrói prompt visual limpo (sem texto) para FLUX
  * 3. Chama generateAndUploadFluxImage() → compressão WebP → upload R2
  * 4. Salva histórico no Supabase (daily_quote_image_history)
  * 5. Atualiza daily_quotes com background_image_url
@@ -61,63 +59,6 @@ function getStringArray(value: unknown) {
   return Array.isArray(value)
     ? value.map((item) => cleanText(String(item || ''))).filter(Boolean)
     : []
-}
-
-// ---------------------------------------------------------------------------
-// Detecção de cena bíblica (prompt visual limpo, sem texto)
-// ---------------------------------------------------------------------------
-
-const VISUAL_SCENE_MAP: Array<{ pattern: RegExp; scene: string }> = [
-  {
-    pattern: /nardo|perfume|alabastro|ungiu|óleo|oleo|aroma|maria.*pés|pes.*jesus/,
-    scene: 'An alabaster jar of precious nard perfume resting on a stone table. Warm golden light pours through an open doorway in a humble Bethany interior. Subtle fragrance suggested by soft glowing particles in the air.',
-  },
-  {
-    pattern: /betânia|betania|lázaro|lazaro|marta|casa da afli[cç][aã]o/,
-    scene: 'A simple stone house in the biblical village of Bethany at dusk. Warm oil lamp glow from within. An open doorway reveals a humble interior. Dust motes dance in golden light. Olive trees frame the scene.',
-  },
-  {
-    pattern: /templo|jerusal[ée]m|presen[cç]a de deus|lugar sagrado/,
-    scene: 'The ancient Jerusalem temple in the distance, glowing in golden sunset light. A stone path leading toward it. Olive trees and ancient walls. Warm light breaking through clouds.',
-  },
-  {
-    pattern: /tempestade|mar|ondas|barco|navio|naufr[áa]gio|naufragio|terra firme|atos 27/,
-    scene: 'A dramatic Mediterranean shoreline at dawn. Golden light breaking through storm clouds after a shipwreck. Broken wood on the beach. Calm sea emerging. Survivors standing on dry land looking toward the horizon.',
-  },
-  {
-    pattern: /grão|grao|trigo|semente|frutificar|morrer.*viver/,
-    scene: 'A single grain of wheat falling into dark rich soil. Golden light from above. A tiny green sprout emerging. Wheat field stretching to the horizon at golden hour.',
-  },
-  {
-    pattern: /cruz|madeiro|sacrif[ií]cio|sacrificio|salva[cç][aã]o|salvacao|reden[cç][aã]o|redencao/,
-    scene: 'A wooden cross silhouetted against a golden sunrise over rolling Judean hills. Warm light breaking through. Ancient olive trees. Stone path leading toward the cross.',
-  },
-  {
-    pattern: /luz|trevas|amanhecer|resplandecer|brilhar|gl[oó]ria|gloria/,
-    scene: 'Dramatic golden sun rays piercing through dark clouds over a peaceful landscape. Ancient stone path leading toward the light. Olive trees. Warm and reverent atmosphere.',
-  },
-  {
-    pattern: /deserto|caminho|jornada|passos|dire[cç][aã]o|direcao|rumo/,
-    scene: 'An ancient desert road at sunrise. Golden light stretching across the sand. Distant mountains. A clear path forward. Warm and hopeful atmosphere.',
-  },
-  {
-    pattern: /ora[cç][aã]o|oracao|orar|intimidade|ajoelhar|altar|buscar/,
-    scene: 'A humble prayer space at dawn. Warm golden light through an open window. A simple stone altar or table. Hands folded in prayer. Peaceful and reverent atmosphere.',
-  },
-  {
-    pattern: /f[ée]|fe|crer|confian[cç]a|confianca|promessa|perseverar/,
-    scene: 'Majestic mountain peaks at sunrise. Golden light breaking over the summit. Ancient stone path winding upward. Vast sky with soft clouds. Cinematic and uplifting.',
-  },
-]
-
-function detectBiblicalScene(normalizedText: string): string {
-  for (const mapping of VISUAL_SCENE_MAP) {
-    if (mapping.pattern.test(normalizedText)) {
-      return mapping.scene
-    }
-  }
-
-  return 'A peaceful biblical landscape at golden hour. Ancient stone path leading toward the horizon. Warm directional light. Olive trees. Soft clouds. Reverent and contemplative atmosphere.'
 }
 
 // ---------------------------------------------------------------------------
@@ -246,16 +187,19 @@ export async function POST(request: NextRequest) {
     }
 
     // -----------------------------------------------------------------------
-    // Constrói prompt visual limpo para FLUX (apenas cenário, sem texto)
+    // Constrói prompt visual limpo para FLUX usando o diagnóstico do DeepSeek
     // -----------------------------------------------------------------------
 
-    // Detecta a cena bíblica na frase para enriquecer o prompt
-    const normalizedQuote = normalizeText(queryToUse)
-    const visualScene = detectBiblicalScene(normalizedQuote)
+    // backgroundPrompt: diagnóstico profundo de cena gerado pelo DeepSeek
+    const backgroundPrompt = cleanText(String(body.backgroundPrompt || ''))
+
+    const sceneDescription = backgroundPrompt
+      ? backgroundPrompt
+      : 'A peaceful biblical landscape at golden hour. Ancient stone path leading toward the horizon. Warm directional light. Olive trees. Soft clouds. Reverent and contemplative atmosphere.'
 
     const fluxVisualPrompt = [
       'Cinematic biblical realism. 4K photorealistic.',
-      visualScene,
+      sceneDescription,
       'Clean background. No text, no letters, no words, no typography, no overlay.',
       'Square 1:1 composition. Rule of thirds. Cinematic depth of field.',
       'Natural colors. Warm golden hour lighting. Soft directional light.',
@@ -278,32 +222,7 @@ export async function POST(request: NextRequest) {
 
     console.log('[FLUX-BG] Imagem gerada | r2Url=', fluxResult.r2Url)
 
-    // Detecta temas visuais para metadados (reusa normalizedQuote já definido acima)
-    const THEME_MAP: Array<{ keywords: string[]; theme: string }> = [
-      { keywords: ['jesus', 'cristo', 'senhor', 'salvador', 'messias', 'cordeiro'], theme: 'Jesus' },
-      { keywords: ['palavra', 'bíblia', 'biblia', 'escritura', 'verdade', 'revelação', 'revelacao', 'verbo'], theme: 'Palavra' },
-      { keywords: ['vida', 'viver', 'renovo', 'ressurreição', 'ressurreicao'], theme: 'vida' },
-      { keywords: ['liberdade', 'liberta', 'libertação', 'libertacao', 'livre'], theme: 'liberdade' },
-      { keywords: ['salvação', 'salvacao', 'evangelho', 'redenção', 'redencao', 'cruz', 'perdão', 'perdao'], theme: 'salvação' },
-      { keywords: ['luz', 'trevas', 'clareza', 'iluminar', 'resplandecer', 'brilhar', 'glória', 'gloria'], theme: 'luz' },
-      { keywords: ['tempestade', 'crise', 'vento', 'mar', 'ondas', 'medo', 'tribulação', 'tribulacao'], theme: 'tempestade' },
-      { keywords: ['deserto', 'solidão', 'solidao', 'seco', 'caminho', 'provação', 'provacao'], theme: 'deserto' },
-      { keywords: ['esperança', 'esperanca', 'novo', 'recomeço', 'recomeco', 'alegria'], theme: 'esperança' },
-      { keywords: ['direção', 'direcao', 'guiar', 'passos', 'decisão', 'decisao', 'jornada'], theme: 'direção' },
-      { keywords: ['oração', 'oracao', 'orar', 'presença', 'presenca', 'intimidade', 'altar'], theme: 'oração' },
-      { keywords: ['fé', 'fe', 'crer', 'confiança', 'confianca', 'promessa', 'perseverar'], theme: 'fé' },
-      { keywords: ['cura', 'restauração', 'restauracao', 'ferida', 'dor', 'consolo', 'paz'], theme: 'cura' },
-      { keywords: ['graça', 'graca', 'misericórdia', 'misericordia', 'amor', 'bondade'], theme: 'graça' },
-      { keywords: ['vitória', 'vitoria', 'vencer', 'força', 'forca', 'coragem', 'levantar'], theme: 'vitória' },
-    ]
-
-    const matchedThemes = THEME_MAP
-      .filter((item) => item.keywords.some((keyword) => normalizedQuote.includes(keyword)))
-      .map((item) => item.theme)
-
-    const themeKeywords = matchedThemes.length > 0
-      ? matchedThemes.slice(0, 4)
-      : ['devocional', 'esperança']
+    const themeKeywords = ['devocional']
 
     // Salva histórico no Supabase
     let quoteBackgroundId: string | null = null
