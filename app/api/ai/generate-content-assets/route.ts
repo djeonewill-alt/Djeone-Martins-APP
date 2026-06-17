@@ -3349,12 +3349,8 @@ async function generateVisualStoryboardWithOpenAI(params: {
   const raw = result.object as unknown as z.infer<typeof visualStoryboardSchema>
   const model = modelName
 
-  if (!raw.visual_storyboard) {
-    throw new Error('O Vercel AI SDK não retornou o campo visual_storyboard no stream.')
-  }
-
-  // Usa normalizeVisualStoryboard para validar e preencher fallbacks
-  const validated = normalizeVisualStoryboard(raw.visual_storyboard, model, cutDuration)
+  // O normalizeVisualStoryboard aceita tanto { visual_storyboard: {...} } quanto o objeto direto
+  const validated = normalizeVisualStoryboard(raw, model, cutDuration)
 
   return validated
 }
