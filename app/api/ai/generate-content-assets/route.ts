@@ -17,6 +17,9 @@ import { GetObjectCommand } from '@aws-sdk/client-s3'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { r2Client, R2_BUCKET_NAME } from '@/lib/r2/client'
 import { getAIProvider } from '@/lib/ai/provider'
+import { streamObject } from 'ai'
+import { createOpenAI } from '@ai-sdk/openai'
+import { z } from 'zod'
 
 // Timeout máximo de 60s para evitar erro 504 no plano Hobby da Vercel
 // A geração com DeepSeek Flash leva ~22s, mas precisamos de margem para retries
@@ -3261,7 +3264,51 @@ Retorne SOMENTE JSON valido:
 `.trim()
 }
 
-// AI-PROVIDER-007: visual_storyboard usa DeepSeek Pro como primário para schema complexo
+// AI-PROVIDER-007: visual_storyboard usa DeepSeek Pro como primário com Vercel AI SDK (streamObject)
+const visualStoryboardSchema = z.object({
+  visual_storyboard: z.object({
+    mode: z.literal('visual_storyboard'),
+    version: z.literal('cc-f4-visual-storyboard'),
+    model: z.string(),
+    visual_style: z.string(),
+    format: z.string(),
+    summary: z.string(),
+    visual_concept: z.string(),
+    scenes: z.array(z.object({
+      start: z.number(),
+      end: z.number(),
+      role: z.string(),
+      title: z.string(),
+      on_screen_text: z.string(),
+      visual_description: z.string(),
+      image_prompt: z.string(),
+      b_roll: z.string(),
+      motion: z.string(),
+      sound: z.string(),
+      editing_note: z.string(),
+    })),
+    image_prompts: z.array(z.object({
+      label: z.string(),
+      prompt: z.string(),
+    })),
+    motion_plan: z.array(z.string()),
+    sound_plan: z.array(z.string()),
+    cta_visual: z.object({
+      text: z.string(),
+      visual: z.string(),
+      motion: z.string(),
+    }),
+    quality_checklist: z.object({
+      has_hook_visual: z.boolean(),
+      has_biblical_fidelity: z.boolean(),
+      has_scene_variety: z.boolean(),
+      has_cta: z.boolean(),
+      avoids_text_inside_image: z.boolean(),
+    }),
+    warnings: z.array(z.string()),
+  }),
+})
+
 async function generateVisualStoryboardWithOpenAI(params: {
   title: string
   bibleReference: string
@@ -3279,253 +3326,35 @@ async function generateVisualStoryboardWithOpenAI(params: {
   }
 
   const baseUrl = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/+$/, '')
-  const model = 'deepseek-v4-pro'
+  const modelName = 'deepseek-v4-pro'
   const system = 'Voce e um diretor criativo de videos biblicos verticais. Responda somente JSON valido.'
   const promptText = buildVisualStoryboardPrompt(params)
   const cutDuration = params.selectedCut.end - params.selectedCut.start
 
-  const response = await fetch(`${baseUrl}/v1/chat/completions`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      stream: true,
-      temperature: 0.35,
-      max_tokens: 8192,
-      messages: [
-        {
-          role: 'system',
-          content: [
-            system,
-            '',
-            'INSTRUÇÃO DE FORMATO:',
-            'Você DEVE responder APENAS com JSON válido.',
-            'Não inclua markdown, explicações ou texto adicional.',
-            'Apenas o JSON puro.',
-            '',
-            'ESQUEMA ESPERADO:',
-            `{
-  "visual_storyboard": {
-    "mode": "visual_storyboard",
-    "version": "cc-f4-visual-storyboard",
-    "model": "",
-    "visual_style": "cinematic biblical realism",
-    "format": "vertical 9:16",
-    "summary": "Plano visual para o Short...",
-    "visual_concept": "Conceito visual central...",
-    "scenes": [
-      {
-        "start": number, "end": number, "role": string,
-        "title": string, "on_screen_text": string,
-        "visual_description": string, "image_prompt": string,
-        "b_roll": string, "motion": string, "sound": string,
-        "editing_note": string
-      }
-    ],
-    "image_prompts": [{ "label": string, "prompt": string }],
-    "motion_plan": string[], "sound_plan": string[],
-    "cta_visual": { "text": string, "visual": string, "motion": string },
-    "quality_checklist": {
-      "has_hook_visual": boolean, "has_biblical_fidelity": boolean,
-      "has_scene_variety": boolean, "has_cta": boolean,
-      "avoids_text_inside_image": boolean
-    },
-    "warnings": string[]
-  }
-}`,
-          ].join('\n'),
-        },
-        {
-          role: 'user',
-          content: [
-            promptText,
-            '',
-            'Responda APENAS com JSON válido. Sem markdown. Sem texto extra.',
-          ].join('\n'),
-        },
-      ],
-    }),
+  // Cria um provider DeepSeek via @ai-sdk/openai (compatível com a API OpenAI)
+  const deepseek = createOpenAI({
+    apiKey,
+    baseURL: `${baseUrl}/v1`,
+    name: 'deepseek',
   })
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}))
-    throw new Error(
-      errorData?.error?.message || `DeepSeek Pro streaming erro HTTP ${response.status}`
-    )
+  const result = await streamObject({
+    model: deepseek(modelName),
+    schema: visualStoryboardSchema,
+    system,
+    prompt: promptText,
+    temperature: 0.35,
+  } as any)
+
+  const raw = result.object as unknown as z.infer<typeof visualStoryboardSchema>
+  const model = modelName
+
+  if (!raw.visual_storyboard) {
+    throw new Error('O Vercel AI SDK não retornou o campo visual_storyboard no stream.')
   }
 
-  const reader = response.body?.getReader()
-  if (!reader) {
-    throw new Error('DeepSeek Pro nao retornou um body para streaming.')
-  }
-
-  const decoder = new TextDecoder()
-  let accumulatedContent = ''
-  const chunks: string[] = []
-
-  // Consumir o stream DeepSeek e acumular o conteudo
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-
-    const text = decoder.decode(value, { stream: true })
-    const lines = text.split('\n').filter((line) => line.trim().startsWith('data: '))
-
-    for (const line of lines) {
-      const data = line.replace(/^data: /, '').trim()
-      if (data === '[DONE]') continue
-
-      try {
-        const parsed = JSON.parse(data)
-        const delta = parsed?.choices?.[0]?.delta?.content || ''
-        if (delta) {
-          accumulatedContent += delta
-          chunks.push(delta)
-        }
-      } catch {
-        // ignora linhas parseaveis do stream
-      }
-    }
-  }
-
-  if (!accumulatedContent) {
-    throw new Error('DeepSeek Pro nao retornou conteudo no stream.')
-  }
-
-  // Extrai e valida o JSON do conteudo acumulado
-  // 1. Remove blocos de markdown (```json ... ```)
-  let cleanedJson = accumulatedContent
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim()
-
-  // 2. Extrai o primeiro objeto JSON completo com regex
-  const jsonMatch = cleanedJson.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) {
-    throw new Error('DeepSeek Pro nao retornou JSON valido no stream.')
-  }
-
-  const jsonStr = jsonMatch[0]
-
-  // Diagnóstico do stream bruto vindo do DeepSeek Pro
-  console.log("=== [DIAGNÓSTICO STREAM BRUTO] ===")
-  console.log("Tamanho total acumulado:", accumulatedContent.length, "caracteres")
-  console.log("Primeiros 300 caracteres:", accumulatedContent.slice(0, 300))
-  console.log("Últimos 300 caracteres:", accumulatedContent.slice(-300))
-  console.log("Conteúdo completo:")
-  console.log(accumulatedContent)
-  console.log("=== [FIM DIAGNÓSTICO] ===")
-
-  // 3. Aplica correções de sintaxe específicas para o stream do DeepSeek Pro
-  function fixCorruptedJson(input: string): string {
-    const fixes: Array<{ pattern: RegExp; replacement: string; label: string }> = [
-      { pattern: /([{,]\s*)(start")\s*:/g, replacement: '$1"$2', label: 'start": → "start":' },
-      { pattern: /([{,]\s*)start"\s*:/g, replacement: '$1"start":', label: 'start": aspa faltando' },
-      { pattern: /"_screen_text"\s*:/g, replacement: '"on_screen_text":', label: '_screen_text → on_screen_text' },
-      { pattern: /"m"\s*:/g, replacement: '"motion":', label: '"m": → "motion":' },
-      { pattern: /"sound\s*"?\s*(?=:)/g, replacement: '"sound"', label: '"sound semi-corrompido' },
-      { pattern: /"sound"?\s*:/g, replacement: '"sound":', label: '"sound": faltando' },
-      { pattern: /"end\s+(\d+)/g, replacement: '"end": $1', label: '"end N → "end": N' },
-      { pattern: /"end"\s*:\s*(\d+)/g, replacement: '"end": $1', label: '"end": N normalizado' },
-      { pattern: /([{,]\s*)(title|role|on_screen_text|visual_description|image_prompt|b_roll|editing_note|hook|cta|summary|visual_concept|visual_style|format|text|label|prompt|visual|motion|purpose|narration_focus|visual_direction|motion_direction|sound_design|mode|version|model)"?\s*:/g, replacement: '$1"$2":', label: 'chave sem aspa inicial' },
-    ]
-
-    let fixed = input
-    for (const fix of fixes) {
-      const before = fixed
-      fixed = fixed.replace(fix.pattern, fix.replacement)
-      if (before !== fixed) {
-        console.log(`[FIX JSON] Aplicado: ${fix.label}`)
-      }
-    }
-
-    return fixed
-  }
-
-  function parseJsonRobustly(input: string): unknown {
-    // Tentativa 1: parse direto (se já veio limpo)
-    try {
-      return JSON.parse(input)
-    } catch {
-      // fallback
-    }
-
-    // Tentativa 2: aplicar correções específicas de sintaxe do DeepSeek Pro
-    const step2 = fixCorruptedJson(input)
-      .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
-      .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035]/g, "'")
-      .replace(/\\(?!["\\/bfnrtu])/g, '\\\\')
-      .replace(/\n/g, '\\n')
-      .replace(/\r/g, '\\r')
-      .replace(/\t/g, '\\t')
-
-    try {
-      return JSON.parse(step2)
-    } catch {
-      // fallback
-    }
-
-    // Tentativa 3: fallback com regex no input original + correções
-    const fallbackMatch = input.match(/\{[\s\S]*\}/)
-    if (!fallbackMatch) throw new Error('Nao foi possivel extrair JSON do stream do DeepSeek Pro.')
-
-    const raw = fixCorruptedJson(fallbackMatch[0])
-      .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
-      .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035]/g, "'")
-      .replace(/(["'])\s*\n\s*/g, '$1 ')
-
-    try {
-      return JSON.parse(raw)
-    } catch (fullError) {
-      // Tentativa 4: se falhar, tenta parsear cena por cena (scenes array)
-      // Isola a estrutura pai sem o array de scenes
-      const parentMatch = raw.match(/\{[\s\S]*"scenes"\s*:\s*\[/)
-      const tailMatch = raw.match(/\][\s\S]*\}$/)
-      const scenesBlock = raw.match(/"scenes"\s*:\s*\[([\s\S]*?)\]\s*/)
-
-      if (parentMatch && tailMatch && scenesBlock) {
-        const parentPart = parentMatch[0].replace(/,\s*$/, '') // tudo antes da array
-        const closePart = tailMatch[0] // tudo depois da array
-        const rawScenesArray = scenesBlock[1] // conteúdo dentro da array
-
-        // Tenta parsear cada cena individualmente com regex
-        const sceneRegex = /\{[^{}]*\}/g
-        const sceneMatches = rawScenesArray.match(sceneRegex)
-        const parsedScenes: unknown[] = []
-
-        if (sceneMatches) {
-          for (const sceneStr of sceneMatches) {
-            try {
-              const fixedScene = fixCorruptedJson(sceneStr)
-                .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
-                .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035]/g, "'")
-              parsedScenes.push(JSON.parse(fixedScene))
-            } catch {
-              // ignora cena que nao foi possivel parsear
-            }
-          }
-
-          if (parsedScenes.length >= 2) {
-            // Reconstrói o JSON completo com as cenas parseadas individualmente
-            const reconstructed = `${parentPart}, ${JSON.stringify(parsedScenes)} ${closePart}`
-            try {
-              return JSON.parse(reconstructed)
-            } catch {
-              // fallback final
-            }
-          }
-        }
-      }
-
-      throw new Error(`Nao foi possivel parsear JSON do DeepSeek Pro apos todas as tentativas. Ultimo erro: ${fullError instanceof Error ? fullError.message : String(fullError)}`)
-    }
-  }
-
-  const rawJson = parseJsonRobustly(jsonStr)
-  const validated = normalizeVisualStoryboard(rawJson, model, cutDuration)
+  // Usa normalizeVisualStoryboard para validar e preencher fallbacks
+  const validated = normalizeVisualStoryboard(raw.visual_storyboard, model, cutDuration)
 
   return validated
 }
