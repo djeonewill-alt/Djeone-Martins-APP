@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 
+import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { getAIProvider } from '@/lib/ai/provider'
 
 type EpisodeMetadata = {
@@ -161,13 +162,42 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
 
-    const transcriptionText = cleanText(String(body.transcriptionText || ''))
-    const bibleReference = cleanText(String(body.bibleReference || ''))
-    const currentTitle = cleanText(String(body.currentTitle || ''))
+    let transcriptionText = cleanText(String(body.transcriptionText || ''))
+    let bibleReference = cleanText(String(body.bibleReference || ''))
+    let currentTitle = cleanText(String(body.currentTitle || ''))
+    const episodeId = cleanText(String(body.episodeId || ''))
+
+    // Fallback: se transcriptionText, bibleReference ou currentTitle não vieram no body,
+    // busca do banco de dados (Supabase) pelo episodeId
+    if (episodeId && (!transcriptionText || !bibleReference || !currentTitle)) {
+      try {
+        const supabase = await createSupabaseServerClient()
+        const { data: episode } = await supabase
+          .from('episodes')
+          .select('transcription_text, bible_reference, title')
+          .eq('id', episodeId)
+          .single()
+
+        if (episode) {
+          if (!transcriptionText) {
+            transcriptionText = cleanText(String(episode.transcription_text || ''))
+          }
+          if (!bibleReference) {
+            bibleReference = cleanText(String(episode.bible_reference || ''))
+          }
+          if (!currentTitle) {
+            currentTitle = cleanText(String(episode.title || ''))
+          }
+        }
+      } catch (dbError) {
+        console.warn('[generate-episode-metadata] Fallback Supabase falhou:', dbError)
+        // Continua com os dados do body — se transcriptionText estiver ausente, retorna 400 abaixo
+      }
+    }
 
     if (!transcriptionText) {
       return NextResponse.json(
-        { error: 'Envie a transcrição para gerar título e descrição.' },
+        { error: 'Envie a transcrição ou o episodeId para gerar título e descrição.' },
         { status: 400 }
       )
     }
