@@ -457,7 +457,7 @@ export async function POST(request: NextRequest) {
 
     let fluxResult: Awaited<ReturnType<typeof generateAndUploadFluxImage>> | null = null
 
-    if ((format === 'episode_cover' || format === 'series_cover') && promptData.full_prompt_with_text) {
+    if (format === 'episode_cover' || format === 'series_cover') {
       try {
         console.log('[IMAGE-PROMPT] Etapa 2: Gerando imagem com FLUX Schnell...')
 
@@ -468,7 +468,16 @@ export async function POST(request: NextRequest) {
 
         const r2Prefix = format === 'episode_cover' ? 'covers/episodes' : 'covers/series'
 
-        fluxResult = await generateAndUploadFluxImage(promptData.full_prompt_with_text, {
+        // Unificação radical: mesmo prompt da Palavra do Dia
+        // [Diagnóstico da Cena] + sufixo obrigatório anti-texto
+        const sceneDiagnosis = promptData.background_prompt || 'Cinematic biblical scene. Reverent atmosphere. Warm golden light.'
+
+        const cleanFluxPrompt = [
+          sceneDiagnosis,
+          'Cinematic photorealistic, high contrast, dramatic lighting, 8k, no text, no letters, no words, no typography, no overlay, clean background.',
+        ].join(' ')
+
+        fluxResult = await generateAndUploadFluxImage(cleanFluxPrompt, {
           imageSize,
           r2Prefix,
         })

@@ -198,12 +198,8 @@ export async function POST(request: NextRequest) {
       : 'A peaceful biblical landscape at golden hour. Ancient stone path leading toward the horizon. Warm directional light. Olive trees. Soft clouds. Reverent and contemplative atmosphere.'
 
     const fluxVisualPrompt = [
-      'Cinematic biblical realism. 4K photorealistic.',
       sceneDescription,
-      'Clean background. No text, no letters, no words, no typography, no overlay.',
-      'Square 1:1 composition. Rule of thirds. Cinematic depth of field.',
-      'Natural colors. Warm golden hour lighting. Soft directional light.',
-      'Reverent tone. Not theatrical or exaggerated. No watermarks.',
+      'Cinematic photorealistic, high contrast, dramatic lighting, 8k, no text, no letters, no words, no typography, no overlay, clean background.',
     ].join(' ')
 
     console.log('[FLUX-BG] Prompt visual (primeiros 200 chars):', fluxVisualPrompt.slice(0, 200))

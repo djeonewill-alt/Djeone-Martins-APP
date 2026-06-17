@@ -623,6 +623,32 @@ function normalizeBasicPortuguese(text: string) {
   return value
 }
 
+function FullscreenImageModal({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-6"
+    >
+      <div className="relative max-h-[92vh] max-w-[92vw]">
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute -right-3 -top-3 flex h-9 w-9 items-center justify-center rounded-full border border-white/25 bg-slate-950 text-lg font-bold text-white shadow-xl transition-colors hover:bg-slate-800"
+        >
+          ✕
+        </button>
+        <img
+          src={src}
+          alt={alt}
+          className="max-h-[90vh] max-w-[90vw] rounded-2xl object-contain"
+        />
+      </div>
+    </div>
+  )
+}
+
 export default function NovoEpisodio() {
   const router = useRouter()
 
@@ -681,6 +707,7 @@ export default function NovoEpisodio() {
   const [selectedCardIndex, setSelectedCardIndex] = useState<number | null>(null)
   const [generatingPremiumImagePrompt, setGeneratingPremiumImagePrompt] = useState(false)
   const [premiumImagePrompt, setPremiumImagePrompt] = useState<PremiumImagePromptResponse | null>(null)
+  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null)
 
   const [formData, setFormData] = useState({
     series_id: '',
@@ -2899,22 +2926,41 @@ export default function NovoEpisodio() {
                         <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                           Capa gerada
                         </p>
-                        <img
-                          src={premiumImagePrompt.flux_image_url}
-                          alt="Capa do episódio"
-                          className="h-36 w-full rounded-lg object-cover"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEpisodeImageUrl(premiumImagePrompt.flux_image_url || '')
-                            setUseSeriesImage(false)
-                            alert('Capa FLUX definida como capa do episódio.')
-                          }}
-                          className="mt-3 w-full rounded-lg border border-indigo-400/30 bg-indigo-500/10 py-2 text-xs font-bold text-indigo-100 hover:bg-indigo-500/20"
-                        >
-                          Usar como capa do episódio
-                        </button>
+                        <div className="relative overflow-hidden rounded-xl border border-slate-700 bg-slate-900">
+                          <img
+                            src={premiumImagePrompt.flux_image_url}
+                            alt="Capa do episódio"
+                            className="aspect-video w-full object-cover"
+                          />
+                          <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-3 bg-gradient-to-t from-black/70 via-black/40 to-transparent p-4 pt-10">
+                            <button
+                              type="button"
+                              onClick={() => setFullscreenImage(premiumImagePrompt.flux_image_url || null)}
+                              className="rounded-full border border-white/20 bg-slate-950/80 px-4 py-2 text-xs font-bold text-white backdrop-blur-sm transition-colors hover:bg-slate-900/90"
+                            >
+                              🔍 Ver imagem completa
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEpisodeImageUrl(premiumImagePrompt.flux_image_url || '')
+                                setUseSeriesImage(false)
+                                alert('Capa FLUX definida como capa do episódio.')
+                              }}
+                              className="rounded-full border border-indigo-400/30 bg-indigo-600/70 px-4 py-2 text-xs font-bold text-white backdrop-blur-sm transition-colors hover:bg-indigo-600"
+                            >
+                              Usar como capa
+                            </button>
+                          </div>
+                        </div>
+                        {premiumImagePrompt.flux_image_size_bytes && (
+                          <p className="mt-2 text-center text-[11px] text-slate-500">
+                            {(premiumImagePrompt.flux_image_size_bytes / 1024).toFixed(1)} KB
+                            {premiumImagePrompt.flux_image_width && premiumImagePrompt.flux_image_height
+                              ? ` · ${premiumImagePrompt.flux_image_width}×${premiumImagePrompt.flux_image_height}`
+                              : ''}
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
@@ -3479,6 +3525,14 @@ export default function NovoEpisodio() {
           }
         }
       `}</style>
+      {fullscreenImage && (
+        <FullscreenImageModal
+          src={fullscreenImage}
+          alt="Capa do episódio em alta resolução"
+          onClose={() => setFullscreenImage(null)}
+        />
+      )}
+
       <div className="admin-new-episode-polish" />
 
 </div>
