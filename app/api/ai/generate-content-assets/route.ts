@@ -3333,7 +3333,8 @@ async function generateVisualStoryboardWithOpenAI(params: {
     apiKey,
     baseURL: `${baseUrl}/v1`,
     name: 'deepseek',
-  })
+    compatibility: 'compatible',
+  } as any)
 
   const result = await streamObject({
     model: deepseek(modelName),
