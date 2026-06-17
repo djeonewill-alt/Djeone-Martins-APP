@@ -3328,6 +3328,7 @@ async function generateVisualStoryboardWithOpenAI(params: {
   const cutDuration = params.selectedCut.end - params.selectedCut.start
 
   // Cria um provider DeepSeek via @ai-sdk/openai (compatível com a API OpenAI)
+  console.log("🚀 [FÁBRICA] 1. Disparando chamada do streamObject para a IA...");
   const deepseek = createOpenAI({
     apiKey,
     baseURL: `${baseUrl}/v1`,
@@ -3342,7 +3343,9 @@ async function generateVisualStoryboardWithOpenAI(params: {
     temperature: 0.35,
   } as any)
 
+  console.log("🚀 [FÁBRICA] 2. streamObject resolveu, await result.object...");
   const raw = await result.object as unknown as z.infer<typeof visualStoryboardSchema>
+  console.log("🚀 [FÁBRICA] 3. result.object resolvido!");
   const model = modelName
 
   // O normalizeVisualStoryboard aceita tanto { visual_storyboard: {...} } quanto objeto plano na raiz
