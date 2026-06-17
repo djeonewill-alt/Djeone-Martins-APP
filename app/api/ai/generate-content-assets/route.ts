@@ -17,9 +17,6 @@ import { GetObjectCommand } from '@aws-sdk/client-s3'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { r2Client, R2_BUCKET_NAME } from '@/lib/r2/client'
 import { getAIProvider } from '@/lib/ai/provider'
-import { streamObject } from 'ai'
-import { createOpenAI } from '@ai-sdk/openai'
-import { z } from 'zod'
 
 // Timeout máximo de 60s para evitar erro 504 no plano Hobby da Vercel
 // A geração com DeepSeek Flash leva ~22s, mas precisamos de margem para retries
@@ -3260,50 +3257,53 @@ Retorne SOMENTE JSON valido:
 `.trim()
 }
 
-// AI-PROVIDER-007: visual_storyboard usa DeepSeek Pro como primário com Vercel AI SDK (streamObject)
-const visualStoryboardSchema = z.object({
-  visual_storyboard: z.object({
-    mode: z.literal('visual_storyboard'),
-    version: z.literal('cc-f4-visual-storyboard'),
-    model: z.string(),
-    visual_style: z.string(),
-    format: z.string(),
-    summary: z.string(),
-    visual_concept: z.string(),
-    scenes: z.array(z.object({
-      start: z.number(),
-      end: z.number(),
-      role: z.string(),
-      title: z.string(),
-      on_screen_text: z.string(),
-      visual_description: z.string(),
-      image_prompt: z.string(),
-      b_roll: z.string(),
-      motion: z.string(),
-      sound: z.string(),
-      editing_note: z.string(),
-    })),
-    image_prompts: z.array(z.object({
-      label: z.string(),
-      prompt: z.string(),
-    })),
-    motion_plan: z.array(z.string()),
-    sound_plan: z.array(z.string()),
-    cta_visual: z.object({
-      text: z.string(),
-      visual: z.string(),
-      motion: z.string(),
-    }),
-    quality_checklist: z.object({
-      has_hook_visual: z.boolean(),
-      has_biblical_fidelity: z.boolean(),
-      has_scene_variety: z.boolean(),
-      has_cta: z.boolean(),
-      avoids_text_inside_image: z.boolean(),
-    }),
-    warnings: z.array(z.string()),
-  }),
-})
+// AI-PROVIDER-007: visual_storyboard usa DeepSeek Pro como primário
+// AI-PROVIDER-007 (REVISÃO): Migrado de streamObject para getAIProvider().generateJson()
+// — compatível com a arquitetura padrão do projeto e com o endpoint /v1/chat/completions do DeepSeek.
+const visualStoryboardSchemaDescription = `{
+  "visual_storyboard": {
+    "mode": "visual_storyboard",
+    "version": "cc-f4-visual-storyboard",
+    "model": "string",
+    "visual_style": "string",
+    "format": "string",
+    "summary": "string",
+    "visual_concept": "string",
+    "scenes": [
+      {
+        "start": 0.0,
+        "end": 0.0,
+        "role": "string",
+        "title": "string",
+        "on_screen_text": "string",
+        "visual_description": "string",
+        "image_prompt": "string",
+        "b_roll": "string",
+        "motion": "string",
+        "sound": "string",
+        "editing_note": "string"
+      }
+    ],
+    "image_prompts": [
+      { "label": "string", "prompt": "string" }
+    ],
+    "motion_plan": ["string"],
+    "sound_plan": ["string"],
+    "cta_visual": {
+      "text": "string",
+      "visual": "string",
+      "motion": "string"
+    },
+    "quality_checklist": {
+      "has_hook_visual": true,
+      "has_biblical_fidelity": true,
+      "has_scene_variety": true,
+      "has_cta": true,
+      "avoids_text_inside_image": true
+    },
+    "warnings": ["string"]
+  }
+}`
 
 async function generateVisualStoryboardWithOpenAI(params: {
   title: string
@@ -3316,50 +3316,35 @@ async function generateVisualStoryboardWithOpenAI(params: {
   cta?: string
   editorialAlert?: string
 }): Promise<VisualStoryboard> {
-  const apiKey = process.env.DEEPSEEK_API_KEY
-  if (!apiKey) {
-    throw new Error('DEEPSEEK_API_KEY ausente.')
-  }
-
-  const baseUrl = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/+$/, '')
-  const modelName = 'deepseek-v4-pro'
-  const system = 'Voce e um diretor criativo de videos biblicos verticais. Responda somente JSON valido.'
-  const promptText = buildVisualStoryboardPrompt(params)
   const cutDuration = params.selectedCut.end - params.selectedCut.start
 
-  // Cria um provider DeepSeek via @ai-sdk/openai (compatível com a API OpenAI)
-  console.log("🚀 [FÁBRICA] 1. Disparando chamada do streamObject para a IA...");
-  const deepseek = createOpenAI({
-    apiKey,
-    baseURL: `${baseUrl}/v1/`,
-    name: 'deepseek',
-    compatibility: 'compatible',
-  } as any)
+  // Usa a camada de abstração padrão do projeto
+  const ai = getAIProvider({
+    textProvider: 'deepseek-pro',
+    fallbackProvider: 'openai',
+  })
 
-  const result = await streamObject({
-    model: deepseek(modelName),
-    schema: visualStoryboardSchema,
+  const system = 'Voce e um diretor criativo de videos biblicos verticais. Responda somente JSON valido.'
+  const promptText = buildVisualStoryboardPrompt(params)
+
+  console.log('[VISUAL-STORYBOARD] Disparando generateJson com provider', ai.activeTextProvider, '/', ai.activeTextModel)
+
+  const result = await ai.generateJson({
     system,
     prompt: promptText,
+    schema: visualStoryboardSchemaDescription,
+    validate: (raw) => {
+      // O normalizeVisualStoryboard aceita tanto { visual_storyboard: {...} } quanto objeto plano na raiz
+      const storyboardInput = (raw as any)?.visual_storyboard || raw
+      return normalizeVisualStoryboard(storyboardInput, ai.activeTextModel, cutDuration)
+    },
     temperature: 0.35,
-  } as any)
+    maxTokens: 16384,
+  })
 
-  console.log("🚀 [FÁBRICA] 2. streamObject resolveu, consumindo partialObjectStream...");
+  console.log('[VISUAL-STORYBOARD] generateJson concluído com sucesso')
 
-  // Consome o stream de forma assíncrona e segura até o fim
-  for await (const _partial of result.partialObjectStream) {
-    // apenas aguarda o stream completar sem congelar a rota
-  }
-
-  const raw = await result.object as unknown as z.infer<typeof visualStoryboardSchema>
-  console.log("🚀 [FÁBRICA] 3. result.object resolvido!");
-  const model = modelName
-
-  // O normalizeVisualStoryboard aceita tanto { visual_storyboard: {...} } quanto objeto plano na raiz
-  const storyboardInput = (raw as any)?.visual_storyboard || raw
-  const validated = normalizeVisualStoryboard(storyboardInput, model, cutDuration)
-
-  return validated
+  return result
 }
 
 function normalizeAiReviewedLineText(text: string) {
