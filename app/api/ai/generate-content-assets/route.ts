@@ -3419,17 +3419,42 @@ async function generateVisualStoryboardWithOpenAI(params: {
   console.log(accumulatedContent)
   console.log("=== [FIM DIAGNÓSTICO] ===")
 
-  // 3. Tenta parsear com limpeza progressiva
+  // 3. Aplica correções de sintaxe específicas para o stream do DeepSeek Pro
+  function fixCorruptedJson(input: string): string {
+    const fixes: Array<{ pattern: RegExp; replacement: string; label: string }> = [
+      { pattern: /([{,]\s*)(start")\s*:/g, replacement: '$1"$2', label: 'start": → "start":' },
+      { pattern: /([{,]\s*)start"\s*:/g, replacement: '$1"start":', label: 'start": aspa faltando' },
+      { pattern: /"_screen_text"\s*:/g, replacement: '"on_screen_text":', label: '_screen_text → on_screen_text' },
+      { pattern: /"m"\s*:/g, replacement: '"motion":', label: '"m": → "motion":' },
+      { pattern: /"sound\s*"?\s*(?=:)/g, replacement: '"sound"', label: '"sound semi-corrompido' },
+      { pattern: /"sound"?\s*:/g, replacement: '"sound":', label: '"sound": faltando' },
+      { pattern: /"end\s+(\d+)/g, replacement: '"end": $1', label: '"end N → "end": N' },
+      { pattern: /"end"\s*:\s*(\d+)/g, replacement: '"end": $1', label: '"end": N normalizado' },
+      { pattern: /([{,]\s*)(title|role|on_screen_text|visual_description|image_prompt|b_roll|editing_note|hook|cta|summary|visual_concept|visual_style|format|text|label|prompt|visual|motion|purpose|narration_focus|visual_direction|motion_direction|sound_design|mode|version|model)"?\s*:/g, replacement: '$1"$2":', label: 'chave sem aspa inicial' },
+    ]
+
+    let fixed = input
+    for (const fix of fixes) {
+      const before = fixed
+      fixed = fixed.replace(fix.pattern, fix.replacement)
+      if (before !== fixed) {
+        console.log(`[FIX JSON] Aplicado: ${fix.label}`)
+      }
+    }
+
+    return fixed
+  }
+
   function parseJsonRobustly(input: string): unknown {
-    // Tentativa 1: parse direto
+    // Tentativa 1: parse direto (se já veio limpo)
     try {
       return JSON.parse(input)
     } catch {
       // fallback
     }
 
-    // Tentativa 2: substituir aspas curvas por retas, escapes duplicados
-    const cleaned = input
+    // Tentativa 2: aplicar correções específicas de sintaxe do DeepSeek Pro
+    const step2 = fixCorruptedJson(input)
       .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
       .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035]/g, "'")
       .replace(/\\(?!["\\/bfnrtu])/g, '\\\\')
@@ -3438,22 +3463,65 @@ async function generateVisualStoryboardWithOpenAI(params: {
       .replace(/\t/g, '\\t')
 
     try {
-      return JSON.parse(cleaned)
+      return JSON.parse(step2)
     } catch {
       // fallback
     }
 
-    // Tentativa 3: regex para capturar o JSON mesmo com erros de formatação
+    // Tentativa 3: fallback com regex no input original + correções
     const fallbackMatch = input.match(/\{[\s\S]*\}/)
     if (!fallbackMatch) throw new Error('Nao foi possivel extrair JSON do stream do DeepSeek Pro.')
 
-    const raw = fallbackMatch[0]
+    const raw = fixCorruptedJson(fallbackMatch[0])
       .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
       .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035]/g, "'")
-      // Remove quebras de linha dentro de strings que podem quebrar o parse
       .replace(/(["'])\s*\n\s*/g, '$1 ')
 
-    return JSON.parse(raw)
+    try {
+      return JSON.parse(raw)
+    } catch (fullError) {
+      // Tentativa 4: se falhar, tenta parsear cena por cena (scenes array)
+      // Isola a estrutura pai sem o array de scenes
+      const parentMatch = raw.match(/\{[\s\S]*"scenes"\s*:\s*\[/)
+      const tailMatch = raw.match(/\][\s\S]*\}$/)
+      const scenesBlock = raw.match(/"scenes"\s*:\s*\[([\s\S]*?)\]\s*/)
+
+      if (parentMatch && tailMatch && scenesBlock) {
+        const parentPart = parentMatch[0].replace(/,\s*$/, '') // tudo antes da array
+        const closePart = tailMatch[0] // tudo depois da array
+        const rawScenesArray = scenesBlock[1] // conteúdo dentro da array
+
+        // Tenta parsear cada cena individualmente com regex
+        const sceneRegex = /\{[^{}]*\}/g
+        const sceneMatches = rawScenesArray.match(sceneRegex)
+        const parsedScenes: unknown[] = []
+
+        if (sceneMatches) {
+          for (const sceneStr of sceneMatches) {
+            try {
+              const fixedScene = fixCorruptedJson(sceneStr)
+                .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
+                .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035]/g, "'")
+              parsedScenes.push(JSON.parse(fixedScene))
+            } catch {
+              // ignora cena que nao foi possivel parsear
+            }
+          }
+
+          if (parsedScenes.length >= 2) {
+            // Reconstrói o JSON completo com as cenas parseadas individualmente
+            const reconstructed = `${parentPart}, ${JSON.stringify(parsedScenes)} ${closePart}`
+            try {
+              return JSON.parse(reconstructed)
+            } catch {
+              // fallback final
+            }
+          }
+        }
+      }
+
+      throw new Error(`Nao foi possivel parsear JSON do DeepSeek Pro apos todas as tentativas. Ultimo erro: ${fullError instanceof Error ? fullError.message : String(fullError)}`)
+    }
   }
 
   const rawJson = parseJsonRobustly(jsonStr)
