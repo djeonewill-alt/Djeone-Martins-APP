@@ -3342,12 +3342,8 @@ async function generateVisualStoryboardWithOpenAI(params: {
     temperature: 0.35,
   } as any)
 
-  const raw = result.object as unknown as z.infer<typeof visualStoryboardSchema>
+  const raw = await result.object as unknown as z.infer<typeof visualStoryboardSchema>
   const model = modelName
-
-  console.log("🔍 === [RAIO-X DO OBJETO DO AI SDK] ===");
-  console.dir(raw, { depth: null });
-  console.log("🔍 === [FIM DO RAIO-X] ===");
 
   // O normalizeVisualStoryboard aceita tanto { visual_storyboard: {...} } quanto objeto plano na raiz
   const storyboardInput = (raw as any)?.visual_storyboard || raw
