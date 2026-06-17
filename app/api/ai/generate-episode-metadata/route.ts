@@ -1,4 +1,15 @@
+/**
+ * AI-PROVIDER-005 — Rota migrada para usar a camada abstrata de IA.
+ *
+ * Provedor primário: DeepSeek Flash
+ * Fallback automático: OpenAI (via AIClient)
+ *
+ * Comportamento idêntico ao anterior. Nenhum prompt ou lógica de resposta foi alterado.
+ */
+
 import { NextRequest, NextResponse } from 'next/server'
+
+import { getAIProvider } from '@/lib/ai/provider'
 
 type EpisodeMetadata = {
   title: string
@@ -12,22 +23,6 @@ function cleanText(text: string) {
     .replace(/[“”]/g, '"')
     .replace(/[‘’]/g, "'")
     .trim()
-}
-
-function extractJsonFromText(text: string) {
-  const cleaned = text.trim()
-
-  try {
-    return JSON.parse(cleaned)
-  } catch {
-    const match = cleaned.match(/\{[\s\S]*\}/)
-
-    if (!match) {
-      throw new Error('A IA não retornou JSON válido.')
-    }
-
-    return JSON.parse(match[0])
-  }
 }
 
 function normalizeTitle(title: string) {
@@ -59,6 +54,15 @@ function normalizeDescription(description: string) {
 
   return value
 }
+
+const SYSTEM_PROMPT =
+  'Você é um editor cristão brasileiro. Responda somente em JSON válido.'
+
+const METADATA_SCHEMA = `{
+  "title": "Título do episódio",
+  "description": "Descrição curta do episódio.",
+  "theme_keywords": ["tema1", "tema2", "tema3"]
+}`
 
 function buildPrompt(params: {
   transcriptionText: string
@@ -117,11 +121,7 @@ ${params.transcriptionText}
 
 Responda SOMENTE em JSON válido, neste formato:
 
-{
-  "title": "Título do episódio",
-  "description": "Descrição curta do episódio.",
-  "theme_keywords": ["tema1", "tema2", "tema3"]
-}
+${METADATA_SCHEMA}
 `.trim()
 }
 
@@ -157,76 +157,6 @@ function validateMetadata(input: unknown): EpisodeMetadata {
   }
 }
 
-async function generateWithOpenAI(params: {
-  transcriptionText: string
-  bibleReference?: string
-  currentTitle?: string
-}) {
-  const apiKey = process.env.OPENAI_API_KEY
-
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY ausente no .env.local.')
-  }
-
-  const model =
-    process.env.OPENAI_EPISODE_METADATA_MODEL ||
-    process.env.OPENAI_DAILY_QUOTE_MODEL ||
-    'gpt-4.1'
-
-  const prompt = buildPrompt(params)
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.45,
-      response_format: {
-        type: 'json_object',
-      },
-      messages: [
-        {
-          role: 'system',
-          content:
-            'Você é um editor cristão brasileiro. Responda somente em JSON válido.',
-        },
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-    }),
-  })
-
-  const data = await response.json()
-
-  if (!response.ok) {
-    console.error('Erro OpenAI metadata:', data)
-
-    throw new Error(
-      data?.error?.message ||
-        'Erro ao gerar título e descrição com OpenAI.'
-    )
-  }
-
-  const content = data?.choices?.[0]?.message?.content
-
-  if (!content) {
-    throw new Error('A OpenAI não retornou conteúdo.')
-  }
-
-  const parsed = extractJsonFromText(content)
-
-  return {
-    metadata: validateMetadata(parsed),
-    provider: 'openai',
-    model,
-  }
-}
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -249,19 +179,31 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const result = await generateWithOpenAI({
-      transcriptionText,
-      bibleReference,
-      currentTitle,
+    const ai = getAIProvider({
+      textProvider: 'deepseek-flash',
+      fallbackProvider: 'openai',
+    })
+
+    const metadata = await ai.generateJson({
+      system: SYSTEM_PROMPT,
+      prompt: buildPrompt({
+        transcriptionText,
+        bibleReference,
+        currentTitle,
+      }),
+      schema: METADATA_SCHEMA,
+      validate: validateMetadata,
+      temperature: 0.45,
+      maxTokens: 1024,
     })
 
     return NextResponse.json({
       success: true,
-      provider: result.provider,
-      model: result.model,
-      title: result.metadata.title,
-      description: result.metadata.description,
-      theme_keywords: result.metadata.theme_keywords,
+      provider: ai.activeTextProvider,
+      model: ai.activeTextModel,
+      title: metadata.title,
+      description: metadata.description,
+      theme_keywords: metadata.theme_keywords,
     })
   } catch (error) {
     console.error('Erro ao gerar título e descrição:', error)

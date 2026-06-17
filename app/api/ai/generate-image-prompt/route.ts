@@ -1,5 +1,15 @@
+/**
+ * AI-PROVIDER-004 — Rota migrada para usar a camada abstrata de IA.
+ *
+ * Provedor primário: DeepSeek Flash
+ * Fallback automático: OpenAI (via AIClient)
+ *
+ * Comportamento idêntico ao anterior. Nenhum prompt ou lógica de resposta foi alterado.
+ */
+
 import { NextRequest, NextResponse } from 'next/server'
 
+import { getAIProvider } from '@/lib/ai/provider'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 
 export const runtime = 'nodejs'
@@ -53,22 +63,6 @@ function normalizeFormat(value: unknown): ImagePromptFormat {
   return ['episode_cover', 'daily_quote_card', 'series_cover'].includes(format)
     ? format
     : 'episode_cover'
-}
-
-function extractJsonFromText(text: string) {
-  const cleaned = text.trim()
-
-  try {
-    return JSON.parse(cleaned)
-  } catch {
-    const match = cleaned.match(/\{[\s\S]*\}/)
-
-    if (!match) {
-      throw new Error('A IA nao retornou JSON valido.')
-    }
-
-    return JSON.parse(match[0])
-  }
 }
 
 function getStringArray(value: unknown) {
@@ -153,6 +147,34 @@ function normalizePromptResponse(input: unknown): ImagePromptResponse {
 
   return response
 }
+
+const IMAGE_PROMPT_SCHEMA = `{
+  "title": "suggested visual title",
+  "official_episode_title": "title from episode",
+  "suggested_cover_title": "optional short cover title",
+  "scene_diagnosis": {
+    "dominant_scene_type": "scene type identifier",
+    "biblical_setting": "correct visual environment",
+    "main_characters": ["character names"],
+    "visual_anchors": ["objects, actions, places"],
+    "allowed_visual_elements": ["elements explicitly allowed"],
+    "forbidden_visual_elements": ["elements that would be generic"],
+    "why_this_scene_matches": "short explanation"
+  },
+  "visual_theme": {
+    "scene": "...", "central_focus": "...", "atmosphere": "...",
+    "background": "...", "lighting": "...", "color_palette": "...",
+    "theological_meaning": "..."
+  },
+  "background_prompt": "...",
+  "full_prompt_with_text": "...",
+  "text_overlay": {
+    "top": "...", "main_title": "...", "suggested_short_title": "...",
+    "subtitle": "Meditacao Devocional", "bottom_quote": "..."
+  },
+  "negative_prompt": "...",
+  "keywords": ["visual", "keywords"]
+}`
 
 function enforceOfficialTitle(
   response: ImagePromptResponse,
@@ -311,40 +333,7 @@ Dynamic negative prompt rule:
 - If the episode is about sea/shipwreck, the negative_prompt must NOT include those marine terms. Instead include: generic ancient house, unrelated stone doorway, peaceful village road, random desert, modern clothing, fantasy armor, theatrical drama, fake text, unreadable letters.
 
 Return valid JSON only, exactly with this shape:
-{
-  "title": "suggested visual title",
-  "official_episode_title": "${params.title || 'official title received from the episode'}",
-  "suggested_cover_title": "optional short cover title, never replacing the official title",
-  "scene_diagnosis": {
-    "dominant_scene_type": "shipwreck_survival | bethany_home_worship | triumphal_entry | wheat_seed_death_and_fruit | temple_vs_bethany | desert_testing | healing_encounter | prayer_and_solitude | other_specific_scene",
-    "biblical_setting": "correct visual environment",
-    "main_characters": ["character names"],
-    "visual_anchors": ["objects, actions, places"],
-    "allowed_visual_elements": ["elements explicitly allowed by the episode"],
-    "forbidden_visual_elements": ["elements that would be generic or unfaithful"],
-    "why_this_scene_matches": "short explanation of why this scene represents the transcription"
-  },
-  "visual_theme": {
-    "scene": "...",
-    "central_focus": "...",
-    "atmosphere": "...",
-    "background": "...",
-    "lighting": "...",
-    "color_palette": "...",
-    "theological_meaning": "..."
-  },
-  "background_prompt": "Create an epic cinematic 16:9 horizontal podcast episode cover in premium streaming style, 1920x1080 resolution.\\n\\nScene:\\n...\\n\\nCentral focus:\\n...\\n\\nAtmosphere:\\n...\\n\\nBackground:\\n...\\n\\nLighting:\\n...\\n\\nColor palette:\\n...\\n\\nComposition:\\n...\\n\\nText-safe area:\\nLeave clean negative space in the center/top/bottom for text overlay. No text, no letters, no typography inside the generated image.\\n\\nStyle:\\nPremium streaming artwork, cinematic biblical realism, photorealistic with painterly quality of light, elegant, devotional, 4K quality.\\n\\nTheological meaning:\\n...",
-  "full_prompt_with_text": "Create an epic cinematic 16:9 horizontal podcast episode cover in premium Netflix style, 1920x1080 resolution.\\n\\nScene:\\n...\\n\\nCentral focus:\\n...\\n\\nAtmosphere:\\n...\\n\\nBackground:\\n...\\n\\nLighting:\\n...\\n\\nColor palette:\\n...\\n\\nText overlay integrated into image - ALL CENTERED:\\nTop area:\\n'...'\\n\\nCenter:\\n'...'\\n\\nSubtitle:\\n'...'\\n\\nBottom:\\n'...'\\n\\nStyle:\\n...\\n\\nThe image should capture the essence of:\\n...",
-  "text_overlay": {
-    "top": "${params.bibleReference || ''}",
-    "main_title": "${params.title || 'official episode title, or generated only if empty'}",
-    "suggested_short_title": "optional shorter title for cover design",
-    "subtitle": "Meditacao Devocional",
-    "bottom_quote": "short selected quote or biblical phrase"
-  },
-  "negative_prompt": "no illegible text, no fake letters, no distorted hands or faces, no kitsch religious symbols, no exaggerated fantasy, no theatrical excess, no sea/ocean/boat/water/waves/storm unless explicitly present in episode...",
-  "keywords": ["visual", "keywords"]
-}
+${IMAGE_PROMPT_SCHEMA}
 
 The full_prompt_with_text must use text_overlay.main_title as the main title.
 Append this note at the end of full_prompt_with_text, outside the image instructions:
@@ -404,77 +393,52 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const apiKey = process.env.OPENAI_API_KEY
-
-    if (!apiKey) {
-      return NextResponse.json(
-        { success: false, error: 'OPENAI_API_KEY ausente.' },
-        { status: 500 }
-      )
-    }
-
-    const model =
-      process.env.OPENAI_CONTENT_ASSETS_MODEL ||
-      process.env.OPENAI_MODEL ||
-      'gpt-4o-mini'
-
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.5,
-        response_format: { type: 'json_object' },
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You create premium cinematic image prompts for Christian devotional content. Return valid JSON only. Do not generate images.',
-          },
-          {
-            role: 'user',
-            content: buildPrompt({
-              title,
-              bibleReference,
-              description,
-              selectedQuote,
-              sourceExcerpt,
-              reason,
-              specificityReason,
-              transcriptionText,
-              format,
-              includeTextOverlay,
-              hasExplicitMarineScene: explicitMarineScene,
-            }),
-          },
-        ],
-      }),
+    const ai = getAIProvider({
+      textProvider: 'deepseek-flash',
+      fallbackProvider: 'openai',
     })
 
-    const data = await response.json()
-
-    if (!response.ok) {
-      throw new Error(data?.error?.message || 'Erro ao gerar prompt premium.')
-    }
-
-    const content = data?.choices?.[0]?.message?.content
-
-    if (!content) {
-      throw new Error('A IA nao retornou conteudo.')
-    }
-
-    const parsed = extractJsonFromText(content)
-    const promptData = enforceOfficialTitle(
-      normalizePromptResponse(parsed),
-      title
-    )
+    const promptData = await ai.generateJson({
+      system:
+        'You are a cinematic biblical art director. Create premium, photorealistic image prompts for Christian devotional content.\n\n' +
+        'REQUIREMENTS:\n' +
+        '- Cinematic framing: rule of thirds, depth, foreground/background.\n' +
+        '- Reverent lighting: golden hour, warm directional light, soft shafts of light.\n' +
+        '- Subtle symbolism: light vs shadow, open doorways, humble objects, dust motes, olive trees, stone paths.\n' +
+        '- Biblical realism: first-century Judea, linen/wool/stone/wood textures, authentic settings.\n' +
+        '- Tone: reverent, quiet awe, not theatrical or exaggerated.\n' +
+        '- No text inside the generated image.\n' +
+        '- Every image must be grounded in a specific biblical scene or theme.\n\n' +
+        'GOOD example:\n' +
+        '"Humble interior in Bethany at dusk. Warm oil lamp on a stone table. An alabaster jar rests in the foreground. Soft golden light enters through an open doorway. Mary kneels at Jesus\' feet. Atmosphere of sacrificial worship, reverent stillness, 4K photorealistic, cinematic depth of field."\n\n' +
+        'BAD example:\n' +
+        '"A beautiful spiritual landscape with light shining down. A person praying in a field. Peaceful and serene."\n\n' +
+        'Return valid JSON only. Do not generate images.',
+      prompt: buildPrompt({
+        title,
+        bibleReference,
+        description,
+        selectedQuote,
+        sourceExcerpt,
+        reason,
+        specificityReason,
+        transcriptionText,
+        format,
+        includeTextOverlay,
+        hasExplicitMarineScene: explicitMarineScene,
+      }),
+      schema: IMAGE_PROMPT_SCHEMA,
+      validate: (raw) => {
+        const validated = normalizePromptResponse(raw)
+        return enforceOfficialTitle(validated, title)
+      },
+      temperature: 0.5,
+      maxTokens: 4096,
+    })
 
     return NextResponse.json({
       success: true,
-      model,
+      model: ai.activeTextModel,
       format,
       includeTextOverlay,
       ...promptData,

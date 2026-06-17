@@ -1,8 +1,20 @@
+/**
+ * AI-PROVIDER-003 — Rota migrada para usar a camada abstrata de IA.
+ *
+ * Provedor primário: DeepSeek Flash
+ * Fallback automático: OpenAI (via AIClient)
+ * Fallback local: correção via regex (mantida da implementação original)
+ *
+ * Comportamento idêntico ao anterior. Nenhum prompt ou lógica de resposta foi alterado.
+ */
+
 import { NextRequest, NextResponse } from 'next/server'
+
+import { getAIProvider } from '@/lib/ai/provider'
 
 type CorrectionResult = {
   correctedText: string
-  provider: 'openai' | 'local'
+  provider: 'deepseek-flash' | 'deepseek-pro' | 'openai' | 'local'
   changed: boolean
   notes?: string
 }
@@ -64,88 +76,24 @@ function localCorrection(text: string) {
   return value
 }
 
-function extractJsonFromText(text: string) {
-  const cleaned = text.trim()
+const SYSTEM_PROMPT =
+  'Você é um revisor de português brasileiro para frases devocionais cristãs. Corrija apenas gramática, acentuação, pontuação, concordância leve e fluidez. Não mude o sentido espiritual, não aumente a frase, não transforme em sermão, não adicione versículos e não invente conteúdo. Preserve o estilo simples e devocional. Responda somente em JSON válido.'
 
-  try {
-    return JSON.parse(cleaned)
-  } catch {
-    const match = cleaned.match(/\{[\s\S]*\}/)
-
-    if (!match) {
-      throw new Error('A IA não retornou JSON válido.')
-    }
-
-    return JSON.parse(match[0])
-  }
+function buildUserPrompt(text: string) {
+  return JSON.stringify({
+    instruction:
+      'Corrija a frase abaixo para português brasileiro natural, mantendo o mesmo sentido. Retorne JSON com correctedText e notes.',
+    text,
+    expectedFormat: {
+      correctedText: 'frase corrigida',
+      notes: 'breve explicação da correção',
+    },
+  })
 }
 
-async function correctWithOpenAI(text: string): Promise<CorrectionResult> {
-  const apiKey = process.env.OPENAI_API_KEY
-
-  if (!apiKey) {
-    const correctedText = localCorrection(text)
-
-    return {
-      correctedText,
-      provider: 'local',
-      changed: correctedText !== text,
-      notes: 'OPENAI_API_KEY não configurada. Correção local aplicada.',
-    }
-  }
-
-  const model = process.env.OPENAI_CORRECTION_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini'
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.1,
-      messages: [
-        {
-          role: 'system',
-          content:
-            'Você é um revisor de português brasileiro para frases devocionais cristãs. Corrija apenas gramática, acentuação, pontuação, concordância leve e fluidez. Não mude o sentido espiritual, não aumente a frase, não transforme em sermão, não adicione versículos e não invente conteúdo. Preserve o estilo simples e devocional. Responda somente em JSON válido.',
-        },
-        {
-          role: 'user',
-          content: JSON.stringify({
-            instruction:
-              'Corrija a frase abaixo para português brasileiro natural, mantendo o mesmo sentido. Retorne JSON com correctedText e notes.',
-            text,
-            expectedFormat: {
-              correctedText: 'frase corrigida',
-              notes: 'breve explicação da correção',
-            },
-          }),
-        },
-      ],
-    }),
-  })
-
-  const data = await response.json()
-
-  if (!response.ok) {
-    console.error('Erro OpenAI correção:', data)
-    throw new Error(
-      data?.error?.message ||
-        'Erro ao corrigir frase com IA.'
-    )
-  }
-
-  const content = data?.choices?.[0]?.message?.content
-
-  if (!content) {
-    throw new Error('A IA não retornou conteúdo.')
-  }
-
-  const parsed = extractJsonFromText(content)
+function validateCorrection(raw: unknown): { correctedText: string; notes: string } {
+  const parsed = raw as { correctedText?: string; notes?: string }
   const correctedText = cleanText(String(parsed.correctedText || ''))
-  const notes = cleanText(String(parsed.notes || ''))
 
   if (!correctedText) {
     throw new Error('A IA retornou uma frase vazia.')
@@ -153,9 +101,31 @@ async function correctWithOpenAI(text: string): Promise<CorrectionResult> {
 
   return {
     correctedText,
-    provider: 'openai',
-    changed: correctedText !== text,
-    notes,
+    notes: cleanText(String(parsed.notes || '')),
+  }
+}
+
+async function correctWithAI(text: string): Promise<CorrectionResult> {
+  const ai = getAIProvider({
+    textProvider: 'deepseek-flash',
+    fallbackProvider: 'openai',
+  })
+
+  const result = await ai.generateJson({
+    system: SYSTEM_PROMPT,
+    prompt: buildUserPrompt(text),
+    schema:
+      '{\n  "correctedText": "string — frase corrigida",\n  "notes": "string — breve explicação da correção"\n}',
+    validate: validateCorrection,
+    temperature: 0.1,
+    maxTokens: 300,
+  })
+
+  return {
+    correctedText: result.correctedText,
+    provider: ai.activeTextProvider as CorrectionResult['provider'],
+    changed: result.correctedText !== text,
+    notes: result.notes || undefined,
   }
 }
 
@@ -186,7 +156,7 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const result = await correctWithOpenAI(text)
+      const result = await correctWithAI(text)
 
       return NextResponse.json({
         success: true,
@@ -197,7 +167,10 @@ export async function POST(request: NextRequest) {
         notes: result.notes || null,
       })
     } catch (aiError) {
-      console.error('Falha na correção com IA. Usando correção local:', aiError)
+      console.error(
+        'Falha na correção com IA (DeepSeek/OpenAI). Usando correção local:',
+        aiError
+      )
 
       const correctedText = localCorrection(text)
 

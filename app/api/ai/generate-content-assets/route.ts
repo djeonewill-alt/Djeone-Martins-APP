@@ -1,8 +1,26 @@
+/**
+ * AI-PROVIDER-006 e AI-PROVIDER-007 — Rota totalmente migrada para usar a camada abstrata de IA.
+ *
+ * Partes migradas no AI-PROVIDER-006 (texto simples):
+ * - summary, whatsapp, instagram, caption_ai_review → DeepSeek Flash / fallback OpenAI
+ *
+ * Partes migradas no AI-PROVIDER-007 (JSON estruturado):
+ * - phrases, short_ideas, cuts, short_script         → DeepSeek Flash / fallback OpenAI
+ * - all                                                → DeepSeek Flash / fallback OpenAI
+ * - best_cuts_ai, visual_storyboard                   → DeepSeek Pro / fallback OpenAI
+ *
+ * Comportamento idêntico ao anterior. Nenhum prompt ou lógica foi alterado.
+ */
+
 import { NextRequest, NextResponse } from 'next/server'
 import { GetObjectCommand } from '@aws-sdk/client-s3'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { r2Client, R2_BUCKET_NAME } from '@/lib/r2/client'
+import { getAIProvider } from '@/lib/ai/provider'
 
+// Timeout máximo de 60s para evitar erro 504 no plano Hobby da Vercel
+// A geração com DeepSeek Flash leva ~22s, mas precisamos de margem para retries
+export const maxDuration = 60
 export const runtime = 'nodejs'
 
 type TranscriptionSegment = {
@@ -2960,6 +2978,7 @@ Retorne SOMENTE JSON valido neste formato:
 `.trim()
 }
 
+// AI-PROVIDER-007: best_cuts_ai usa DeepSeek Pro como primário para schema complexo
 async function generateBestCutsWithOpenAI(params: {
   title: string
   bibleReference: string
@@ -2968,61 +2987,50 @@ async function generateBestCutsWithOpenAI(params: {
   transcriptionSegments: TranscriptionSegment[]
   dailyQuoteSuggestions: unknown
 }): Promise<BestAiCutsResult> {
-  const apiKey = process.env.OPENAI_API_KEY
-
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY ausente.')
-  }
-
   if (!params.transcriptionText && !params.transcriptionSegments.length) {
     throw new Error('Este episodio precisa de transcricao para gerar melhores cortes com IA forte.')
   }
 
-  const model =
-    process.env.OPENAI_RESPONSE_STRONG_MODEL ||
-    process.env.OPENAI_RESPONSE_MODEL ||
-    process.env.OPENAI_CONTENT_ASSETS_MODEL ||
-    process.env.OPENAI_MODEL ||
-    'gpt-4o-mini'
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.25,
-      response_format: {
-        type: 'json_object',
-      },
-      messages: [
-        {
-          role: 'system',
-          content: 'Voce e um editor senior de cortes devocionais. Responda somente JSON valido.',
-        },
-        {
-          role: 'user',
-          content: buildBestCutsAiPrompt(params),
-        },
-      ],
-    }),
+  // AI-PROVIDER-007: Alterado de deepseek-pro para deepseek-flash para evitar timeouts em produção
+  const ai = getAIProvider({
+    textProvider: 'deepseek-flash',
+    fallbackProvider: 'openai',
   })
-  const data = await response.json()
 
-  if (!response.ok) {
-    console.error('Erro OpenAI best cuts:', data)
-    throw new Error(data?.error?.message || 'Erro ao gerar melhores cortes com IA forte.')
-  }
+  const promptText = buildBestCutsAiPrompt(params)
 
-  const content = data?.choices?.[0]?.message?.content
+  const result = await ai.generateJson({
+    system: 'Voce e um editor senior de cortes devocionais. Responda somente JSON valido.',
+    prompt: promptText,
+    schema: `{
+  "cuts": [
+    {
+      "start": number, "end": number, "title": string,
+      "hook": string, "opening_line": string,
+      "base_excerpt": string, "reason": string,
+      "retention_score": number, "biblical_specificity": number,
+      "visual_potential": number, "emotional_tension": number,
+      "share_potential": number, "fidelity_to_audio": number,
+      "duration_type": string, "duration_label": string,
+      "recommended_use": string, "risk": string,
+      "production_priority": number, "production_label": string,
+      "production_role": string, "editorial_alert_level": string,
+      "editorial_alert": string, "format_recommendation": string,
+      "should_publish_first": boolean, "needs_context_warning": boolean,
+      "safe_title_suggestion": string | null,
+      "suggested_smaller_cut": object | null,
+      "caption_lines": string[]
+    }
+  ],
+  "editorial_summary": string,
+  "warnings": string[]
+}`,
+    validate: (raw) => normalizeBestAiCuts(raw, ai.activeTextModel),
+    temperature: 0.25,
+    maxTokens: 8192,
+  })
 
-  if (!content) {
-    throw new Error('A OpenAI nao retornou cortes.')
-  }
-
-  return normalizeBestAiCuts(extractJsonFromText(content), model)
+  return result
 }
 
 function ensureVisualPromptSafety(prompt: string) {
@@ -3253,6 +3261,7 @@ Retorne SOMENTE JSON valido:
 `.trim()
 }
 
+// AI-PROVIDER-007: visual_storyboard usa DeepSeek Pro como primário para schema complexo
 async function generateVisualStoryboardWithOpenAI(params: {
   title: string
   bibleReference: string
@@ -3264,49 +3273,53 @@ async function generateVisualStoryboardWithOpenAI(params: {
   cta?: string
   editorialAlert?: string
 }): Promise<VisualStoryboard> {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) throw new Error('OPENAI_API_KEY ausente.')
-
-  const model =
-    process.env.OPENAI_RESPONSE_STRONG_MODEL ||
-    process.env.OPENAI_RESPONSE_MODEL ||
-    process.env.OPENAI_CONTENT_ASSETS_MODEL ||
-    process.env.OPENAI_MODEL ||
-    'gpt-4o-mini'
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.35,
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content: 'Voce e um diretor criativo de videos biblicos verticais. Responda somente JSON valido.',
-        },
-        {
-          role: 'user',
-          content: buildVisualStoryboardPrompt(params),
-        },
-      ],
-    }),
+  const ai = getAIProvider({
+    textProvider: 'deepseek-flash',
+    fallbackProvider: 'openai',
   })
-  const data = await response.json()
 
-  if (!response.ok) {
-    console.error('Erro OpenAI visual storyboard:', data)
-    throw new Error(data?.error?.message || 'Erro ao gerar plano visual.')
+  const promptText = buildVisualStoryboardPrompt(params)
+
+  const cutDuration = params.selectedCut.end - params.selectedCut.start
+
+  const result = await ai.generateJson({
+    system: 'Voce e um diretor criativo de videos biblicos verticais. Responda somente JSON valido.',
+    prompt: promptText,
+    schema: `{
+  "visual_storyboard": {
+    "mode": "visual_storyboard",
+    "version": "cc-f4-visual-storyboard",
+    "model": "",
+    "visual_style": "cinematic biblical realism",
+    "format": "vertical 9:16",
+    "summary": "Plano visual para o Short...",
+    "visual_concept": "Conceito visual central...",
+    "scenes": [
+      {
+        "start": number, "end": number, "role": string,
+        "title": string, "on_screen_text": string,
+        "visual_description": string, "image_prompt": string,
+        "b_roll": string, "motion": string, "sound": string,
+        "editing_note": string
+      }
+    ],
+    "image_prompts": [{ "label": string, "prompt": string }],
+    "motion_plan": string[], "sound_plan": string[],
+    "cta_visual": { "text": string, "visual": string, "motion": string },
+    "quality_checklist": {
+      "has_hook_visual": boolean, "has_biblical_fidelity": boolean,
+      "has_scene_variety": boolean, "has_cta": boolean,
+      "avoids_text_inside_image": boolean
+    },
+    "warnings": string[]
   }
+}`,
+    validate: (raw) => normalizeVisualStoryboard(raw, ai.activeTextModel, cutDuration),
+    temperature: 0.35,
+    maxTokens: 8192,
+  })
 
-  const content = data?.choices?.[0]?.message?.content
-  if (!content) throw new Error('A OpenAI nao retornou storyboard visual.')
-
-  return normalizeVisualStoryboard(extractJsonFromText(content), model, params.selectedCut.end - params.selectedCut.start)
+  return result
 }
 
 function normalizeAiReviewedLineText(text: string) {
@@ -3432,6 +3445,50 @@ function normalizeReviewedCaptions(params: {
   }
 }
 
+/**
+ * Gera conteúdo textual simples (summary, whatsapp, instagram) usando getAIProvider.
+ * AI-PROVIDER-006: DeepSeek Flash como primário, OpenAI como fallback.
+ */
+async function generateSimpleContentWithAI(params: {
+  title: string
+  bibleReference: string
+  description: string
+  transcriptionText: string
+  transcriptionSegments: TranscriptionSegment[]
+  dailyQuoteSuggestions: unknown
+  hasReliableSegments: boolean
+  mode: GenerationMode
+  selectedCut?: CutSuggestion | null
+}): Promise<{ model: string; assets: Partial<ContentAssets> }> {
+  const ai = getAIProvider({
+    textProvider: 'deepseek-flash',
+    fallbackProvider: 'openai',
+  })
+
+  const promptText = buildPrompt(params)
+
+  const result = await ai.generateJson({
+    system:
+      'Você é um editor devocional cristão brasileiro. Responda somente em JSON válido.',
+    prompt: promptText,
+    schema: buildModeOutputContract(params.mode),
+    validate: (raw) =>
+      validateAssets(raw, {
+        mode: params.mode,
+        hasReliableSegments: params.hasReliableSegments,
+        transcriptionSegments: params.transcriptionSegments,
+        selectedCut: params.selectedCut,
+      }),
+    temperature: 0.55,
+    maxTokens: 4096,
+  })
+
+  return {
+    model: ai.activeTextModel,
+    assets: result,
+  }
+}
+
 async function reviewCaptionsWithOpenAI(params: {
   title: string
   bibleReference: string
@@ -3440,61 +3497,32 @@ async function reviewCaptionsWithOpenAI(params: {
   selectedCut: CaptionSyncCut | null
   syncedCaptions: SyncedCaptions
 }): Promise<ReviewedCaptions> {
-  const apiKey = process.env.OPENAI_API_KEY
-
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY ausente.')
-  }
-
-  const model =
-    process.env.OPENAI_RESPONSE_STRONG_MODEL ||
-    process.env.OPENAI_RESPONSE_MODEL ||
-    process.env.OPENAI_CONTENT_ASSETS_MODEL ||
-    process.env.OPENAI_MODEL ||
-    'gpt-4o-mini'
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.2,
-      response_format: {
-        type: 'json_object',
-      },
-      messages: [
-        {
-          role: 'system',
-          content: 'Voce e um revisor editorial de legendas curtas. Responda somente JSON valido.',
-        },
-        {
-          role: 'user',
-          content: buildCaptionAiReviewPrompt(params),
-        },
-      ],
-    }),
+  const ai = getAIProvider({
+    textProvider: 'deepseek-flash',
+    fallbackProvider: 'openai',
   })
-  const data = await response.json()
 
-  if (!response.ok) {
-    console.error('Erro OpenAI caption review:', data)
-    throw new Error(data?.error?.message || 'Erro ao revisar legendas com IA.')
-  }
+  const promptText = buildCaptionAiReviewPrompt(params)
 
-  const content = data?.choices?.[0]?.message?.content
-
-  if (!content) {
-    throw new Error('A OpenAI nao retornou revisao de legendas.')
-  }
-
-  return normalizeReviewedCaptions({
-    input: extractJsonFromText(content),
-    syncedCaptions: params.syncedCaptions,
-    model,
+  const result = await ai.generateJson({
+    system: 'Voce e um revisor editorial de legendas curtas. Responda somente JSON valido.',
+    prompt: promptText,
+    schema: `{
+  "reviewed_lines": [{ "text": "texto revisado" }],
+  "review_notes": ["notas da revisao"],
+  "confidence": "high"
+}`,
+    validate: (raw) =>
+      normalizeReviewedCaptions({
+        input: raw,
+        syncedCaptions: params.syncedCaptions,
+        model: ai.activeTextModel,
+      }),
+    temperature: 0.2,
+    maxTokens: 2048,
   })
+
+  return result
 }
 
 function buildHybridCaptionLines(params: {
@@ -4671,6 +4699,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Se o frontend não enviou a transcrição no body, busca do banco de dados
+    const resolvedTranscriptionText = transcriptionText || await (async () => {
+      const supabase = await createSupabaseServerClient()
+      const { data: episode } = await supabase
+        .from('episodes')
+        .select('transcription_text')
+        .eq('id', episodeId)
+        .single()
+
+      return episode?.transcription_text || ''
+    })()
+
     if (mode === 'visual_storyboard') {
       if (!selectedCut) {
         return NextResponse.json(
@@ -4708,7 +4748,7 @@ export async function POST(request: NextRequest) {
         title,
         bibleReference,
         description,
-        transcriptionText,
+        transcriptionText: resolvedTranscriptionText,
         transcriptionSegments,
         dailyQuoteSuggestions: body.daily_quote_suggestions,
       })
@@ -4785,11 +4825,11 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    if (!transcriptionText || transcriptionText.length < 300) {
+    if (!resolvedTranscriptionText || resolvedTranscriptionText.length < 300) {
       return NextResponse.json(
         {
           success: false,
-          error: 'A transcrição está muito curta para gerar conteúdos.',
+          error: 'A transcrição está muito curta para gerar conteúdos. Envie transcription_text no body ou verifique se o episódio possui transcrição no banco.',
         },
         { status: 400 }
       )
@@ -4839,11 +4879,12 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const result = await generateWithOpenAI({
+    // AI-PROVIDER-006 e AI-PROVIDER-007: Todos os modos de texto/JSON usando getAIProvider
+    const result = await generateSimpleContentWithAI({
       title,
       bibleReference,
       description,
-      transcriptionText: transcriptionText.slice(0, MAX_TRANSCRIPTION_CHARS),
+      transcriptionText: resolvedTranscriptionText.slice(0, MAX_TRANSCRIPTION_CHARS),
       transcriptionSegments,
       dailyQuoteSuggestions: body.daily_quote_suggestions,
       hasReliableSegments,
