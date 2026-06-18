@@ -241,6 +241,7 @@ export async function GET(request: NextRequest) {
         .update({
           status: 'published',
           published_at: publishNow,
+          date: publishNow.split('T')[0],
         })
         .in('episode_id', publishIds)
         .eq('status', 'draft')
