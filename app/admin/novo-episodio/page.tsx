@@ -2870,67 +2870,77 @@ export default function NovoEpisodio() {
                               alt={option.label}
                               className="absolute inset-0 h-full w-full object-cover"
                             />
-                            {/* Overlay gradiente sutil — a imagem é a protagonista */}
-                            <div className={`absolute inset-0 ${
-                              option.template === 'devotional'
-                                ? 'bg-gradient-to-t from-black/65 via-black/25 to-black/0'
-                                : option.template === 'modern'
-                                ? 'bg-gradient-to-r from-black/75 via-black/35 to-black/0'
-                                : 'bg-gradient-to-t from-black/80 via-black/20 to-black/0'
-                            }`} />
+                            {/* Gradiente de fundo sutil sobre a imagem */}
+                            <div className="absolute inset-0 bg-gradient-to-b from-black/45 via-transparent to-black/60" />
 
-                            {/* Container de texto — layout varia por template */}
-                            <div className={`absolute inset-0 flex p-5 ${
-                              option.template === 'devotional'
-                                ? 'flex-col items-center justify-center text-center'
-                                : option.template === 'modern'
-                                ? 'flex-col items-start justify-end text-left'
-                                : 'flex-col items-center justify-end text-center'
-                            }`}>
-                              <div className={`w-full ${
-                                option.template === 'devotional' ? 'max-w-[85%]' :
-                                option.template === 'modern' ? 'max-w-[75%]' :
-                                'max-w-[80%]'
+                            {/* Sanduíche Visual: Header (topo) · Body (centro) · Footer (base) */}
+                            <div className="absolute inset-0 flex flex-col justify-between">
+                              {/* ── Header: PALAVRA DO DIA ── */}
+                              <div className={`pt-5 ${
+                                option.template === 'devotional' ? 'text-center' :
+                                option.template === 'modern' ? 'text-left pl-5' :
+                                'text-center'
                               }`}>
-                                <p className={`mb-2 font-black uppercase tracking-[0.18em] ${
-                                  option.template === 'devotional'
-                                    ? 'text-[10px] text-blue-200/90'
-                                    : option.template === 'modern'
-                                    ? 'text-[9px] text-blue-200/85'
-                                    : 'text-[10px] text-white/80'
+                                <p className={`inline-block font-black uppercase tracking-[0.2em] ${
+                                  option.template === 'devotional' ? 'text-[10px] text-blue-200/90' :
+                                  option.template === 'modern' ? 'text-[9px] text-blue-200/85' :
+                                  'text-[10px] text-white/80'
                                 }`}>
                                   PALAVRA DO DIA
                                 </p>
-                                <p className={`font-bold leading-[1.18] ${
-                                  option.template === 'devotional'
-                                    ? 'font-[Georgia,serif] text-white/96'
-                                    : option.template === 'modern'
-                                    ? 'font-[Arial,sans-serif] text-white/98'
-                                    : 'font-[Arial,sans-serif] text-white/98'
-                                }`} style={{
-                                  fontSize: option.template === 'devotional' ? 'clamp(0.85rem,2.5vw,1.35rem)' :
-                                            option.template === 'modern' ? 'clamp(0.8rem,2.2vw,1.2rem)' :
-                                            'clamp(0.8rem,2.3vw,1.25rem)',
-                                  textShadow: '0 2px 8px rgba(0,0,0,0.75), 0 1px 3px rgba(0,0,0,0.9)',
-                                }}>
-                                  {formatQuoteTextForDisplay(selectedDailyQuote)}
-                                </p>
-                                <div className={`mt-3 border-t ${
-                                  option.template === 'devotional'
-                                    ? 'mx-auto w-12 border-white/25'
-                                    : option.template === 'modern'
-                                    ? 'w-10 border-white/20'
-                                    : 'mx-auto w-10 border-white/20'
+                                <div className={`mt-1.5 border-t ${
+                                  option.template === 'devotional' ? 'mx-auto w-12 border-blue-300/30' :
+                                  option.template === 'modern' ? 'w-10 border-blue-300/25' :
+                                  'mx-auto w-10 border-white/20'
                                 }`} />
-                                <p className={`mt-2 font-bold text-white/85`} style={{
-                                  fontSize: 'clamp(0.55rem,1.3vw,0.75rem)',
-                                  textShadow: '0 1px 4px rgba(0,0,0,0.8)',
+                              </div>
+
+                              {/* ── Body: Frase central ── */}
+                              <div className={`flex-1 flex items-center px-4 ${
+                                option.template === 'devotional' ? 'justify-center text-center' :
+                                option.template === 'modern' ? 'justify-start text-left' :
+                                'justify-center text-center'
+                              }`}>
+                                <div className={`w-full ${
+                                  option.template === 'devotional' ? 'max-w-[85%]' :
+                                  option.template === 'modern' ? 'max-w-[72%]' :
+                                  'max-w-[80%]'
+                                }`}>
+                                  <p className={`font-bold leading-[1.2] ${
+                                    option.template === 'devotional' ? 'font-[Georgia,serif] text-white/96' :
+                                    option.template === 'modern' ? 'font-[Arial,sans-serif] text-white/98' :
+                                    'font-[Arial,sans-serif] text-white/98'
+                                  }`} style={{
+                                    fontSize: option.template === 'devotional' ? 'clamp(0.75rem,2.2vw,1.15rem)' :
+                                              option.template === 'modern' ? 'clamp(0.7rem,2vw,1.05rem)' :
+                                              'clamp(0.7rem,2.1vw,1.1rem)',
+                                    textShadow: '0 2px 10px rgba(0,0,0,0.8), 0 1px 4px rgba(0,0,0,0.95)',
+                                  }}>
+                                    {formatQuoteTextForDisplay(selectedDailyQuote)}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* ── Footer: Referência + Assinatura ── */}
+                              <div className={`pb-5 ${
+                                option.template === 'devotional' ? 'text-center' :
+                                option.template === 'modern' ? 'text-left pl-5' :
+                                'text-center'
+                              }`}>
+                                <div className={`mb-2 border-t ${
+                                  option.template === 'devotional' ? 'mx-auto w-12 border-white/20' :
+                                  option.template === 'modern' ? 'w-10 border-white/15' :
+                                  'mx-auto w-10 border-white/20'
+                                }`} />
+                                <p className="font-bold text-white/85" style={{
+                                  fontSize: 'clamp(0.5rem,1.2vw,0.7rem)',
+                                  textShadow: '0 1px 5px rgba(0,0,0,0.8)',
                                 }}>
                                   {formData.bible_reference || 'Devocional'}
                                 </p>
-                                <p className="mt-1 font-semibold text-white/60" style={{
-                                  fontSize: 'clamp(0.45rem,1vw,0.65rem)',
-                                  textShadow: '0 1px 3px rgba(0,0,0,0.7)',
+                                <p className="mt-0.5 font-semibold text-white/55" style={{
+                                  fontSize: 'clamp(0.4rem,0.9vw,0.6rem)',
+                                  textShadow: '0 1px 4px rgba(0,0,0,0.7)',
                                 }}>
                                   Pr. Djeone Martins
                                 </p>
