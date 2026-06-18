@@ -469,7 +469,7 @@ export async function POST(request: NextRequest) {
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
         '[1] ABERTURA TÉCNICA\n' +
         'Sempre inicie com:\n' +
-        '"Create a cinematic 16:9 horizontal podcast cover in premium Netflix style,\n' +
+        '"Create a cinematic 16:9 horizontal podcast cover in premium cinematic streaming series style,\n' +
         '1920x1080 resolution, maintaining the series visual identity."\n\n' +
         '[2] SCENE (Cena Principal)\n' +
         '- A cena principal deve representar visualmente a emoção da frase escolhida, não\n' +
@@ -553,7 +553,8 @@ export async function POST(request: NextRequest) {
         '❌ Nunca gere imagens de Jesus Cristo com rosto definido\n' +
         '❌ Nunca use estética cartoon, anime ou ilustração infantil\n' +
         '❌ Nunca gere uma imagem que ilustre apenas a narrativa bíblica histórica sem refletir a emoção da frase escolhida\n' +
-        '❌ Nunca ignore o campo selectedQuote — ele é a âncora principal de toda a imagem\n\n' +
+        '❌ Nunca ignore o campo selectedQuote — ele é a âncora principal de toda a imagem\n' +
+        '❌ NEVER generate brand logos, trademarks (like Netflix, HBO, Amazon), or watermarks in the image\n\n' +
         'PROIBIÇÃO TÉCNICA:\n' +
         'É terminantemente proibido gerar cenários de praia, deserto ou multidões como foco\n' +
         'principal, mesmo que a transcrição mencione tais contextos bíblicos. Se a tentação\n' +
