@@ -1704,7 +1704,10 @@ export default function NovoEpisodio() {
     }
   }
 
-  const handleGenerateCardOptions = async () => {
+  const [generatedFluxImageUrl, setGeneratedFluxImageUrl] = useState<string | null>(null)
+  const [fluxRefinement, setFluxRefinement] = useState('')
+
+  const handleGenerateCardImage = async (refinement?: string) => {
     const quoteText = selectedDailyQuote.trim()
 
     if (!quoteText) {
@@ -1716,37 +1719,48 @@ export default function NovoEpisodio() {
 
     try {
       const quoteContext = getSelectedQuotePromptContext()
-      const visualContext = [
+      const contextText = [
         quoteText,
         quoteContext.sourceExcerpt,
         quoteContext.reason,
         quoteContext.specificityReason,
         formData.title,
         formData.bible_reference,
-        transcriptionText.slice(0, 900),
-      ].filter(Boolean).join(' ')
-      const avoidWaterThemes = hasExplicitWaterTheme(visualContext)
-        ? []
-        : [
-            'mar',
-            'barco',
-            'agua',
-            'aguas',
-            'ocean',
-            'sea',
-            'boat',
-            'ship',
-            'storm',
-            'waves',
-            'water',
-            'shipwreck',
-          ]
+        transcriptionText.slice(0, 2000),
+      ].filter(Boolean).join('\n')
 
+      // Primeiro, gera o diagnóstico de cena com DeepSeek
+      const diagnosisResponse = await fetch('/api/ai/generate-image-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: formData.title,
+          bibleReference: formData.bible_reference,
+          description: formData.description,
+          selectedQuote: quoteText,
+          sourceExcerpt: quoteContext.sourceExcerpt,
+          reason: quoteContext.reason,
+          specificityReason: quoteContext.specificityReason,
+          transcriptionText: transcriptionText.slice(0, 7000),
+          format: 'daily_quote_card',
+          includeTextOverlay: false,
+        }),
+      })
+
+      const diagnosisData = await diagnosisResponse.json()
+
+      if (!diagnosisResponse.ok || !diagnosisData.background_prompt) {
+        throw new Error(diagnosisData.error || 'DeepSeek não gerou diagnóstico de cena.')
+      }
+
+      const backgroundPrompt = refinement
+        ? `${diagnosisData.background_prompt} REFINEMENT: ${refinement}`
+        : diagnosisData.background_prompt
+
+      // Depois, gera a imagem com FLUX via search-backgrounds (que chama DeepSeek internamente se necessário)
       const response = await fetch('/api/images/search-backgrounds', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           quoteText,
           purpose: 'daily_quote_card',
@@ -1756,68 +1770,48 @@ export default function NovoEpisodio() {
           reason: quoteContext.reason,
           specificityReason: quoteContext.specificityReason,
           useCase: quoteContext.useCase,
-          transcriptionPreview: transcriptionText.slice(0, 900),
-          avoidThemes: avoidWaterThemes,
+          transcriptionPreview: transcriptionText.slice(0, 2000),
+          backgroundPrompt,
         }),
       })
 
       const data = await response.json()
 
       if (!response.ok && !data.images) {
-        throw new Error(data.error || 'Erro ao buscar imagens.')
+        throw new Error(data.error || 'Erro ao gerar imagem.')
       }
 
-      const images = ((data.images || []) as BackgroundImage[]).slice(0, 3)
+      const images = ((data.images || []) as BackgroundImage[])
 
       if (!images.length) {
-        throw new Error('Nenhuma imagem encontrada.')
+        throw new Error('Nenhuma imagem gerada.')
       }
 
-      if (hasFallbackImage({ provider: data.provider, images })) {
-        setCardOptions([])
-        setSelectedCardIndex(null)
+      const imageUrl = images[0].url
 
-        const warningReason = data?.debug?.warning_reason || data?.warning || 'Nenhuma imagem válida encontrada.'
+      // Armazena a URL base da imagem FLUX (limpa, sem texto)
+      setGeneratedFluxImageUrl(imageUrl)
 
-        alert(`Não encontrei imagens válidas no Pexels. Motivo: ${warningReason}. Tente gerar novamente, ajuste a frase ou envie uma imagem manualmente. Nenhum card foi gerado com imagem fallback.`)
-        return
-      }
-
-      const options: CardOption[] = []
-
-      // Apenas 1 card (template devocional elegante), não 3 repetidos
-      const template = CARD_TEMPLATES[0]
-      const image = images[0]
-
-      const previewDataUrl = await generateCardDataUrl({
-          quoteText,
-          bibleReference: formData.bible_reference,
-          episodeTitle: formData.title,
-          imageUrl: image.url,
-          template: template.template,
-        })
-
-        options.push({
-          id: `${template.template}-${Date.now()}-0`,
-          template: template.template,
-          label: template.label,
-          source_image_url: image.url,
-          source_image_provider: image.provider,
-          theme_keywords: image.theme_keywords || data.theme_keywords || [],
-          preview_data_url: previewDataUrl,
-          photographer: image.photographer || null,
-          photographer_url: image.photographer_url || null,
-          source_page_url: image.source_page_url || null,
-          quote_background_id: image.quote_background_id || null,
-          pexels_photo_id: image.pexels_photo_id || null,
-          query_used: image.query || data.query || null,
-        })
+      // Cria 3 opções de card com overlays CSS (não Canvas)
+      const options: CardOption[] = CARD_TEMPLATES.map((template, index) => ({
+        id: `${template.template}-${Date.now()}-${index}`,
+        template: template.template,
+        label: template.label,
+        source_image_url: imageUrl,
+        source_image_provider: 'flux',
+        theme_keywords: data.theme_keywords || [],
+        preview_data_url: imageUrl, // URL base — overlay é aplicado via CSS
+        quote_background_id: data.images?.[0]?.quote_background_id || null,
+      }))
 
       setCardOptions(options)
       setSelectedCardIndex(0)
-      alert('✅ Card gerado com sucesso!')
+      setFluxRefinement('')
+      alert(refinement
+        ? '✅ Imagem regenerada com refinamento!'
+        : '✅ Imagem gerada com sucesso! Escolha o estilo de card.')
     } catch (error) {
-      console.error('Erro ao gerar cards:', error)
+      console.error('Erro ao gerar imagem:', error)
       alert(`❌ ${getErrorMessage(error)}`)
     } finally {
       setGeneratingCards(false)
@@ -2824,55 +2818,116 @@ export default function NovoEpisodio() {
 
                   <button
                     type="button"
-                    onClick={handleGenerateCardOptions}
+                    onClick={() => handleGenerateCardImage()}
                     disabled={!selectedDailyQuote.trim() || generatingCards}
                     className="w-full bg-amber-500 text-slate-950 font-bold py-3 rounded-lg hover:bg-amber-400 transition-colors disabled:opacity-50"
                   >
-                    {generatingCards ? '⏳ Gerando card...' : '🎨 Gerar card pronto'}
+                    {generatingCards ? '⏳ Gerando imagem...' : '🎨 Gerar Imagem Base (FLUX)'}
                   </button>
 
-                  {cardOptions.length > 0 && (
-                    <div className="mt-5">
+                  {generatedFluxImageUrl && (
+                    <div className="mt-4 space-y-3">
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={fluxRefinement}
+                          onChange={(e) => setFluxRefinement(e.target.value)}
+                          placeholder="Refinamento manual (ex: mais tempestade, menos luz, close no rosto...)"
+                          className="flex-1 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleGenerateCardImage(fluxRefinement)}
+                          disabled={!fluxRefinement.trim() || generatingCards}
+                          className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
+                        >
+                          Regenerar
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        Descreva o ajuste visual desejado e clique em "Regenerar". A IA refará a imagem com sua instrução.
+                      </p>
+                    </div>
+                  )}
+
+                  {cardOptions.length > 0 && generatedFluxImageUrl && (
+                    <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
                       {cardOptions.map((option, index) => (
                         <button
                           key={option.id}
                           type="button"
                           onClick={() => setSelectedCardIndex(index)}
-                          className={`rounded-2xl overflow-hidden border-2 text-left transition-all ${
+                          className={`relative overflow-hidden rounded-2xl border-2 text-left transition-all ${
                             selectedCardIndex === index
                               ? 'border-amber-400 scale-[1.02]'
                               : 'border-slate-700 hover:border-slate-500'
                           }`}
                         >
-                          <img
-                            src={option.preview_data_url}
-                            alt={option.label}
-                            className="w-full aspect-square object-cover bg-slate-800"
-                          />
-
-                          <div className="p-3 bg-slate-900">
-                            <p className="text-sm font-bold text-white">
-                              {index + 1}. {option.label}
-                            </p>
-
-                            <p className="text-xs text-slate-400 mt-1">
-                              Tema: {option.theme_keywords.join(', ') || 'devocional'}
-                            </p>
-
-                            {option.photographer && (
-                              <p className="text-[11px] text-slate-500 mt-1">
-                                Foto: {option.photographer}
-                              </p>
-                            )}
-
-                            <p className={`text-xs font-semibold mt-2 ${
-                              selectedCardIndex === index
-                                ? 'text-amber-300'
-                                : 'text-slate-500'
+                          {/* Overlay CSS aplicado sobre a imagem base do FLUX */}
+                          <div className="relative aspect-square w-full overflow-hidden bg-slate-900">
+                            <img
+                              src={generatedFluxImageUrl}
+                              alt={option.label}
+                              className="absolute inset-0 h-full w-full object-cover"
+                            />
+                            {/* Gradiente e texto via CSS (Designer de Estilo) */}
+                            <div className={`absolute inset-0 flex flex-col items-center justify-center p-6 text-center ${
+                              option.template === 'devotional'
+                                ? 'bg-gradient-to-b from-black/40 via-black/48 to-black/76'
+                                : option.template === 'modern'
+                                ? 'bg-gradient-to-b from-black/22 via-black/40 to-black/84'
+                                : 'bg-gradient-to-b from-black/66 via-black/43 to-black/82'
                             }`}>
-                              {selectedCardIndex === index
-                                ? '✅ Card escolhido'
-                                : 'Clique para escolher'}
+                              <p className={`mb-3 font-black uppercase tracking-[0.22em] ${
+                                option.template === 'devotional' ? 'text-[11px] text-white/88' :
+                                option.template === 'modern' ? 'text-[11px] text-blue-200/95' :
+                                'text-[10px] text-white/86'
+                              }`}>
+                                PALAVRA DO DIA
+                              </p>
+                              <p className={`font-bold leading-[1.12] drop-shadow-[0_4px_16px_rgba(0,0,0,0.82)] ${
+                                option.template === 'devotional' ? 'font-[Georgia,serif] text-white/96' :
+                                option.template === 'modern' ? 'text-left font-[Arial,sans-serif] text-white/98' :
+                                'font-[Arial,sans-serif] uppercase text-white/98'
+                              }`} style={{
+                                fontSize: option.template === 'devotional' ? 'clamp(1.2rem,5vw,3.75rem)' :
+                                          option.template === 'modern' ? 'clamp(1.1rem,4.5vw,3.5rem)' :
+                                          'clamp(1rem,4vw,3.6rem)',
+                              }}>
+                                {formatQuoteTextForDisplay(selectedDailyQuote)}
+                              </p>
+                              <p className={`mt-4 font-bold ${
+                                option.template === 'devotional' ? 'font-[Arial,sans-serif] text-[#dbeafe]' :
+                                option.template === 'modern' ? 'font-[Arial,sans-serif] text-[#bfdbfe]' :
+                                'font-[Arial,sans-serif] text-[#fde68a]'
+                              }`} style={{
+                                fontSize: option.template === 'devotional' ? 'clamp(0.7rem,2vw,1.3rem)' :
+                                          option.template === 'modern' ? 'clamp(0.7rem,2vw,1.3rem)' :
+                                          'clamp(0.7rem,2vw,1.3rem)',
+                              }}>
+                                {formData.bible_reference || 'Devocional'}
+                              </p>
+                              <p className={`mt-1 ${
+                                option.template === 'devotional' ? 'font-[Arial,sans-serif] text-white/76' :
+                                option.template === 'modern' ? 'font-[Arial,sans-serif] text-white/72' :
+                                'font-[Arial,sans-serif] text-white/75'
+                              }`} style={{
+                                fontSize: option.template === 'devotional' ? 'clamp(0.55rem,1.6vw,1rem)' :
+                                          option.template === 'modern' ? 'clamp(0.55rem,1.6vw,1rem)' :
+                                          'clamp(0.55rem,1.6vw,1rem)',
+                              }}>
+                                Pr. Djeone Martins
+                              </p>
+                            </div>
+                          </div>
+                          <div className="bg-slate-900 p-3">
+                            <p className="text-sm font-bold text-white">
+                              {option.label}
+                            </p>
+                            <p className={`text-xs font-semibold mt-1 ${
+                              selectedCardIndex === index ? 'text-amber-300' : 'text-slate-500'
+                            }`}>
+                              {selectedCardIndex === index ? '✅ Escolhido' : 'Clique para escolher'}
                             </p>
                           </div>
                         </button>
@@ -2880,10 +2935,9 @@ export default function NovoEpisodio() {
                     </div>
                   )}
 
-                  {selectedDailyQuote && cardOptions.length === 0 && (
+                  {selectedDailyQuote && cardOptions.length === 0 && !generatingCards && (
                     <p className="text-xs text-slate-500 mt-3">
-                      Nenhum card gerado ainda. A Palavra do Dia pode ser salva sem card, mas o ideal é gerar e escolher uma opção.
-                      Se o Pexels não retornar imagens, nenhum card será gerado automaticamente com fallback.
+                      Clique em "Gerar Imagem Base" para o FLUX criar uma arte conceitual exclusiva. Depois escolha o estilo de card.
                     </p>
                   )}
                 </div>

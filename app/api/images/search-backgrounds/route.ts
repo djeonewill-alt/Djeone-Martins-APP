@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 import { generateAndUploadFluxImage } from '@/lib/ai/fal'
+import { getAIProvider } from '@/lib/ai/provider'
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -187,28 +188,87 @@ export async function POST(request: NextRequest) {
     }
 
     // -----------------------------------------------------------------------
-    // Constrói prompt visual limpo para FLUX usando o diagnóstico do DeepSeek
+    // ETAPA 1: DeepSeek gera diagnóstico profundo de cena (backgroundPrompt)
     // -----------------------------------------------------------------------
 
-    // backgroundPrompt: diagnóstico profundo de cena gerado pelo DeepSeek
-    const backgroundPrompt = cleanText(String(body.backgroundPrompt || ''))
+    // backgroundPrompt pode vir do frontend ou ser gerado aqui
+    let backgroundPrompt = cleanText(String(body.backgroundPrompt || ''))
+
+    if (!backgroundPrompt) {
+      console.log('[FLUX-BG] backgroundPrompt ausente — gerando com DeepSeek...')
+
+      const sceneDiagnosisSchema = `{
+  "flux_visual_prompt": "string (English scene description for FLUX image generation)"
+}`
+
+      const ai = getAIProvider({
+        textProvider: 'deepseek-flash',
+        fallbackProvider: 'openai',
+      })
+
+      const diagnosisData = await ai.generateJson({
+        system: [
+          'You are a cinematic biblical art director. Your task: analyze the episode context and the chosen quote, then write a vivid, concrete, cinematic English scene description for FLUX Schnell image generation.',
+          '',
+          'ANATOMICAL PROMPT SKELETON:',
+          '1. BIBLICAL CONTEXT: Identify the exact biblical scene, location, era, and characters from the transcription. Map it precisely — shipwreck, Bethany, temple, desert, etc. Never use a generic landscape if the text points to a specific scene.',
+          '2. ANATOMICAL ACTION: Focus on concrete human/biblical detail — hands, facial expression, posture, gesture, physical object, interaction between characters. What is the KEY visual moment of this quote?',
+          '3. CINEMATIC LIGHTING: Specify lighting precisely — "golden hour", "soft directional light", "dramatic shafts of light breaking through storm clouds", "warm oil lamp glow". No flat or generic lighting.',
+          '4. TECHNICAL COMPOSITION: "Rule of thirds", "cinematic depth of field", "foreground/background separation", specific color palette, texture details (stone, wood, linen, wool, sea, sand).',
+          '5. STRICT PROHIBITIONS: No modern clothing, no modern buildings, no technology, no fantasy elements, no theatrical exaggeration, no text/letters/words/typography.',
+          '',
+          'THE QUOTE TEXT IS THE CENTRAL FOCUS. The scene must visually communicate the MEANING of the Palavra do Dia.',
+          '',
+          'Return ONLY valid JSON.',
+        ].join('\n'),
+        prompt: [
+          'EPISODE CONTEXT:',
+          queryToUse ? `Quote Text (Portuguese): "${queryToUse}"` : '',
+          bibleReference ? `Bible Reference: ${bibleReference}` : '',
+          title ? `Title: ${title}` : '',
+          sourceExcerpt ? `Source Excerpt: ${sourceExcerpt}` : '',
+          reason ? `Reason: ${reason}` : '',
+          specificityReason ? `Specificity Reason: ${specificityReason}` : '',
+          transcriptionPreview ? `Transcription Preview: ${transcriptionPreview.slice(0, 2000)}` : '',
+          '',
+          'Return JSON: { "flux_visual_prompt": "English cinematic scene description" }',
+        ].filter(Boolean).join('\n'),
+        schema: sceneDiagnosisSchema,
+        validate: (raw) => {
+          const parsed = raw as { flux_visual_prompt?: string }
+          const prompt = (parsed.flux_visual_prompt || '').trim()
+          if (!prompt || prompt.length < 50) {
+            throw new Error('DeepSeek não gerou diagnóstico de cena válido.')
+          }
+          return { flux_visual_prompt: prompt }
+        },
+        temperature: 0.7,
+        maxTokens: 2048,
+      })
+
+      backgroundPrompt = diagnosisData.flux_visual_prompt
+      console.log('[FLUX-BG] Diagnóstico DeepSeek gerado | modelo=', ai.activeTextModel)
+      console.log('[FLUX-BG] Diagnóstico (primeiros 200 chars):', backgroundPrompt.slice(0, 200))
+    }
+
+    // -----------------------------------------------------------------------
+    // ETAPA 2: Constrói prompt visual limpo para FLUX
+    // -----------------------------------------------------------------------
 
     const sceneDescription = backgroundPrompt
-      ? backgroundPrompt
-      : 'A peaceful biblical landscape at golden hour. Ancient stone path leading toward the horizon. Warm directional light. Olive trees. Soft clouds. Reverent and contemplative atmosphere.'
 
     const fluxVisualPrompt = [
       sceneDescription,
       'Cinematic photorealistic, high contrast, dramatic lighting, 8k, no text, no letters, no words, no typography, no overlay, clean background.',
     ].join(' ')
 
-    console.log('[FLUX-BG] Prompt visual (primeiros 200 chars):', fluxVisualPrompt.slice(0, 200))
+    console.log('[FLUX-BG] Prompt FLUX final (primeiros 200 chars):', fluxVisualPrompt.slice(0, 200))
 
     // -----------------------------------------------------------------------
-    // ETAPA 2: FLUX Schnell gera a imagem com o prompt do DeepSeek
+    // ETAPA 3: FLUX Schnell gera a imagem com o prompt do DeepSeek
     // -----------------------------------------------------------------------
 
-    console.log('[FLUX-BG] Etapa 2: Gerando imagem com FLUX Schnell...')
+    console.log('[FLUX-BG] Etapa 3: Gerando imagem com FLUX Schnell...')
 
     // Gera imagem via FLUX Schnell → WebP → R2
     const fluxResult = await generateAndUploadFluxImage(fluxVisualPrompt, {
