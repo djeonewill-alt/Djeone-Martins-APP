@@ -2870,54 +2870,71 @@ export default function NovoEpisodio() {
                               alt={option.label}
                               className="absolute inset-0 h-full w-full object-cover"
                             />
-                            {/* Gradiente e texto via CSS (Designer de Estilo) */}
-                            <div className={`absolute inset-0 flex flex-col items-center justify-center p-6 text-center ${
+                            {/* Overlay gradiente sutil — a imagem é a protagonista */}
+                            <div className={`absolute inset-0 ${
                               option.template === 'devotional'
-                                ? 'bg-gradient-to-b from-black/40 via-black/48 to-black/76'
+                                ? 'bg-gradient-to-t from-black/65 via-black/25 to-black/0'
                                 : option.template === 'modern'
-                                ? 'bg-gradient-to-b from-black/22 via-black/40 to-black/84'
-                                : 'bg-gradient-to-b from-black/66 via-black/43 to-black/82'
+                                ? 'bg-gradient-to-r from-black/75 via-black/35 to-black/0'
+                                : 'bg-gradient-to-t from-black/80 via-black/20 to-black/0'
+                            }`} />
+
+                            {/* Container de texto — layout varia por template */}
+                            <div className={`absolute inset-0 flex p-5 ${
+                              option.template === 'devotional'
+                                ? 'flex-col items-center justify-center text-center'
+                                : option.template === 'modern'
+                                ? 'flex-col items-start justify-end text-left'
+                                : 'flex-col items-center justify-end text-center'
                             }`}>
-                              <p className={`mb-3 font-black uppercase tracking-[0.22em] ${
-                                option.template === 'devotional' ? 'text-[11px] text-white/88' :
-                                option.template === 'modern' ? 'text-[11px] text-blue-200/95' :
-                                'text-[10px] text-white/86'
+                              <div className={`w-full ${
+                                option.template === 'devotional' ? 'max-w-[85%]' :
+                                option.template === 'modern' ? 'max-w-[75%]' :
+                                'max-w-[80%]'
                               }`}>
-                                PALAVRA DO DIA
-                              </p>
-                              <p className={`font-bold leading-[1.12] drop-shadow-[0_4px_16px_rgba(0,0,0,0.82)] ${
-                                option.template === 'devotional' ? 'font-[Georgia,serif] text-white/96' :
-                                option.template === 'modern' ? 'text-left font-[Arial,sans-serif] text-white/98' :
-                                'font-[Arial,sans-serif] uppercase text-white/98'
-                              }`} style={{
-                                fontSize: option.template === 'devotional' ? 'clamp(1.2rem,5vw,3.75rem)' :
-                                          option.template === 'modern' ? 'clamp(1.1rem,4.5vw,3.5rem)' :
-                                          'clamp(1rem,4vw,3.6rem)',
-                              }}>
-                                {formatQuoteTextForDisplay(selectedDailyQuote)}
-                              </p>
-                              <p className={`mt-4 font-bold ${
-                                option.template === 'devotional' ? 'font-[Arial,sans-serif] text-[#dbeafe]' :
-                                option.template === 'modern' ? 'font-[Arial,sans-serif] text-[#bfdbfe]' :
-                                'font-[Arial,sans-serif] text-[#fde68a]'
-                              }`} style={{
-                                fontSize: option.template === 'devotional' ? 'clamp(0.7rem,2vw,1.3rem)' :
-                                          option.template === 'modern' ? 'clamp(0.7rem,2vw,1.3rem)' :
-                                          'clamp(0.7rem,2vw,1.3rem)',
-                              }}>
-                                {formData.bible_reference || 'Devocional'}
-                              </p>
-                              <p className={`mt-1 ${
-                                option.template === 'devotional' ? 'font-[Arial,sans-serif] text-white/76' :
-                                option.template === 'modern' ? 'font-[Arial,sans-serif] text-white/72' :
-                                'font-[Arial,sans-serif] text-white/75'
-                              }`} style={{
-                                fontSize: option.template === 'devotional' ? 'clamp(0.55rem,1.6vw,1rem)' :
-                                          option.template === 'modern' ? 'clamp(0.55rem,1.6vw,1rem)' :
-                                          'clamp(0.55rem,1.6vw,1rem)',
-                              }}>
-                                Pr. Djeone Martins
-                              </p>
+                                <p className={`mb-2 font-black uppercase tracking-[0.18em] ${
+                                  option.template === 'devotional'
+                                    ? 'text-[10px] text-blue-200/90'
+                                    : option.template === 'modern'
+                                    ? 'text-[9px] text-blue-200/85'
+                                    : 'text-[10px] text-white/80'
+                                }`}>
+                                  PALAVRA DO DIA
+                                </p>
+                                <p className={`font-bold leading-[1.18] ${
+                                  option.template === 'devotional'
+                                    ? 'font-[Georgia,serif] text-white/96'
+                                    : option.template === 'modern'
+                                    ? 'font-[Arial,sans-serif] text-white/98'
+                                    : 'font-[Arial,sans-serif] text-white/98'
+                                }`} style={{
+                                  fontSize: option.template === 'devotional' ? 'clamp(0.85rem,2.5vw,1.35rem)' :
+                                            option.template === 'modern' ? 'clamp(0.8rem,2.2vw,1.2rem)' :
+                                            'clamp(0.8rem,2.3vw,1.25rem)',
+                                  textShadow: '0 2px 8px rgba(0,0,0,0.75), 0 1px 3px rgba(0,0,0,0.9)',
+                                }}>
+                                  {formatQuoteTextForDisplay(selectedDailyQuote)}
+                                </p>
+                                <div className={`mt-3 border-t ${
+                                  option.template === 'devotional'
+                                    ? 'mx-auto w-12 border-white/25'
+                                    : option.template === 'modern'
+                                    ? 'w-10 border-white/20'
+                                    : 'mx-auto w-10 border-white/20'
+                                }`} />
+                                <p className={`mt-2 font-bold text-white/85`} style={{
+                                  fontSize: 'clamp(0.55rem,1.3vw,0.75rem)',
+                                  textShadow: '0 1px 4px rgba(0,0,0,0.8)',
+                                }}>
+                                  {formData.bible_reference || 'Devocional'}
+                                </p>
+                                <p className="mt-1 font-semibold text-white/60" style={{
+                                  fontSize: 'clamp(0.45rem,1vw,0.65rem)',
+                                  textShadow: '0 1px 3px rgba(0,0,0,0.7)',
+                                }}>
+                                  Pr. Djeone Martins
+                                </p>
+                              </div>
                             </div>
                           </div>
                           <div className="bg-slate-900 p-3">
