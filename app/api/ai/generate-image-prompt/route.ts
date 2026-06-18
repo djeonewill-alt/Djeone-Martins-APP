@@ -268,6 +268,50 @@ Then write the prompt using that specific scene.
 
 Scene fidelity is more important than generic beauty. If there is a conflict between a beautiful generic image and a specific image from the transcription, choose the specific image from the transcription.
 
+════════════════════════════════════════
+AUTOMATIC TEXT OVERLAY FILL — CRITICAL RULE
+════════════════════════════════════════
+
+In section [7] TEXT OVERLAY of the prompt, you MUST use the EXACT values provided below.
+Do NOT invent, translate, or change these values. Copy them literally.
+
+FIXED VALUES FROM THE INTERFACE (DO NOT CHANGE):
+- [REFERÊNCIA BÍBLICA] = "${params.bibleReference || ''}"
+- [TÍTULO DO EPISÓDIO] = "${params.title || ''}"
+
+How to fill the text overlay in background_prompt and full_prompt_with_text:
+
+1. REFERENCE LINE (topo centralizado):
+   Use the bible reference EXACTLY as provided above.
+   If the reference is empty, omit the reference line.
+   Example: "Salmos 23:1" → write "Salmos 23:1" in elegant serif font, gold color (#ffd98e), centered at top with a subtle decorative line below.
+
+2. TITLE LINES (base centralizada):
+   Take the episode title and split it into 2 lines intelligently.
+   Split at a natural break point (comma, preposition, conjunction, or middle of phrase).
+   NEVER invent a new title. NEVER translate. NEVER reword.
+   Use the EXACT title string provided above.
+   Rules for splitting:
+   - If title is short (under 40 chars), keep it on LINE 1 and leave LINE 2 empty.
+   - If title is longer, split naturally so both lines have similar visual weight.
+   - Prefer splitting at punctuation marks (: , ; —).
+   - Each line must be a readable phrase, not just random words.
+   - Write lines in white sans-serif bold font with soft shadow at bottom center.
+
+   Full example:
+   Title: "A Proteção de Deus em Tempos de Crise e Incerteza"
+   LINE 1: "A Proteção de Deus"
+   LINE 2: "em Tempos de Crise e Incerteza"
+
+   Another example:
+   Title: "O Caminho da Fé"
+   LINE 1: "O Caminho da Fé"
+   LINE 2: (empty)
+
+The background_prompt and full_prompt_with_text MUST embed these text overlay instructions exactly, using the real bible reference and title from above.
+
+════════════════════════════════════════
+
 Official title rules:
 The official episode title is: "${params.title || ''}".
 The official episode title is the primary source for the central cover text.
@@ -316,24 +360,7 @@ For Acts 27 / shipwreck, use language like:
 or:
 "The centurion stands at the shoreline, restraining violence and preserving Paul and the prisoners."
 
-Visual mapping examples:
-1. Acts 27 / shipwreck / centurion / dry land:
-Correct scene: Mediterranean shoreline after a shipwreck, broken Roman ship, survivors swimming, pieces of wood, a centurion protecting prisoners, Paul preserved, golden light breaking through storm clouds, dry land in the distance.
-Do not use: Bethany house, open door, generic stone village, wheat field, temple.
-
-2. Mary / nard / alabaster / Bethany:
-Correct scene: humble interior in Bethany, alabaster jar, perfume oil, warm light, sacrificial worship, reverent atmosphere.
-Do not use: shipwreck, sea, soldiers, temple.
-
-3. Donkey / triumphal entry into Jerusalem:
-Correct scene: ancient road, young donkey, branches, Jerusalem in background, humility of the King.
-Do not use: war horse as the main focus, ocean, closed house.
-
-4. Grain of wheat / dying to bear fruit:
-Correct scene: grain falling into the earth, soil, sprout, golden light, wheat field.
-Do not use: Bethany house, boat, soldiers.
-
-Dynamic negative prompt rule:
+  Dynamic negative prompt rule:
 - If the episode is not about sea/shipwreck, the negative_prompt must include: ocean, sea, boat, ship, waves, storm, water, shipwreck.
 - If the episode is about sea/shipwreck, the negative_prompt must NOT include those marine terms. Instead include: generic ancient house, unrelated stone doorway, peaceful village road, random desert, modern clothing, fantasy armor, theatrical drama, fake text, unreadable letters.
 
@@ -413,19 +440,125 @@ export async function POST(request: NextRequest) {
 
     const promptData = await ai.generateJson({
       system:
-        'You are a cinematic biblical art director. Create premium, photorealistic image prompts for Christian devotional content.\n\n' +
-        'REQUIREMENTS:\n' +
-        '- Cinematic framing: rule of thirds, depth, foreground/background.\n' +
-        '- Reverent lighting: golden hour, warm directional light, soft shafts of light.\n' +
-        '- Subtle symbolism: light vs shadow, open doorways, humble objects, dust motes, olive trees, stone paths.\n' +
-        '- Biblical realism: first-century Judea, linen/wool/stone/wood textures, authentic settings.\n' +
-        '- Tone: reverent, quiet awe, not theatrical or exaggerated.\n' +
-        '- The image WILL contain text (title, subtitle) embedded natively by the image model (FLUX Schnell).\n' +
-        '- Every image must be grounded in a specific biblical scene or theme.\n\n' +
-        'GOOD example:\n' +
-        '"Humble interior in Bethany at dusk. Warm oil lamp on a stone table. An alabaster jar rests in the foreground. Soft golden light enters through an open doorway. Mary kneels at Jesus\' feet. Atmosphere of sacrificial worship, reverent stillness, 4K photorealistic, cinematic depth of field. Text overlay: \'O Rei que Chora\' centered at top in elegant serif font."\n\n' +
-        'BAD example:\n' +
-        '"A beautiful spiritual landscape with light shining down. A person praying in a field. Peaceful and serene."\n\n' +
+        'SYSTEM PROMPT — GERADOR DE PROMPTS PARA FLUX 1.1 PRO ULTRA (PALAVRA DO DIA — PODCAST BÍBLICO)\n\n' +
+        'PERSONA:\n' +
+        'Você é um Diretor de Fotografia de Cinema Épico especializado em arte conceitual para\n' +
+        'séries premium de streaming. Sua missão é transformar a frase escolhida do dia,\n' +
+        'chamada selectedQuote, em prompts visuais para o modelo FLUX 1.1 Pro Ultra,\n' +
+        'gerando capas de podcast de altíssimo nível visual e espiritual.\n\n' +
+        'REGRA PRINCIPAL:\n' +
+        'Cada prompt que você gerar deve conter OBRIGATORIAMENTE as 8 seções abaixo,\n' +
+        'nessa ordem exata, em inglês, sem pular nenhuma seção.\n\n' +
+        'REGRA DE PRIORIDADE ABSOLUTA:\n' +
+        'A frase escolhida, que chega no campo selectedQuote, é o elemento mais importante\n' +
+        'de todo o processo. A imagem inteira deve ser construída para refletir visualmente\n' +
+        'a emoção e a mensagem dessa frase. A transcrição e o contexto bíblico são apenas\n' +
+        'referências secundárias de fundo, nunca o foco principal da imagem.\n\n' +
+        'ANTES DE ESCREVER QUALQUER SEÇÃO DO PROMPT, FAÇA INTERNAMENTE ESTE DIAGNÓSTICO:\n' +
+        '1. Identifique qual é a emoção central da frase (ex: libertação, paz, encorajamento, fé, força).\n' +
+        '2. Identifique o que essa frase quer provocar em quem lê (ex: esperança, coragem, alívio).\n' +
+        '3. Identifique qual metáfora visual representa melhor essa emoção.\n' +
+        '4. Avalie se o contexto bíblico da transcrição pode aparecer como elemento de fundo\n' +
+        '   sem desviar o foco da mensagem da frase.\n\n' +
+        'REGRA FINAL DESTE BLOCO: A pessoa que ver a imagem sem ler o texto deve sentir a\n' +
+        'mesma emoção que a frase transmite. Se a imagem estiver contando uma história\n' +
+        'bíblica histórica no lugar de transmitir a emoção da frase, o prompt falhou e\n' +
+        'deve ser refeito.\n\n' +
+        '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+        'ESTRUTURA OBRIGATÓRIA DO PROMPT\n' +
+        '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
+        '[1] ABERTURA TÉCNICA\n' +
+        'Sempre inicie com:\n' +
+        '"Create a cinematic 16:9 horizontal podcast cover in premium Netflix style,\n' +
+        '1920x1080 resolution, maintaining the series visual identity."\n\n' +
+        '[2] SCENE (Cena Principal)\n' +
+        '- A cena principal deve representar visualmente a emoção da frase escolhida, não\n' +
+        '  ilustrar a narrativa bíblica da transcrição. Use a narrativa bíblica apenas como\n' +
+        '  inspiração de fundo ou como elemento secundário da cena.\n' +
+        '- Descreva o momento dramático central como se fosse uma cena de filme.\n' +
+        '- Use linguagem cinematográfica: close-up, three-quarter view, wide shot, etc.\n' +
+        '- A cena deve ser uma metáfora visual direta da emoção da frase escolhida.\n' +
+        '- Inclua personagens, ações e emoções visíveis.\n' +
+        '- Regra: O observador deve entender a emoção da frase SEM ler o texto da imagem.\n\n' +
+        '[3] SETTING (Cenário e Contexto)\n' +
+        '- Descreva o ambiente físico com precisão geográfica e simbólica.\n' +
+        '- Conecte o cenário à emoção da frase (ex: caminho estreito = perseverança).\n' +
+        '- Indique texturas, materiais e elementos físicos do terreno.\n' +
+        '- O cenário deve reforçar a tensão ou paz da mensagem da frase.\n\n' +
+        '[4] BACKGROUND (Fundo e Profundidade)\n' +
+        '- Descreva o que existe nos planos médio e distante.\n' +
+        '- Use contraste narrativo: perigo x segurança, trevas x luz, mundo x eternidade.\n' +
+        '- Crie profundidade de campo (depth of field) com elementos desfocados ao fundo.\n' +
+        '- O fundo deve contar a história MAIOR por trás da cena principal.\n' +
+        '- Se o contexto bíblico da transcrição tiver elementos visuais marcantes, como\n' +
+        '  o mar, o fogo, o deserto ou uma multidão, eles podem aparecer desfocados no\n' +
+        '  fundo, desde que não disputem atenção com a mensagem emocional da cena principal.\n\n' +
+        'COMPOSITION AND COPY SPACE RULE:\n' +
+        'The image MUST have a central "Safe Zone" for text overlay. You MUST leave the\n' +
+        'center of the image uncluttered, using deep shadows, dark tones, or smooth textures\n' +
+        '(Negative Space). DO NOT place bright highlights, light beams, or highly detailed\n' +
+        'main subjects dead-center. Frame the main subjects (like hands, objects, or\n' +
+        'landscapes) towards the bottom, edges, or silhouettes, keeping the central area\n' +
+        'dark and clean to ensure white typography is highly readable.\n\n' +
+        '[5] LIGHTING (Iluminação Dramática — Variedade Obrigatória)\n' +
+        '- LIGHTING DIVERSITY RULE: You MUST vary the lighting style drastically for each\n' +
+        '  prompt based on the mood. DO NOT always use "god rays" or beams of light from\n' +
+        '  above. Strictly avoid bright volumetric light beams crossing the center of the\n' +
+        '  image, as they ruin text legibility. Instead, use a wide variety of cinematic\n' +
+        '  lighting setups: soft overcast natural light, dramatic side-lighting (chiaroscuro),\n' +
+        '  gentle golden hour, moody low-key shadows, diffuse ambient light, or practical\n' +
+        '  environmental lights. The lighting must feel natural, diverse, and never repetitive.\n' +
+        '- A luz deve ter significado teológico: luz = presença divina, sombra = provação.\n' +
+        '- Defina o contraste emocional que a iluminação cria na cena.\n' +
+        '- Regra: A luz principal deve iluminar o elemento de esperança ou redenção.\n\n' +
+        '[6] COLOR PALETTE (Paleta de Cores)\n' +
+        '- Liste as cores primárias e secundárias com seus significados simbólicos.\n' +
+        '- Sempre inclua: tom dominante, tom de contraste e tom de acento divino.\n' +
+        '- Descreva a atmosfera emocional que a paleta cria.\n' +
+        '- Exemplos de paletas por tema:\n' +
+        '  • Restauração/Graça: dourados quentes + verdes esmeralda + brancos\n' +
+        '  • Vale/Provação: azuis profundos + cinzas + fio de ouro ao fundo\n' +
+        '  • Eternidade/Glória: brancos luminosos + dourados + púrpura suave\n' +
+        '  • Proteção/Guia: âmbares + marrons terrosos + verdes seguros\n\n' +
+        '[7] TEXT OVERLAY (Integração de Texto na Imagem)\n' +
+        'Siga SEMPRE este padrão fixo de tipografia:\n\n' +
+        '- Topo centralizado:\n' +
+        "  '[REFERÊNCIA BÍBLICA]' — fonte serif elegante, cor dourada (#ffd98e),\n" +
+        '  com linha decorativa sutil abaixo\n\n' +
+        '- Base centralizada (duas linhas):\n' +
+        "  '[LINHA 1 DO TÍTULO]' — fonte sans-serif bold, branca, com sombra suave\n" +
+        "  '[LINHA 2 DO TÍTULO]' — mesma fonte, mesma cor\n\n" +
+        '[8] FECHAMENTO DE ESTILO\n' +
+        'Sempre encerre com:\n' +
+        '"Style: High-end streaming series episode artwork, [adjetivo do tom do episódio] tone,\n' +
+        'photorealistic, inspirational, 4K quality. The image should capture the essence of\n' +
+        '[versículo/tema] — [liste 3 a 4 conceitos teológicos centrais do episódio em inglês]."\n\n' +
+        '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+        'REGRAS DE QUALIDADE (NUNCA VIOLE)\n' +
+        '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
+        '✅ Sempre escreva o prompt completo em INGLÊS\n' +
+        '✅ Sempre mantenha identidade visual da série (série = conjunto de episódios)\n' +
+        '✅ A cena principal deve ser uma metáfora visual, nunca literal demais\n' +
+        '✅ A luz divina SEMPRE ilumina o elemento central de esperança\n' +
+        '✅ O texto na imagem segue SEMPRE o padrão tipográfico fixo acima\n' +
+        '✅ Cada prompt deve ter entre 350 e 500 palavras\n' +
+        '✅ Use linguagem técnica cinematográfica em todas as seções\n' +
+        '✅ O conceito espiritual deve ser visualmente compreensível sem o texto\n' +
+        '✅ A imagem deve transmitir a emoção da frase escolhida mesmo sem o texto visível\n' +
+        '✅ O contexto bíblico da transcrição é secundário e deve aparecer apenas como pano de fundo\n\n' +
+        '❌ Nunca gere cenas violentas, perturbadoras ou de mau gosto\n' +
+        '❌ Nunca omita nenhuma das 8 seções\n' +
+        '❌ Nunca use iluminação predominantemente escura (sem esperança visível)\n' +
+        '❌ Nunca coloque texto demais na imagem (máximo: referência + 2 linhas de título)\n' +
+        '❌ Nunca gere imagens de Jesus Cristo com rosto definido\n' +
+        '❌ Nunca use estética cartoon, anime ou ilustração infantil\n' +
+        '❌ Nunca gere uma imagem que ilustre apenas a narrativa bíblica histórica sem refletir a emoção da frase escolhida\n' +
+        '❌ Nunca ignore o campo selectedQuote — ele é a âncora principal de toda a imagem\n\n' +
+        'PROIBIÇÃO TÉCNICA:\n' +
+        'É terminantemente proibido gerar cenários de praia, deserto ou multidões como foco\n' +
+        'principal, mesmo que a transcrição mencione tais contextos bíblicos. Se a tentação\n' +
+        'de gerar uma cena histórica for forte, force a criação de uma imagem abstrata,\n' +
+        'focada em iluminação e texturas emocionais.\n\n' +
         'Return valid JSON only. Do not generate images.',
       prompt: buildPrompt({
         title,
@@ -445,7 +578,7 @@ export async function POST(request: NextRequest) {
         const validated = normalizePromptResponse(raw)
         return enforceOfficialTitle(validated, title)
       },
-      temperature: 0.5,
+      temperature: 0.6,
       maxTokens: 4096,
     })
 
@@ -459,7 +592,7 @@ export async function POST(request: NextRequest) {
 
     if (format === 'episode_cover' || format === 'series_cover') {
       try {
-        console.log('[IMAGE-PROMPT] Etapa 2: Gerando imagem com FLUX Schnell...')
+        console.log('[IMAGE-PROMPT] Etapa 2: Gerando imagem com FLUX 2 Pro...')
 
         // Mapeia o formato para o tamanho de imagem adequado
         const imageSize = format === 'series_cover'
@@ -468,14 +601,27 @@ export async function POST(request: NextRequest) {
 
         const r2Prefix = format === 'episode_cover' ? 'covers/episodes' : 'covers/series'
 
-        // Unificação radical: mesmo prompt da Palavra do Dia
-        // [Diagnóstico da Cena] + sufixo obrigatório anti-texto
-        const sceneDiagnosis = promptData.background_prompt || 'Cinematic biblical scene. Reverent atmosphere. Warm golden light.'
+        // Prompt gerado pelo DeepSeek + sufixo de qualidade
+        const sceneDiagnosis = promptData.background_prompt || 'Abstract emotional landscape. Volumetric light. Deep spiritual atmosphere.'
 
+        // Capas (episode_cover / series_cover): COM tipografia integrada na imagem
+        const textOverlayInstructions = [
+          'Cinematic movie poster typography design:',
+          bibleReference
+            ? `At the very top center, the text "${bibleReference}" is elegantly written in golden serif letters.`
+            : '',
+          `At the very bottom center, the main title "${title || 'Devocional'}" is written in massive, bold, white sans-serif letters with a cinematic shadow.`,
+          'The text must be flawlessly spelled, highly legible, and perfectly integrated into the composition.',
+        ].filter(Boolean).join(' ')
+
+        // O background_prompt do DeepSeek já inclui a seção [8] FECHAMENTO DE ESTILO
+        // com "Style: High-end streaming series..." — não duplicar.
         const cleanFluxPrompt = [
           sceneDiagnosis,
-          'Cinematic photorealistic, high contrast, dramatic lighting, 8k, no text, no letters, no words, no typography, no overlay, clean background.',
-        ].join(' ')
+          textOverlayInstructions,
+        ].join('\n\n')
+
+        console.log('DEBUG_COVER_PROMPT:', cleanFluxPrompt)
 
         fluxResult = await generateAndUploadFluxImage(cleanFluxPrompt, {
           imageSize,

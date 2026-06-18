@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { DeepSeekProvider } from '@/lib/ai/deepseek'
 
 type DailyQuoteSuggestion = {
   quote_text: string
@@ -11,7 +12,7 @@ type DailyQuoteSuggestion = {
 
 type GenerateResult = {
   suggestions: DailyQuoteSuggestion[]
-  provider: 'cloudflare' | 'openai'
+  provider: 'deepseek'
 }
 
 const ALLOWED_USE_CASES = new Set([
@@ -286,113 +287,48 @@ function buildPrompt(params: {
   const bibleReference = cleanText(params.bibleReference || '')
 
   return `
-Você é um editor devocional cristão brasileiro com maturidade pastoral, sensibilidade bíblica, precisão teológica e linguagem forte para cards espirituais.
+Você é um assistente especializado em criar frases de efeito para um aplicativo cristão chamado "Palavra do Dia". Sua única tarefa agora é ler a transcrição de uma pregação e gerar frases impactantes baseadas nela.
 
-Sua tarefa é ler a transcrição de um áudio devocional e criar frases fortes para "Palavra do Dia".
+REGRA 1 — FIDELIDADE TOTAL À TRANSCRIÇÃO
+Você só pode usar ideias, conceitos e palavras que estejam presentes na transcrição. Não invente nada. Não acrescente ideias que o pregador não disse. Não complete pensamentos com coisas que você acha que ele quis dizer. Se uma ideia não está na transcrição, ela não pode aparecer na frase. Leia a transcrição com atenção antes de escrever qualquer coisa.
 
-A frase deve parecer uma sentença devocional poderosa, curta e memorável, como algo que uma pessoa salvaria, compartilharia ou levaria para oração.
+REGRA 2 — TAMANHO IDEAL
+A frase precisa ter entre 15 e 35 palavras. Não pode ser curta demais (menos de 15 palavras) porque ficaria vaga e sem impacto. Não pode ser longa demais (mais de 35 palavras) porque a frase precisa caber em uma imagem no aplicativo, em no máximo 4 linhas de texto. Conte as palavras antes de entregar.
 
-PROCESSO EDITORIAL:
-Antes de criar as frases, gere pelo menos 12 candidatas internamente e identifique mentalmente:
-1. o tema espiritual central;
-2. a tensão humana presente no áudio;
-3. a imagem bíblica principal;
-4. o princípio espiritual aplicável;
-5. a direção pastoral para quem vai ler;
-6. um trecho real da transcrição que sustenta cada frase;
-7. a frase mais memorável possível para transformar isso em Palavra do Dia.
+REGRA 3 — TOM FORTE E ENCORAJADOR
+A frase precisa encorajar quem está passando por dificuldades, críticas, calúnias ou momentos difíceis. Ela deve soar como uma verdade que fortalece, que levanta, que dá esperança. Não pode ser uma frase fraca, neutra ou apenas descritiva. Ela precisa fazer a pessoa sentir que Deus está ao lado dela.
 
-A FRASE DEVE UNIR:
-- verdade bíblica;
-- aplicação pessoal;
-- força pastoral;
-- imagem espiritual;
-- clareza emocional;
-- profundidade simples;
-- linguagem memorável.
+REGRA 4 — ESTILO DA FRASE
+Escreva como uma declaração poderosa ou uma reflexão profunda. Pode começar com "Não é...", "Feche...", "O que Deus fala...", "Quando Deus...", entre outros. Evite começar com "Hoje" ou com o nome de personagens bíblicos, porque a frase precisa falar diretamente com quem lê, na primeira ou segunda pessoa.
 
-NÃO GERE:
-- resumo histórico;
-- frase técnica;
-- frase acadêmica;
-- frase de estudo bíblico;
-- pergunta;
-- frase quebrada da transcrição;
-- frase com erro de português;
-- frase genérica demais;
-- frase longa demais;
-- frase que pareça legenda comum;
-- frase que apenas descreva o texto bíblico;
-- frase que mencione "áudio", "mensagem", "transcrição" ou "episódio";
-- frase com data, dia da semana ou introdução do pregador;
-- frase com repetição excessiva;
-- frase confusa;
-- frase que pareça que foi copiada sem lapidação.
-- frase que poderia servir para qualquer devocional;
-- frase baseada apenas em palavras abstratas como dor, esperança, aflição, vida, transformação, processo ou propósito, salvo quando essas palavras forem centrais no trecho real;
-- cinco frases com a mesma estrutura verbal;
-- frase sem conexão rastreável com a transcrição.
+REGRA 5 — IDIOMA
+Escreva sempre em português brasileiro. Use linguagem simples, direta e acessível para qualquer pessoa, independente do nível de escolaridade.
 
-REGRA DE ESPECIFICIDADE:
-Cada frase deve nascer de um ponto real da transcrição.
-Use personagens, lugares, ações, contrastes, imagens bíblicas ou aplicações pastorais presentes no conteúdo.
-Prefira frases específicas, como "Jerusalém tinha o templo, mas Jesus repousava em Betânia", em vez de frases genéricas como "Jesus transforma dor em esperança".
-Se não houver apoio claro na transcrição, descarte a candidata.
+REGRA 6 — FORMATO DE SAÍDA
+Gere exatamente 5 opções de frases. Retorne SOMENTE um JSON válido, exatamente neste formato, sem texto antes ou depois:
 
-REGRA EDITORIAL DA CENTRAL DE CONTEUDO:
-Cada sugestao deve ter um trecho-base real da transcricao em source_excerpt.
-O source_excerpt deve ser curto, literal ou quase literal, e nao pode ser uma parafrase inventada.
-A frase precisa ter conexao rastreavel com esse trecho-base.
-Prefira frases com contraste biblico, imagem concreta, lugar, personagem, acao, objeto, tensao espiritual ou aplicacao devocional especifica.
-Evite frases que poderiam servir para qualquer devocional, como:
-- "Jesus esta com voce"
-- "Deus transforma sua dor"
-- "Confie no Senhor"
-Essas frases so podem aparecer se a formulacao concreta do episodio sustentar algo muito especifico.
-Nao de nota 10 para tudo. Use 10 apenas para frase excepcional.
+{
+  "suggestions": [
+    {
+      "quote_text": "frase forte aqui",
+      "reason": "explique brevemente por que esta frase tem força e se encaixa como Palavra do Dia",
+      "score": 9,
+      "source_excerpt": "trecho curto e real da transcrição que sustenta a frase",
+      "use_case": "card",
+      "specificity_reason": "por que a frase é específica deste episódio e não serviria para qualquer outro"
+    }
+  ]
+}
 
-EXEMPLOS DE ESTILO, NAO DE TEMA FIXO:
-- "Jerusalem tinha o templo. Jesus dormia em Betania."
-- "A presenca de Deus estava com o pobre e com o aflito."
-- "Jesus entra na nossa Betania antes de chamar vida para fora."
+Campos obrigatórios em cada sugestão:
+- quote_text (a frase)
+- source_excerpt (trecho real da transcrição)
+- reason (justificativa curta)
+- score (nota de 8 a 10)
+- use_case: use somente card, whatsapp, instagram, short ou devotional
+- specificity_reason (por que é específica)
 
-REGRA TEOLÓGICA:
-Quando houver personagens, lugares, objetos ou símbolos bíblicos, use-os com sabedoria pastoral.
-Não confunda Deus com um personagem humano.
-Não transforme símbolo em doutrina.
-Não force alegorias.
-Use personagens e imagens como exemplos, sinais, figuras ou aplicações espirituais, mantendo precisão bíblica.
-
-REGRA DE PROFUNDIDADE:
-Não entregue uma frase apenas "bonita".
-A frase precisa carregar peso espiritual real.
-Ela deve despertar fé, discernimento, arrependimento, consolo, coragem ou direção.
-
-REGRA DE LINGUAGEM:
-Prefira frases com imagens fortes e simples.
-Prefira linguagem pastoral, clara e profunda.
-Evite frases comuns demais.
-Evite frases que qualquer IA poderia escrever sem entender o áudio.
-Varie a construção das frases: algumas podem servir para card, outras para short, WhatsApp ou Instagram, mas todas devem funcionar como Palavra do Dia.
-
-CRITÉRIOS DE NOTA:
-10 = frase muito forte, memorável, bíblica, pastoral, emocional e pronta para card.
-9 = frase forte, clara, espiritual e muito compartilhável.
-8 = frase boa, publicável e devocional.
-Abaixo de 8 = não retorne.
-
-REGRAS DE TAMANHO:
-- Cada frase deve ter entre 8 e 24 palavras.
-- Pode ter até 28 palavras se for muito forte.
-- Não escreva parágrafos.
-- Não coloque referência bíblica dentro da frase.
-- Não use emojis.
-- Não use hashtags.
-
-IMPORTANTE:
-Gere 12 candidatas internamente, mas retorne somente as 5 melhores.
-Não retorne frases medianas apenas para completar número.
-Se uma frase não tiver força espiritual real, descarte.
+Não use aspas dentro do quote_text que possam quebrar o JSON. Não use emojis. Não use hashtags. Não escreva nada além do JSON.
 
 TÍTULO DO EPISÓDIO:
 ${title || 'Não informado'}
@@ -402,31 +338,6 @@ ${bibleReference || 'Não informada'}
 
 TRANSCRIÇÃO:
 ${params.transcriptionText}
-
-Responda SOMENTE em JSON válido, exatamente neste formato:
-
-{
-  "suggestions": [
-    {
-      "quote_text": "frase forte aqui",
-      "reason": "explique em uma frase curta por que essa frase tem força devocional",
-      "score": 9,
-      "source_excerpt": "trecho curto e real da transcricao que sustenta a frase",
-      "use_case": "card",
-      "specificity_reason": "por que a frase é específica deste episódio"
-    }
-  ]
-}
-
-Campos obrigatorios em cada sugestao:
-- quote_text
-- source_excerpt
-- reason
-- score
-- use_case: use somente card, whatsapp, instagram, short ou devotional
-- specificity_reason
-
-Retorne exatamente 5 sugestões.
 `.trim()
 }
 
@@ -490,18 +401,15 @@ function validateSuggestions(input: unknown): DailyQuoteSuggestion[] {
       return (
         item.score >= 8 &&
         item.quote_text.length >= 30 &&
-        item.quote_text.length <= 190 &&
-        item.wordCount >= 7 &&
-        item.wordCount <= 28 &&
+        item.quote_text.length <= 220 &&
+        item.wordCount >= 10 &&
+        item.wordCount <= 38 &&
         !looksLikeQuestion(item.quote_text) &&
         !looksLikeHistoricalSummary(item.quote_text) &&
-        !hasWeakGenericLanguage(item.quote_text) &&
-        !hasOverusedDevotionalVocabulary(item.quote_text) &&
         !looksBrokenOrUnclear(item.quote_text) &&
         !hasExcessiveRepetition(item.quote_text) &&
         !hasAdministrativeLanguage(item.source_excerpt || '') &&
-        (item.hasSourceExcerpt || item.hasConcreteSignal) &&
-        (item.hasSourceOverlap || item.hasConcreteSignal)
+        (item.hasSourceExcerpt || item.hasConcreteSignal)
       )
     })
 
@@ -544,149 +452,42 @@ function validateSuggestions(input: unknown): DailyQuoteSuggestion[] {
   return suggestions.slice(0, 5)
 }
 
-async function generateWithCloudflare(params: {
+async function generateWithDeepSeek(params: {
   transcriptionText: string
   title?: string
   bibleReference?: string
 }): Promise<GenerateResult> {
-  const accountId =
-    process.env.CLOUDFLARE_ACCOUNT_ID ||
-    process.env.R2_ACCOUNT_ID
-
-  const apiToken = process.env.CLOUDFLARE_API_TOKEN
-
-  if (!accountId || !apiToken) {
-    throw new Error(
-      'Credenciais Cloudflare AI ausentes. Configure CLOUDFLARE_ACCOUNT_ID e CLOUDFLARE_API_TOKEN no .env.local.'
-    )
-  }
-
-  const model =
-    process.env.CLOUDFLARE_TEXT_MODEL ||
-    '@cf/meta/llama-3.1-8b-instruct'
-
+  const provider = new DeepSeekProvider('flash')
   const prompt = buildPrompt(params)
 
-  const response = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`,
+  const schema = `{
+  "suggestions": [
     {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        messages: [
-          {
-            role: 'system',
-            content:
-              'Você é um editor devocional cristão brasileiro. Responda somente em JSON válido.',
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        temperature: 0.45,
-        max_tokens: 1200,
-      }),
+      "quote_text": "frase forte aqui",
+      "reason": "justificativa curta",
+      "score": 9,
+      "source_excerpt": "trecho real da transcrição",
+      "use_case": "card",
+      "specificity_reason": "por que é específica deste episódio"
     }
-  )
+  ]
+}`
 
-  const data = await response.json()
-
-  if (!response.ok || data?.success === false) {
-    console.error('Erro Cloudflare Workers AI:', data)
-    throw new Error(
-      data?.errors?.[0]?.message ||
-        data?.error ||
-        'Erro ao gerar frases com Cloudflare AI.'
-    )
-  }
-
-  const content =
-    data?.result?.response ||
-    data?.result?.text ||
-    data?.response ||
-    ''
-
-  if (!content) {
-    console.error('Resposta Cloudflare inesperada:', data)
-    throw new Error('A Cloudflare AI não retornou conteúdo.')
-  }
-
-  const parsed = extractJsonFromText(content)
-  const suggestions = validateSuggestions(parsed)
-
-  return {
-    suggestions,
-    provider: 'cloudflare',
-  }
-}
-
-async function generateWithOpenAI(params: {
-  transcriptionText: string
-  title?: string
-  bibleReference?: string
-}): Promise<GenerateResult> {
-  const apiKey = process.env.OPENAI_API_KEY
-
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY ausente.')
-  }
-
-  const model =
-    process.env.OPENAI_DAILY_QUOTE_MODEL ||
-    process.env.OPENAI_MODEL ||
-    'gpt-4o-mini'
-
-  const prompt = buildPrompt(params)
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.45,
-      messages: [
-        {
-          role: 'system',
-          content:
-            'Você é um editor devocional cristão brasileiro. Responda somente em JSON válido.',
-        },
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-    }),
+  const suggestions = await provider.generateJson({
+    system:
+      'Você é um assistente especializado em criar frases de efeito para um aplicativo cristão chamado "Palavra do Dia". ' +
+      'Você lê transcrições de pregações e gera frases impactantes baseadas nelas. ' +
+      'Responda APENAS com JSON válido. Sem markdown. Sem texto extra.',
+    prompt,
+    schema,
+    validate: validateSuggestions,
+    temperature: 0.6,
+    maxTokens: 4096,
   })
 
-  const data = await response.json()
-
-  if (!response.ok) {
-    console.error('Erro OpenAI:', data)
-    throw new Error(
-      data?.error?.message ||
-        'Erro ao gerar frases com OpenAI.'
-    )
-  }
-
-  const content = data?.choices?.[0]?.message?.content
-
-  if (!content) {
-    throw new Error('A OpenAI não retornou conteúdo.')
-  }
-
-  const parsed = extractJsonFromText(content)
-  const suggestions = validateSuggestions(parsed)
-
   return {
     suggestions,
-    provider: 'openai',
+    provider: 'deepseek',
   }
 }
 
@@ -712,50 +513,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    try {
-      const result = await generateWithCloudflare({
-        transcriptionText,
-        title,
-        bibleReference,
-      })
+    const result = await generateWithDeepSeek({
+      transcriptionText,
+      title,
+      bibleReference,
+    })
 
-      return NextResponse.json({
-        success: true,
-        provider: result.provider,
-        suggestions: result.suggestions,
-      })
-    } catch (cloudflareError) {
-      console.error('Falha Cloudflare AI:', cloudflareError)
-
-      try {
-        const result = await generateWithOpenAI({
-          transcriptionText,
-          title,
-          bibleReference,
-        })
-
-        return NextResponse.json({
-          success: true,
-          provider: result.provider,
-          suggestions: result.suggestions,
-        })
-      } catch (openAiError) {
-        console.error('Falha OpenAI:', openAiError)
-
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              'Não foi possível gerar frases fortes automaticamente. A Cloudflare AI falhou e a OpenAI não está configurada.',
-            details:
-              cloudflareError instanceof Error
-                ? cloudflareError.message
-                : 'Erro desconhecido na Cloudflare AI.',
-          },
-          { status: 500 }
-        )
-      }
-    }
+    return NextResponse.json({
+      success: true,
+      provider: result.provider,
+      suggestions: result.suggestions,
+    })
   } catch (error) {
     console.error('Erro ao gerar Palavra do Dia:', error)
 

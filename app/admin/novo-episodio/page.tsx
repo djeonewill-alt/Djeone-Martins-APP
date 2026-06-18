@@ -1515,7 +1515,7 @@ export default function NovoEpisodio() {
       resetCardData()
 
       const providerMessage =
-        data.provider === 'openai'
+        data.provider === 'openai' || data.provider === 'deepseek'
           ? 'com IA'
           : 'com modo local'
 
@@ -1613,7 +1613,7 @@ export default function NovoEpisodio() {
       resetCardData()
 
       const providerMessage =
-        quoteData.provider === 'openai'
+        quoteData.provider === 'openai' || quoteData.provider === 'deepseek'
           ? 'com IA'
           : 'com modo local'
 
@@ -1718,60 +1718,14 @@ export default function NovoEpisodio() {
     setGeneratingCards(true)
 
     try {
-      const quoteContext = getSelectedQuotePromptContext()
-      const contextText = [
-        quoteText,
-        quoteContext.sourceExcerpt,
-        quoteContext.reason,
-        quoteContext.specificityReason,
-        formData.title,
-        formData.bible_reference,
-        transcriptionText.slice(0, 2000),
-      ].filter(Boolean).join('\n')
-
-      // Primeiro, gera o diagnóstico de cena com DeepSeek
-      const diagnosisResponse = await fetch('/api/ai/generate-image-prompt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: formData.title,
-          bibleReference: formData.bible_reference,
-          description: formData.description,
-          selectedQuote: quoteText,
-          sourceExcerpt: quoteContext.sourceExcerpt,
-          reason: quoteContext.reason,
-          specificityReason: quoteContext.specificityReason,
-          transcriptionText: transcriptionText.slice(0, 7000),
-          format: 'daily_quote_card',
-          includeTextOverlay: false,
-        }),
-      })
-
-      const diagnosisData = await diagnosisResponse.json()
-
-      if (!diagnosisResponse.ok || !diagnosisData.background_prompt) {
-        throw new Error(diagnosisData.error || 'DeepSeek não gerou diagnóstico de cena.')
-      }
-
-      const backgroundPrompt = refinement
-        ? `${diagnosisData.background_prompt} REFINEMENT: ${refinement}`
-        : diagnosisData.background_prompt
-
-      // Depois, gera a imagem com FLUX via search-backgrounds (que chama DeepSeek internamente se necessário)
+      // Gera a imagem com FLUX via ImageOrchestrator (backend)
+      // O orquestrador usa APENAS a frase — input isolado, sem contexto bíblico
       const response = await fetch('/api/images/search-backgrounds', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           quoteText,
           purpose: 'daily_quote_card',
-          title: formData.title,
-          bibleReference: formData.bible_reference,
-          sourceExcerpt: quoteContext.sourceExcerpt,
-          reason: quoteContext.reason,
-          specificityReason: quoteContext.specificityReason,
-          useCase: quoteContext.useCase,
-          transcriptionPreview: transcriptionText.slice(0, 2000),
-          backgroundPrompt,
         }),
       })
 
@@ -2264,7 +2218,7 @@ export default function NovoEpisodio() {
           <h1 className="text-2xl font-bold text-white">🎙️ Novo Episódio</h1>
 
           <p className="text-slate-400 text-sm mt-1">
-            Publicar ou agendar devocional com Palavra do Dia automática
+            Preparar episódio para o repositório editorial
           </p>
         </div>
       </div>
@@ -2416,7 +2370,7 @@ export default function NovoEpisodio() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-5">
+        <form className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-5">
           <h3 className="text-lg font-bold text-white border-b border-slate-800 pb-3">
             📝 Informações
           </h3>
@@ -2537,56 +2491,6 @@ export default function NovoEpisodio() {
 
             {enableDailyQuote && (
               <div className="space-y-4 bg-slate-950 border border-slate-800 rounded-xl p-4">
-                <div className="bg-blue-950/40 border border-blue-900/60 rounded-lg p-3">
-                  <p className="text-xs text-blue-100 leading-relaxed">
-                    Fluxo recomendado: envie o áudio → transcreva → gere título/descrição → gere frases → escolha a frase → corrija se necessário → gere 3 cards → escolha o card final.
-                  </p>
-                </div>
-
-                <label className="flex items-start gap-3 rounded-lg border border-slate-800 bg-slate-900/70 p-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={autoGenerateEpisodeMetadata}
-                    onChange={(e) => setAutoGenerateEpisodeMetadata(e.target.checked)}
-                    className="mt-1"
-                  />
-
-                  <div>
-                    <p className="text-sm font-semibold text-slate-200">
-                      Gerar título e descrição automaticamente
-                    </p>
-
-                    <p className="text-xs text-slate-500 mt-1">
-                      Use nos áudios novos do dia. Para séries antigas com título pronto, desmarque esta opção.
-                    </p>
-
-                    {generatingEpisodeMetadata && (
-                      <p className="text-xs text-blue-300 mt-2">
-                        ⏳ Gerando título e descrição...
-                      </p>
-                    )}
-                  </div>
-                </label>
-
-                <label className="flex items-start gap-3 rounded-lg border border-slate-800 bg-slate-900/70 p-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={generateAdvancedTranscription}
-                    onChange={(e) => setGenerateAdvancedTranscription(e.target.checked)}
-                    className="mt-1"
-                  />
-
-                  <div>
-                    <p className="text-sm font-semibold text-slate-200">
-                      Gerar transcricao avancada para Central/Shorts
-                    </p>
-
-                    <p className="text-xs text-slate-500 mt-1">
-                      Gera segmentos para o player e palavras com timestamps para cortes e legendas sincronizadas.
-                    </p>
-                  </div>
-                </label>
-
                 <div className="flex flex-col sm:flex-row gap-3">
                   <button
                     type="button"
@@ -3113,112 +3017,6 @@ export default function NovoEpisodio() {
             </div>
           </div>
 
-          <div className="border-t border-slate-800 pt-5">
-            <h4 className="text-sm font-semibold text-slate-300 mb-3">
-              ⏰ Agendamento
-            </h4>
-
-            <div className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={setTomorrowMorningSchedule}
-                  className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-200 hover:border-blue-500 hover:text-white"
-                >
-                  Amanhã às 06:00
-                </button>
-
-                <button
-                  type="button"
-                  onClick={setTodayInFifteenMinutesSchedule}
-                  className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-200 hover:border-blue-500 hover:text-white"
-                >
-                  Hoje em 15 minutos
-                </button>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-2">
-                  Data de Publicação
-                </label>
-
-                <input
-                  type="date"
-                  value={formData.scheduled_date}
-                  min={getLocalDateString()}
-                  onChange={(e) => setFormData({ ...formData, scheduled_date: e.target.value })}
-                  className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-3 focus:border-blue-500 outline-none"
-                />
-
-                <p className="text-xs text-slate-500 mt-1">
-                  Deixe em branco para publicar imediatamente
-                </p>
-              </div>
-
-              {formData.scheduled_date && (
-                <>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={useDefaultTime}
-                      onChange={(e) => setUseDefaultTime(e.target.checked)}
-                    />
-
-                    <span className="text-sm text-slate-300">Sempre publicar às 6:00 da manhã</span>
-                  </label>
-
-                  {!useDefaultTime && (
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-300 mb-2">
-                        Horário
-                      </label>
-
-                      <input
-                        type="time"
-                        value={formData.scheduled_time}
-                        step={300}
-                        onChange={(e) => setFormData({ ...formData, scheduled_time: e.target.value })}
-                        className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-3 focus:border-blue-500 outline-none"
-                      />
-                    </div>
-                  )}
-
-                  <div className="rounded-lg border border-slate-800 bg-slate-950 p-3">
-                    <p className="text-sm text-slate-200">
-                      Será publicado em {scheduledPreview}, horário de Brasília.
-                    </p>
-
-                    <p className="text-xs text-slate-500 mt-1">
-                      No banco, esse horário aparece em UTC.
-                    </p>
-
-                    {isScheduledInPast && (
-                      <p className="text-sm text-red-300 mt-2">
-                        Esse horário já passou. Escolha um horário futuro.
-                      </p>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-
-          {!formData.scheduled_date && (
-            <div className="border-t border-slate-800 pt-5">
-              <label className="block text-sm font-semibold text-slate-300 mb-2">
-                Status *
-              </label>
-
-              <select
-                value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value as 'draft' | 'published' })}
-                className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-3 focus:border-blue-500 outline-none"
-              >
-                <option value="draft">💾 Salvar como Rascunho</option>
-                <option value="published">✅ Publicar Agora</option>
-              </select>
-            </div>
-          )}
 
           <div className="rounded-xl border border-amber-300/20 bg-amber-500/5 p-4">
             <p className="text-sm font-semibold text-amber-100">
@@ -3244,26 +3042,6 @@ export default function NovoEpisodio() {
             >
               Cancelar
             </Link>
-
-            <button
-              type="submit"
-              disabled={loading || savingToRepository}
-              className="flex-1 bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-            >
-              {loading
-                ? '⏳ Salvando...'
-                : formData.scheduled_date
-                ? enableDailyQuote && selectedDailyQuote
-                  ? '📅 Agendar Episódio + Palavra'
-                  : '📅 Agendar Publicação'
-                : formData.status === 'published'
-                ? enableDailyQuote && selectedDailyQuote
-                  ? '📤 Publicar Episódio + Palavra'
-                  : '📤 Publicar Agora'
-                : enableDailyQuote && selectedDailyQuote
-                ? '💾 Salvar Rascunho + Palavra'
-                : '💾 Salvar Rascunho'}
-            </button>
           </div>
         </form>
       </div>

@@ -95,8 +95,8 @@ function getWebpTargetSizeBytes(): number {
 /**
  * Chama a API do Fal.ai para gerar imagem via FLUX Schnell.
  *
- * Endpoint: POST https://fal.run/fal-ai/flux/schnell
- * Docs: https://fal.ai/models/fal-ai/flux/schnell
+ * Endpoint: POST https://fal.run/fal-ai/flux-2-pro
+ * Docs: https://fal.ai/models/fal-ai/flux-2-pro
  */
 export async function generateWithFlux(
   params: FalGenerateParams
@@ -107,7 +107,7 @@ export async function generateWithFlux(
 
   const startTime = Date.now()
 
-  const response = await fetch(`${FAL_BASE_URL}/fal-ai/flux/schnell`, {
+  const response = await fetch(`${FAL_BASE_URL}/fal-ai/flux-2-pro`, {
     method: 'POST',
     headers: {
       Authorization: `Key ${apiKey}`,
@@ -208,7 +208,7 @@ export async function uploadFluxImageToR2(
   console.log('[FAL] Baixando imagem do Fal.ai:', falImage.url.slice(0, 80))
 
   const downloadResponse = await fetch(falImage.url, {
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(60000),
   })
 
   if (!downloadResponse.ok) {

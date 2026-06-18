@@ -16,7 +16,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 import { generateAndUploadFluxImage } from '@/lib/ai/fal'
-import { getAIProvider } from '@/lib/ai/provider'
+import { generateFluxPrompt, buildFluxFinalPrompt } from '@/lib/ai/ImageOrchestrator'
+
+export const maxDuration = 120
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -77,42 +79,36 @@ async function saveFluxBackgroundHistory(params: {
   const today = now.split('T')[0]
   const theme = params.themeKeywords[0] || 'devocional'
 
-  // 1. Cria/atualiza registro em quote_backgrounds
+  // 1. Insere novo registro em quote_backgrounds
   const { data: background, error: backgroundError } = await supabase
     .from('quote_backgrounds')
-    .upsert(
-      {
-        image_url: params.r2Url,
-        preview_url: params.r2Url,
-        theme,
-        theme_keywords: params.themeKeywords,
-        source: 'flux',
-        source_image_provider: 'flux',
-        source_page_url: null,
-        query_used: params.promptUsed.slice(0, 500),
-        last_used_date: today,
-        use_count: 1,
-        is_active: true,
-        is_approved: true,
-        updated_at: now,
-      },
-      {
-        onConflict: 'image_url',
-        ignoreDuplicates: false,
-      }
-    )
+    .insert({
+      image_url: params.r2Url,
+      preview_url: params.r2Url,
+      theme,
+      theme_keywords: params.themeKeywords,
+      source: 'flux',
+      source_image_provider: 'flux',
+      source_page_url: null,
+      query_used: params.promptUsed.slice(0, 500),
+      last_used_date: today,
+      use_count: 1,
+      is_active: true,
+      is_approved: true,
+      updated_at: now,
+    })
     .select('id')
     .single()
 
   if (backgroundError) {
-    console.error('[FLUX-BG] Erro ao salvar quote_backgrounds:', backgroundError)
+    console.error('[FLUX-BG] Erro ao inserir quote_backgrounds:', backgroundError)
     throw backgroundError
   }
 
   const quoteBackgroundId = background?.id
 
   if (!quoteBackgroundId) {
-    throw new Error('Falha ao obter ID do background após upsert.')
+    throw new Error('Falha ao obter ID do background após insert.')
   }
 
   // 2. Atualiza a daily_quote com o background_image_url
@@ -188,111 +184,37 @@ export async function POST(request: NextRequest) {
     }
 
     // -----------------------------------------------------------------------
-    // ETAPA 1: DeepSeek gera diagnóstico profundo de cena (backgroundPrompt)
+    // ETAPA 1: Gerar prompt visual via ImageOrchestrator (SEMPRE)
     // -----------------------------------------------------------------------
+    // O backgroundPrompt do frontend é IGNORADO — o ImageOrchestrator é a
+    // única fonte de prompts visuais para Palavra do Dia.
+    // Isso garante que prompts antigos com cenas bíblicas históricas nunca
+    // cheguem ao FLUX.
 
-    // backgroundPrompt pode vir do frontend ou ser gerado aqui
-    let backgroundPrompt = cleanText(String(body.backgroundPrompt || ''))
+    console.log('[FLUX-BG] Gerando prompt via ImageOrchestrator (input isolado)...')
 
-    if (!backgroundPrompt) {
-      console.log('[FLUX-BG] backgroundPrompt ausente — gerando com DeepSeek...')
+    // Orquestrador recebe APENAS a frase. Nenhum contexto bíblico.
+    const orchestratorResult = await generateFluxPrompt({
+      selectedQuote: queryToUse,
+    })
 
-      const sceneDiagnosisSchema = `{
-  "flux_visual_prompt": "string (English scene description for FLUX image generation)"
-}`
-
-      const ai = getAIProvider({
-        textProvider: 'deepseek-flash',
-        fallbackProvider: 'openai',
-      })
-
-      const diagnosisData = await ai.generateJson({
-        system: [
-          'You are the DIRECTOR OF PHOTOGRAPHY for a high-budget epic biblical film. You are not a landscape generator — you compose emotionally powerful, intimate frames.',
-          '',
-          'YOUR MANDATE: Analyze the episode context and the Palavra do Dia quote, then write a vivid, cinematic English scene description for the image generator FLUX Schnell.',
-          '',
-          'DIRECTION OF PHOTOGRAPHY RULES:',
-          '',
-          '1. NARRATIVE FRAMING (No wide landscapes):',
-          '   - Always prioritize MEDIUM SHOT or DRAMATIC CLOSE-UP.',
-          '   - Focus on the PROTAGONIST: their face, hands, posture, the emotion of the moment.',
-          '   - The image must tell the emotion of the quote: grief, awe, care, confrontation, deliverance.',
-          '   - NEVER describe a distant landscape with a tiny figure. The character must DOMINATE the frame.',
-          '',
-          '2. CINEMATIC LIGHTING (The soul of the image):',
-          '   - REQUIRED: "Chiaroscuro lighting", "high contrast shadows", "dramatic rim light".',
-          '   - Use: "firelight glow on face", "oil lamp casting warm pools of light", "storm light breaking through dark clouds", "subsurface scattering on skin".',
-          '   - The key light must sculpt the character\'s face and reveal their emotional state.',
-          '   - No flat, ambient, or generic lighting.',
-          '',
-          '3. DEPTH OF FIELD (Bokeh):',
-          '   - REQUIRED: "Shallow depth of field".',
-          '   - Character in RAZOR SHARP focus, background softly blurred (bokeh).',
-          '   - This eliminates distractions and creates intimacy and impact.',
-          '',
-          '4. EPIC VISUAL STYLE:',
-          '   - REQUIRED: "Shot on 35mm film, anamorphic lens, cinematic color grading, high visual storytelling intensity".',
-          '   - Color palette: rich, warm, desaturated earth tones, deep shadows, golden highlights.',
-          '   - Texture: "film grain, photorealistic skin texture, weathered fabric, ancient stone".',
-          '',
-          '5. STRICT PROHIBITIONS:',
-          '   - No wide establishing shots. No tiny characters in big landscapes.',
-          '   - No modern clothing, buildings, technology, fantasy, theatrical exaggeration.',
-          '   - No text, letters, words, typography anywhere in the image.',
-          '',
-          'THE FRAME MUST BE A CINEMATIC MOMENT OF EMOTIONAL INTENSITY, NOT A POSTCARD.',
-          '',
-          'Return ONLY valid JSON.',
-        ].join('\n'),
-        prompt: [
-          'EPISODE CONTEXT:',
-          queryToUse ? `Quote Text (Portuguese): "${queryToUse}"` : '',
-          bibleReference ? `Bible Reference: ${bibleReference}` : '',
-          title ? `Title: ${title}` : '',
-          sourceExcerpt ? `Source Excerpt: ${sourceExcerpt}` : '',
-          reason ? `Reason: ${reason}` : '',
-          specificityReason ? `Specificity Reason: ${specificityReason}` : '',
-          transcriptionPreview ? `Transcription Preview: ${transcriptionPreview.slice(0, 2000)}` : '',
-          '',
-          'Return JSON: { "flux_visual_prompt": "English cinematic scene description" }',
-        ].filter(Boolean).join('\n'),
-        schema: sceneDiagnosisSchema,
-        validate: (raw) => {
-          const parsed = raw as { flux_visual_prompt?: string }
-          const prompt = (parsed.flux_visual_prompt || '').trim()
-          if (!prompt || prompt.length < 50) {
-            throw new Error('DeepSeek não gerou diagnóstico de cena válido.')
-          }
-          return { flux_visual_prompt: prompt }
-        },
-        temperature: 0.7,
-        maxTokens: 2048,
-      })
-
-      backgroundPrompt = diagnosisData.flux_visual_prompt
-      console.log('[FLUX-BG] Diagnóstico DeepSeek gerado | modelo=', ai.activeTextModel)
-      console.log('[FLUX-BG] Diagnóstico (primeiros 200 chars):', backgroundPrompt.slice(0, 200))
-    }
+    const sceneDescription = orchestratorResult.fluxVisualPrompt
+    console.log('[FLUX-BG] Prompt gerado via ImageOrchestrator | modelo=', orchestratorResult.model)
 
     // -----------------------------------------------------------------------
-    // ETAPA 2: Constrói prompt visual limpo para FLUX
+    // ETAPA 2: Constrói prompt visual final para FLUX
     // -----------------------------------------------------------------------
 
-    const sceneDescription = backgroundPrompt
-
-    const fluxVisualPrompt = [
-      sceneDescription,
-      'Shot on 35mm film, anamorphic lens, shallow depth of field, cinematic color grading, photorealistic, 8k, no text, no letters, no words, no typography, no overlay, clean background.',
-    ].join(' ')
+    const fluxVisualPrompt = buildFluxFinalPrompt(sceneDescription)
 
     console.log('[FLUX-BG] Prompt FLUX final (primeiros 200 chars):', fluxVisualPrompt.slice(0, 200))
+    console.log('DEBUG_FLUX_PROMPT:', fluxVisualPrompt)
 
     // -----------------------------------------------------------------------
     // ETAPA 3: FLUX Schnell gera a imagem com o prompt do DeepSeek
     // -----------------------------------------------------------------------
 
-    console.log('[FLUX-BG] Etapa 3: Gerando imagem com FLUX Schnell...')
+    console.log('[FLUX-BG] Etapa 3: Gerando imagem com FLUX 2 Pro...')
 
     // Gera imagem via FLUX Schnell → WebP → R2
     const fluxResult = await generateAndUploadFluxImage(fluxVisualPrompt, {
@@ -304,7 +226,7 @@ export async function POST(request: NextRequest) {
 
     const themeKeywords = ['devocional']
 
-    // Salva histórico no Supabase
+    // Salva histórico no Supabase com UPSERT
     let quoteBackgroundId: string | null = null
 
     try {
