@@ -106,7 +106,7 @@ export default function NovoEpisodioCatalogoPage() {
     }
   }
 
-  async function handleUploadAudio() {
+   async function handleUploadAudio() {
     if (!audioFile) {
       alert('Selecione um arquivo de áudio primeiro.')
       return
@@ -116,26 +116,47 @@ export default function NovoEpisodioCatalogoPage() {
       setUploadingAudio(true)
       setUploadError('')
 
-      const formData = new FormData()
-      formData.append('file', audioFile)
-      formData.append('type', 'audio')
+      const adminSecret = process.env.NEXT_PUBLIC_ADMIN_API_SECRET || ''
 
-      const response = await fetch('/api/upload-audio', {
+      // Para áudio, usa presigned upload que ignora limite de 4.5 MB da Vercel
+      const presignResponse = await fetch('/api/r2/presigned-upload', {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-password': adminSecret,
+        },
+        body: JSON.stringify({
+          fileName: audioFile.name,
+          contentType: audioFile.type || 'audio/mpeg',
+          sizeBytes: audioFile.size,
+          folder: 'audio',
+        }),
       })
 
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result?.error || 'Não foi possível enviar o áudio.')
+      if (!presignResponse.ok) {
+        let presignError = 'Erro ao preparar upload do áudio.'
+        try {
+          const presignData = await presignResponse.json()
+          if (presignData.error) presignError = presignData.error
+        } catch { /* resposta não-JSON */ }
+        throw new Error(presignError)
       }
 
-      if (!result?.url) {
-        throw new Error('Upload concluído, mas nenhuma URL foi retornada.')
+      const presignData = await presignResponse.json()
+
+      const uploadResponse = await fetch(presignData.signedUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': presignData.contentType || audioFile.type || 'audio/mpeg',
+        },
+        body: audioFile,
+      })
+
+      if (!uploadResponse.ok) {
+        throw new Error('Erro ao enviar áudio para o storage.')
       }
 
-      setAudioUrl(result.url)
+      setAudioUrl(presignData.publicUrl)
     } catch (error) {
       console.error('Erro ao enviar áudio:', error)
 
@@ -152,7 +173,7 @@ export default function NovoEpisodioCatalogoPage() {
   }
 
 
-  async function handleUploadCover() {
+   async function handleUploadCover() {
     if (!coverFile) {
       alert('Selecione uma imagem de capa primeiro.')
       return
@@ -162,26 +183,47 @@ export default function NovoEpisodioCatalogoPage() {
       setUploadingCover(true)
       setCoverUploadError('')
 
-      const formData = new FormData()
-      formData.append('file', coverFile)
-      formData.append('type', 'cover')
+      const adminSecret = process.env.NEXT_PUBLIC_ADMIN_API_SECRET || ''
 
-      const response = await fetch('/api/upload-audio', {
+      // Presigned upload para ignorar limite de 4.5 MB da Vercel Hobby
+      const presignResponse = await fetch('/api/r2/presigned-upload', {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-password': adminSecret,
+        },
+        body: JSON.stringify({
+          fileName: coverFile.name,
+          contentType: coverFile.type,
+          sizeBytes: coverFile.size,
+          folder: 'images',
+        }),
       })
 
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result?.error || 'Não foi possível enviar a capa.')
+      if (!presignResponse.ok) {
+        let presignError = 'Erro ao preparar upload da capa.'
+        try {
+          const presignData = await presignResponse.json()
+          if (presignData.error) presignError = presignData.error
+        } catch { /* resposta não-JSON */ }
+        throw new Error(presignError)
       }
 
-      if (!result?.url) {
-        throw new Error('Upload concluído, mas nenhuma URL de capa foi retornada.')
+      const presignData = await presignResponse.json()
+
+      const uploadResponse = await fetch(presignData.signedUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': presignData.contentType || coverFile.type || 'image/png',
+        },
+        body: coverFile,
+      })
+
+      if (!uploadResponse.ok) {
+        throw new Error('Erro ao enviar capa para o storage.')
       }
 
-      setCoverImageUrl(result.url)
+      setCoverImageUrl(presignData.publicUrl)
     } catch (error) {
       console.error('Erro ao enviar capa:', error)
 
