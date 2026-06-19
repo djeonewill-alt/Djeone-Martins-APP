@@ -163,6 +163,15 @@ export default function NovoEpisodioCatalogoPage() {
       }
 
       setAudioUrl(presignData.publicUrl)
+      setUploadedAudioContentType(presignData.contentType || audioFile.type)
+
+      if (!presignData.isAudioCompatible) {
+        setAudioCompatibilityWarning(
+          `Este arquivo (.${presignData.extension || 'desconhecida'}) não é compatível com todos os navegadores (iPhone/Safari). Recomendamos converter para MP3.`
+        )
+      } else {
+        setAudioCompatibilityWarning('')
+      }
     } catch (error) {
       console.error('Erro ao enviar áudio:', error)
 

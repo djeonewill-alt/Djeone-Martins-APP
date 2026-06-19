@@ -17,9 +17,16 @@ const validAudioTypes = [
   'audio/x-m4a',
   'audio/aac',
   'audio/ogg',
+  'application/ogg',
+  'video/ogg',
   'audio/wav',
+  'audio/wave',
+  'audio/x-wav',
   'audio/webm',
+  'audio/opus',
 ]
+
+const validAudioExtensions = ['mp3', 'mp4', 'm4a', 'aac', 'ogg', 'opus', 'wav', 'webm']
 
 const compatibleAudioTypes = [
   'audio/mpeg',
@@ -100,11 +107,17 @@ function getExtensionFromContentType(contentType: string) {
     case 'audio/aac':
       return 'aac'
     case 'audio/ogg':
+    case 'application/ogg':
+    case 'video/ogg':
       return 'ogg'
     case 'audio/wav':
+    case 'audio/wave':
+    case 'audio/x-wav':
       return 'wav'
     case 'audio/webm':
       return 'webm'
+    case 'audio/opus':
+      return 'opus'
     default:
       return 'bin'
   }
@@ -159,9 +172,11 @@ function validateRequestBody(body: PresignedUploadRequest) {
     }
   }
 
-  if (!isImage && !validAudioTypes.includes(contentType)) {
+  const fileExtension = fileName.split('.').pop()?.toLowerCase() || ''
+
+  if (!isImage && !validAudioTypes.includes(contentType) && !validAudioExtensions.includes(fileExtension)) {
     return {
-      error: `Tipo de audio invalido: ${contentType || 'sem tipo'}.`,
+      error: `Tipo de audio invalido: ${contentType || 'sem tipo'} (extensão: .${fileExtension || 'desconhecida'}). Envie MP3, M4A, AAC, OGG, OPUS, WAV ou WEBM.`,
     }
   }
 
