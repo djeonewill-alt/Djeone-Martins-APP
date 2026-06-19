@@ -27,16 +27,14 @@ function formatQuoteTextForDisplay(text: string) {
   return `"${trimmedText}"`
 }
 
-function dataUrlToBlob(dataUrl: string) {
-  const [header, base64] = dataUrl.split(',')
-  const mimeMatch = header.match(/:(.*?);/)
-  const mime = mimeMatch ? mimeMatch[1] : 'image/png'
-  const binary = atob(base64)
+function dataUrlToBlob(dataURL: string) {
+  const parts = dataURL.split(',')
+  const binary = atob(parts[1].replace(/\s/g, ''))
   const array = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i += 1) {
+  for (let i = 0; i < binary.length; i++) {
     array[i] = binary.charCodeAt(i)
   }
-  return new Blob([array], { type: mime })
+  return new Blob([array], { type: parts[0].match(/:(.*?);/)?.[1] || 'image/png' })
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -652,6 +650,7 @@ function FullscreenImageModal({ src, alt, onClose }: { src: string; alt: string;
 export default function NovoEpisodio() {
   const router = useRouter()
 
+  const [mounted, setMounted] = useState(false)
   const [activeTab, setActiveTab] = useState<'record' | 'upload'>('record')
   const [series, setSeries] = useState<Series[]>([])
 
@@ -719,6 +718,10 @@ export default function NovoEpisodio() {
     scheduled_date: '',
     scheduled_time: '06:00',
   })
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     loadSeries()
@@ -1706,6 +1709,122 @@ export default function NovoEpisodio() {
 
   const [generatedFluxImageUrl, setGeneratedFluxImageUrl] = useState<string | null>(null)
   const [fluxRefinement, setFluxRefinement] = useState('')
+  const [episodeCoverComposed, setEpisodeCoverComposed] = useState<string | null>(null)
+  const [composingCover, setComposingCover] = useState(false)
+
+  /** Aplica o título e referência bíblica sobre a imagem limpa da capa via Canvas */
+  const composeEpisodeCoverWithText = async () => {
+    const imageUrl = premiumImagePrompt?.flux_image_url
+    if (!imageUrl) return
+
+    setComposingCover(true)
+    try {
+      // Carrega a imagem do R2
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const i = new Image()
+        i.crossOrigin = 'anonymous'
+        i.onload = () => resolve(i)
+        i.onerror = () => reject(new Error('Erro ao carregar imagem da capa.'))
+        i.src = imageUrl
+      })
+
+      const canvas = document.createElement('canvas')
+      const width = 1920
+      const height = 1080
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('Canvas não suportado.')
+
+      // Desenha a imagem base
+      ctx.drawImage(img, 0, 0, width, height)
+
+      // Gradiente cinematográfico — topo (vinheta escura)
+      const gradientTop = ctx.createLinearGradient(0, 0, 0, height * 0.35)
+      gradientTop.addColorStop(0, 'rgba(0,0,0,0.65)')
+      gradientTop.addColorStop(0.5, 'rgba(0,0,0,0.25)')
+      gradientTop.addColorStop(1, 'rgba(0,0,0,0)')
+      ctx.fillStyle = gradientTop
+      ctx.fillRect(0, 0, width, height * 0.35)
+
+      // Gradiente cinematográfico — base (vinheta escura para destacar título)
+      const gradientBottom = ctx.createLinearGradient(0, height * 0.55, 0, height)
+      gradientBottom.addColorStop(0, 'rgba(0,0,0,0)')
+      gradientBottom.addColorStop(0.4, 'rgba(0,0,0,0.45)')
+      gradientBottom.addColorStop(1, 'rgba(0,0,0,0.82)')
+      ctx.fillStyle = gradientBottom
+      ctx.fillRect(0, height * 0.55, width, height * 0.45)
+
+      // Ref. bíblica — topo centralizado (ESTILO PREMIUM)
+      if (formData.bible_reference) {
+        ctx.textAlign = 'center'
+        // Sombra tripla para máximo destaque
+        ctx.shadowColor = 'rgba(0,0,0,0.95)'
+        ctx.shadowBlur = 12
+        ctx.shadowOffsetY = 2
+        ctx.font = '900 52px Georgia, "Times New Roman", "Playfair Display", serif'
+        ctx.fillStyle = '#ffd98e'
+        ctx.letterSpacing = '0.1em'
+        ctx.fillText(formData.bible_reference.toUpperCase(), width / 2, 90)
+
+        // Linha decorativa premium
+        ctx.shadowBlur = 0
+        ctx.shadowOffsetY = 0
+        ctx.strokeStyle = 'rgba(255,217,142,0.4)'
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.moveTo(width / 2 - 80, 110)
+        ctx.lineTo(width / 2 + 80, 110)
+        ctx.stroke()
+      }
+
+      // Título do episódio — base centralizada (ESTILO CINEMATOGRÁFICO)
+      ctx.textAlign = 'center'
+
+      const titleText = (formData.title || 'Devocional').toUpperCase()
+      const maxCharsPerLine = 30
+      const titleLines: string[] = []
+
+      if (titleText.length > maxCharsPerLine) {
+        const mid = Math.floor(titleText.length / 2)
+        let splitPos = titleText.indexOf(' ', mid - 5)
+        if (splitPos === -1 || splitPos > mid + 10) splitPos = mid
+        titleLines.push(titleText.slice(0, splitPos).trim())
+        titleLines.push(titleText.slice(splitPos).trim())
+      } else {
+        titleLines.push(titleText)
+      }
+
+      // Sombra tripla para sensação cinematográfica
+      ctx.shadowColor = 'rgba(0,0,0,0.95)'
+      ctx.shadowBlur = 20
+      ctx.shadowOffsetY = 4
+
+      if (titleLines.length === 1) {
+        ctx.font = '900 96px "Helvetica Neue", Helvetica, Arial, sans-serif'
+        ctx.fillStyle = '#ffffff'
+        ctx.fillText(titleLines[0], width / 2, height - 120)
+      } else {
+        ctx.font = '900 82px "Helvetica Neue", Helvetica, Arial, sans-serif'
+        ctx.fillStyle = '#ffffff'
+        ctx.fillText(titleLines[0], width / 2, height - 180)
+        ctx.fillText(titleLines[1], width / 2, height - 75)
+      }
+
+      ctx.shadowBlur = 0
+      ctx.shadowOffsetY = 0
+
+      const dataUrl = canvas.toDataURL('image/png', 0.92)
+      setEpisodeCoverComposed(dataUrl)
+      setEpisodeImageUrl(dataUrl)
+      setUseSeriesImage(false)
+    } catch (err) {
+      console.error('Erro ao compor capa:', err)
+      alert('Erro ao aplicar texto na capa. Tente novamente.')
+    } finally {
+      setComposingCover(false)
+    }
+  }
 
   const handleGenerateCardImage = async (refinement?: string) => {
     const quoteText = selectedDailyQuote.trim()
@@ -1772,15 +1891,46 @@ export default function NovoEpisodio() {
     }
   }
 
-  const uploadGeneratedCard = async (dataUrl: string) => {
-    const blob = dataUrlToBlob(dataUrl)
-    const uploadFormData = new FormData()
+  const uploadGeneratedCard = async (dataURL: string, fileName: string) => {
+    console.log('DEBUG: Iniciando upload para:', fileName)
+    console.log('DEBUG: DataURL length:', dataURL?.length)
 
-    uploadFormData.append(
-      'file',
-      blob,
-      `palavra-do-dia-${Date.now()}.png`
-    )
+    if (!dataURL || typeof dataURL !== 'string') {
+      console.error('ERRO: DataURL inválida ou vazia recebida:', dataURL)
+      throw new Error('A imagem da Palavra do Dia não foi gerada corretamente. Verifique se a arte está carregada.')
+    }
+
+    // Se for uma URL HTTP (imagem FLUX direta, sem texto composto), faz fetch e converte para Blob
+    let blob: Blob
+    if (dataURL.startsWith('http://') || dataURL.startsWith('https://')) {
+      console.log('DEBUG: Detectada URL HTTP — baixando imagem do R2...')
+      const imageResponse = await fetch(dataURL)
+      if (!imageResponse.ok) throw new Error('Não foi possível baixar a imagem FLUX do R2.')
+      const imageBlob = await imageResponse.blob()
+      // Converte para PNG via canvas para garantir formato consistente
+      const bitmap = await createImageBitmap(imageBlob)
+      const canvas = document.createElement('canvas')
+      canvas.width = bitmap.width
+      canvas.height = bitmap.height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('Erro ao processar imagem.')
+      ctx.drawImage(bitmap, 0, 0)
+      blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((b) => {
+          if (b) resolve(b)
+          else reject(new Error('Erro ao converter imagem para PNG.'))
+        }, 'image/png')
+      })
+    } else if (dataURL.includes(',')) {
+      // Data URL base64 padrão
+      blob = dataUrlToBlob(dataURL)
+    } else {
+      console.error('ERRO: DataURL inválida — não é HTTP nem data URL:', dataURL.slice(0, 100))
+      throw new Error('A imagem da Palavra do Dia não foi gerada corretamente. Verifique se a arte está carregada.')
+    }
+
+    const uploadFormData = new FormData()
+    uploadFormData.append('file', blob, fileName)
     uploadFormData.append('type', 'cover')
 
     const response = await fetch('/api/upload-audio', {
@@ -1869,6 +2019,139 @@ export default function NovoEpisodio() {
 
       if (!wordsPersistence.ok) {
         console.warn('Episódio salvo no repositório, mas houve aviso na transcrição:', wordsPersistence.message)
+      }
+
+      // ── Persistir daily_quote vinculada (espelhamento do handleSubmit) ──
+      const hasDailyQuote = enableDailyQuote && selectedDailyQuote.trim().length > 0
+
+      if (hasDailyQuote && newEpisode?.id) {
+        const selectedCard =
+          selectedCardIndex !== null ? cardOptions[selectedCardIndex] : null
+
+        let finalCardImageUrl: string | null = null
+
+        const selectedCardHasFallback = isFallbackSource(selectedCard)
+        const safeCardOptions = cardOptions.filter((option) => !isFallbackSource(option))
+        const safeSelectedCardSourceUrl = selectedCardHasFallback
+          ? null
+          : selectedCard?.source_image_url || null
+        const safeSelectedCardSourceProvider = selectedCardHasFallback
+          ? null
+          : selectedCard?.source_image_provider || null
+
+        if (selectedCard?.preview_data_url && !selectedCardHasFallback) {
+          // Compõe texto na imagem via Canvas (generateCardDataUrl) ANTES de fazer upload
+          const composedDataUrl = await generateCardDataUrl({
+            quoteText: selectedDailyQuote.trim(),
+            bibleReference: formData.bible_reference,
+            episodeTitle: formData.title,
+            imageUrl: selectedCard.source_image_url,
+            template: selectedCard.template,
+          })
+          finalCardImageUrl = await uploadGeneratedCard(
+            composedDataUrl,
+            `palavra-do-dia-${Date.now()}.png`,
+          )
+        }
+
+        const quoteDate = getLocalDateString()
+
+        const generatedCardOptionsForDb = safeCardOptions.map((option) => ({
+          id: option.id,
+          template: option.template,
+          label: option.label,
+          source_image_url: option.source_image_url,
+          source_image_provider: option.source_image_provider,
+          theme_keywords: option.theme_keywords,
+          photographer: option.photographer || null,
+          photographer_url: option.photographer_url || null,
+          source_page_url: option.source_page_url || null,
+          quote_background_id: option.quote_background_id || null,
+          pexels_photo_id: option.pexels_photo_id || null,
+          query_used: option.query_used || null,
+        }))
+
+        // share_image_url deve ser a imagem COMPOSTA (com texto), não a limpa
+        const shareImageUrl = finalCardImageUrl || null
+
+        const quotePayload = {
+          episode_id: newEpisode.id,
+          quote_text: selectedDailyQuote.trim(),
+          background_image_url:
+            safeSelectedCardSourceUrl || finalImageUrl || selectedSeriesImage || null,
+          card_image_url: finalCardImageUrl,
+          share_image_url: shareImageUrl,
+          share_image_status: shareImageUrl ? 'ready' : 'pending',
+          date: quoteDate,
+          status: 'draft' as const,
+          scheduled_publish_at: null,
+          published_at: null,
+          source_type: hasQuoteSuggestions ? 'ai_suggested' : 'manual',
+          ai_suggestions: hasQuoteSuggestions ? quoteSuggestions : null,
+          selected_suggestion_index: selectedSuggestionIndex,
+          share_count: 0,
+          like_count: 0,
+          theme_keywords: selectedCard?.theme_keywords || null,
+          source_image_provider: safeSelectedCardSourceProvider,
+          source_image_url: safeSelectedCardSourceUrl,
+          selected_template: selectedCard?.template || null,
+          generated_card_options:
+            generatedCardOptionsForDb.length > 0 ? generatedCardOptionsForDb : null,
+          card_generation_status: finalCardImageUrl
+            ? 'completed'
+            : generatedCardOptionsForDb.length > 0
+              ? 'completed'
+              : 'not_started',
+          card_generation_error: null,
+          card_generated_at: finalCardImageUrl ? new Date().toISOString() : null,
+          quote_background_id: selectedCard?.quote_background_id || null,
+        }
+
+        const { data: existingDailyQuote, error: existingDailyQuoteError } = await supabase
+          .from('daily_quotes')
+          .select('id, date, quote_text')
+          .eq('date', quoteDate)
+          .maybeSingle()
+
+        if (existingDailyQuoteError) throw existingDailyQuoteError
+
+        if (existingDailyQuote?.id) {
+          const { error: updateQuoteError } = await supabase
+            .from('daily_quotes')
+            .update(quotePayload)
+            .eq('id', existingDailyQuote.id)
+
+          if (updateQuoteError) throw updateQuoteError
+
+          console.log(
+            '[novo-episodio] daily_quote atualizada no repositório:',
+            existingDailyQuote.id,
+            '→ episode_id:',
+            newEpisode.id,
+          )
+        } else {
+          const { error: quoteError } = await supabase
+            .from('daily_quotes')
+            .insert([quotePayload])
+
+          if (quoteError) {
+            if (quoteError.code === '23505') {
+              const { error: updateQuoteAfterConflictError } = await supabase
+                .from('daily_quotes')
+                .update(quotePayload)
+                .eq('date', quoteDate)
+
+              if (updateQuoteAfterConflictError) throw updateQuoteAfterConflictError
+            } else {
+              throw quoteError
+            }
+          }
+
+          console.log(
+            '[novo-episodio] daily_quote persistida no repositório → episode_id:',
+            newEpisode.id,
+          )
+        }
       }
 
       alert('Episódio salvo no repositório. Ele ainda não está público.')
@@ -2000,7 +2283,18 @@ export default function NovoEpisodio() {
           : selectedCard?.source_image_provider || null
 
         if (selectedCard?.preview_data_url && !selectedCardHasFallback) {
-          finalCardImageUrl = await uploadGeneratedCard(selectedCard.preview_data_url)
+          // Compõe texto na imagem via Canvas (generateCardDataUrl) ANTES de fazer upload
+          const composedDataUrl = await generateCardDataUrl({
+            quoteText: selectedDailyQuote.trim(),
+            bibleReference: formData.bible_reference,
+            episodeTitle: formData.title,
+            imageUrl: selectedCard.source_image_url,
+            template: selectedCard.template,
+          })
+          finalCardImageUrl = await uploadGeneratedCard(
+            composedDataUrl,
+            `palavra-do-dia-${Date.now()}.png`,
+          )
         }
 
         const quoteStatus = scheduledPublishAt
@@ -2026,12 +2320,17 @@ export default function NovoEpisodio() {
           query_used: option.query_used || null,
         }))
 
+        // share_image_url deve ser a imagem COMPOSTA (com texto), não a limpa
+        const shareImageUrl = finalCardImageUrl || null
+
         const quotePayload = {
           episode_id: newEpisode.id,
           quote_text: selectedDailyQuote.trim(),
           background_image_url:
             safeSelectedCardSourceUrl || finalImageUrl || selectedSeriesImage || null,
           card_image_url: finalCardImageUrl,
+          share_image_url: shareImageUrl,
+          share_image_status: shareImageUrl ? 'ready' : 'pending',
           date: quoteDate,
           status: quoteStatus,
           scheduled_publish_at: scheduledPublishAt,
@@ -2495,7 +2794,7 @@ export default function NovoEpisodio() {
                   <button
                     type="button"
                     onClick={handleTranscribeAudio}
-                    disabled={!audioUrl || transcribing}
+                    disabled={!mounted || !audioUrl || transcribing}
                     className="flex-1 bg-purple-600 text-white font-bold py-3 rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
                   >
                     {transcribing ? '⏳ Transcrevendo...' : '🎧 Transcrever áudio'}
@@ -2504,7 +2803,7 @@ export default function NovoEpisodio() {
                   <button
                     type="button"
                     onClick={handleGenerateDailyQuote}
-                    disabled={transcriptionText.trim().length < 100 || generatingQuote}
+                    disabled={!mounted || transcriptionText.trim().length < 100 || generatingQuote}
                     className="flex-1 bg-emerald-600 text-white font-bold py-3 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
                   >
                     {generatingQuote ? '⏳ Gerando...' : '✨ Gerar frases'}
@@ -2514,7 +2813,7 @@ export default function NovoEpisodio() {
                 <button
                   type="button"
                   onClick={handleTranscribeAndGenerateQuote}
-                  disabled={!audioUrl || transcribing || generatingQuote || generatingEpisodeMetadata}
+                  disabled={!mounted || !audioUrl || transcribing || generatingQuote || generatingEpisodeMetadata}
                   className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
                 >
                   {transcribing || generatingQuote
@@ -2723,7 +3022,7 @@ export default function NovoEpisodio() {
                   <button
                     type="button"
                     onClick={() => handleGenerateCardImage()}
-                    disabled={!selectedDailyQuote.trim() || generatingCards}
+                    disabled={!mounted || !selectedDailyQuote.trim() || generatingCards}
                     className="w-full bg-amber-500 text-slate-950 font-bold py-3 rounded-lg hover:bg-amber-400 transition-colors disabled:opacity-50"
                   >
                     {generatingCards ? '⏳ Gerando imagem...' : '🎨 Gerar Imagem Base (FLUX)'}
@@ -2742,7 +3041,7 @@ export default function NovoEpisodio() {
                         <button
                           type="button"
                           onClick={() => handleGenerateCardImage(fluxRefinement)}
-                          disabled={!fluxRefinement.trim() || generatingCards}
+                          disabled={!mounted || !fluxRefinement.trim() || generatingCards}
                           className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
                         >
                           Regenerar
@@ -2890,7 +3189,7 @@ export default function NovoEpisodio() {
                 <button
                   type="button"
                   onClick={handleGeneratePremiumImagePrompt}
-                  disabled={generatingPremiumImagePrompt}
+                  disabled={!mounted || generatingPremiumImagePrompt}
                   className="mt-4 w-full rounded-lg bg-indigo-600 py-3 text-sm font-bold text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
                 >
                   {generatingPremiumImagePrompt
@@ -2930,11 +3229,20 @@ export default function NovoEpisodio() {
                               onClick={() => {
                                 setEpisodeImageUrl(premiumImagePrompt.flux_image_url || '')
                                 setUseSeriesImage(false)
-                                alert('Capa FLUX definida como capa do episódio.')
+                                setEpisodeCoverComposed(null)
+                                alert('Capa FLUX definida como capa do episódio (imagem limpa, sem texto).')
                               }}
                               className="rounded-full border border-indigo-400/30 bg-indigo-600/70 px-4 py-2 text-xs font-bold text-white backdrop-blur-sm transition-colors hover:bg-indigo-600"
                             >
-                              Usar como capa
+                              Usar como capa (limpa)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={composeEpisodeCoverWithText}
+                              disabled={composingCover || !formData.title}
+                              className="rounded-full border border-emerald-400/30 bg-emerald-600/70 px-4 py-2 text-xs font-bold text-white backdrop-blur-sm transition-colors hover:bg-emerald-600 disabled:opacity-50"
+                            >
+                              {composingCover ? 'Compondo...' : episodeCoverComposed ? '✅ Texto aplicado' : '🎬 Aplicar Texto na Capa'}
                             </button>
                           </div>
                         </div>
@@ -2951,7 +3259,22 @@ export default function NovoEpisodio() {
                   </div>
                 )}
 
-                {episodeImageUrl && !useSeriesImage && !premiumImagePrompt?.flux_image_url && (
+                {episodeCoverComposed && (
+                  <div className="mt-3">
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-300">
+                      Capa com texto aplicado
+                    </p>
+                    <div className="relative overflow-hidden rounded-xl border border-emerald-700/50 bg-slate-900">
+                      <img
+                        src={episodeCoverComposed}
+                        alt="Capa com texto"
+                        className="aspect-video w-full object-cover"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {episodeImageUrl && !useSeriesImage && !premiumImagePrompt?.flux_image_url && !episodeCoverComposed && (
                   <div className="mt-3">
                     <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                       Capa atual do episódio

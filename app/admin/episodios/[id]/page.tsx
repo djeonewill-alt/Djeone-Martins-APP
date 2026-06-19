@@ -28,6 +28,8 @@ type DailyQuoteBrief = {
   id: string
   quote_text: string
   share_image_url: string | null
+  background_image_url: string | null
+  card_image_url: string | null
 }
 
 export default function AdminEditEpisodePage() {
@@ -89,7 +91,7 @@ export default function AdminEditEpisodePage() {
         // Load daily quote associated with this episode
         const { data: quoteData } = await supabase
           .from('daily_quotes')
-          .select('id, quote_text, share_image_url')
+          .select('id, quote_text, share_image_url, background_image_url, card_image_url')
           .eq('episode_id', episodeId)
           .order('created_at', { ascending: false })
           .limit(1)
@@ -249,34 +251,35 @@ export default function AdminEditEpisodePage() {
     setRegeneratingShareImage(true)
 
     try {
-      const response = await fetch(
-        `/api/admin/daily-quotes/${dailyQuote.id}/generate-share-image`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ force: true }),
-        }
-      )
+      const { data, error } = await supabase
+        .from('daily_quotes')
+        .select('id, quote_text, share_image_url, background_image_url, card_image_url')
+        .eq('id', dailyQuote.id)
+        .maybeSingle()
 
-      const result = await response.json()
+      if (error) throw error
+      if (!data) throw new Error('Palavra não encontrada.')
 
-      if (!response.ok) {
-        throw new Error(result.error || 'Erro ao regenerar preview.')
+      const bestUrl = data.share_image_url || data.background_image_url || data.card_image_url || null
+
+      if (bestUrl && bestUrl !== data.share_image_url) {
+        await supabase
+          .from('daily_quotes')
+          .update({ share_image_url: bestUrl })
+          .eq('id', data.id)
       }
 
-      setDailyQuote((prev) =>
-        prev
-          ? { ...prev, share_image_url: result.share_image_url }
-          : prev
-      )
-
-      alert('Preview WhatsApp da Palavra do Dia gerado!')
+      setDailyQuote({
+        id: data.id,
+        quote_text: data.quote_text,
+        share_image_url: bestUrl,
+        background_image_url: data.background_image_url,
+        card_image_url: data.card_image_url,
+      })
     } catch (error) {
-      console.error('Erro ao regenerar preview:', error)
+      console.error('Erro ao atualizar preview:', error)
       alert(
-        `Erro ao regenerar preview: ${error instanceof Error ? error.message : 'Erro desconhecido'}`
+        `Erro ao atualizar preview: ${error instanceof Error ? error.message : 'Erro desconhecido'}`
       )
     } finally {
       setRegeneratingShareImage(false)
@@ -337,56 +340,50 @@ export default function AdminEditEpisodePage() {
           </section>
         )}
 
-        {/* WhatsApp Preview da Palavra do Dia */}
+        {/* Preview da Palavra do Dia (Template B — WhatsApp) */}
         {dailyQuote && (
           <section className="mt-5 rounded-[30px] border border-white/10 bg-slate-900/80 p-5 shadow-xl shadow-black/10">
-            <p className="mb-3 text-xs font-black uppercase tracking-[0.18em] text-blue-200">
-              Preview WhatsApp da Palavra do Dia
-            </p>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-200">
+                Palavra do Dia
+              </p>
+              <span
+                className={`rounded-full border px-3 py-1 text-xs font-black ${
+                  dailyQuote.background_image_url || dailyQuote.card_image_url
+                    ? 'border-emerald-300/20 bg-emerald-500/10 text-emerald-100'
+                    : 'border-amber-300/20 bg-amber-500/10 text-amber-100'
+                }`}
+              >
+                {dailyQuote.background_image_url || dailyQuote.card_image_url ? 'Pronto' : 'Pendente'}
+              </span>
+            </div>
 
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-bold text-slate-300">
-                  Status:{' '}
-                </span>
-                {dailyQuote.share_image_url ? (
-                  <span className="rounded-full border border-emerald-300/20 bg-emerald-500/10 px-3 py-1 text-xs font-black text-emerald-100">
-                    Pronto
-                  </span>
-                ) : (
-                  <span className="rounded-full border border-amber-300/20 bg-amber-500/10 px-3 py-1 text-xs font-black text-amber-100">
-                    Pendente
-                  </span>
-                )}
+            {/* Imagem final — share_image_url contém a versão composta com texto */}
+            {(dailyQuote.share_image_url || dailyQuote.background_image_url || dailyQuote.card_image_url) ? (
+              <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950">
+                <div className="mx-auto max-w-[360px]">
+                  <img
+                    src={dailyQuote.share_image_url || dailyQuote.background_image_url || dailyQuote.card_image_url || ''}
+                    alt="Palavra do Dia"
+                    className="aspect-square w-full object-cover"
+                  />
+                </div>
               </div>
-
-              <p className="text-sm leading-6 text-slate-400">
+            ) : (
+              <p className="text-sm leading-6 text-slate-400 italic">
                 &ldquo;{dailyQuote.quote_text}&rdquo;
               </p>
+            )}
 
-              <div className="flex flex-wrap gap-3">
-                {dailyQuote.share_image_url && (
-                  <a
-                    href={dailyQuote.share_image_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded-2xl border border-white/10 bg-slate-950 px-5 py-3 text-sm font-black text-blue-200 active:scale-[0.98]"
-                  >
-                    Abrir preview
-                  </a>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleRegenerateShareImage}
-                  disabled={regeneratingShareImage}
-                  className="rounded-2xl border border-amber-300/30 bg-amber-500/15 px-5 py-3 text-sm font-black text-amber-100 active:scale-[0.98] disabled:opacity-50"
-                >
-                  {regeneratingShareImage
-                    ? 'Gerando...'
-                    : 'Regenerar preview da Palavra'}
-                </button>
-              </div>
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={handleRegenerateShareImage}
+                disabled={regeneratingShareImage}
+                className="rounded-2xl border border-amber-300/30 bg-amber-500/15 px-5 py-3 text-sm font-black text-amber-100 active:scale-[0.98] disabled:opacity-50"
+              >
+                {regeneratingShareImage ? 'Sincronizando...' : 'Atualizar preview da Palavra'}
+              </button>
             </div>
           </section>
         )}
@@ -417,15 +414,50 @@ export default function AdminEditEpisodePage() {
 
               {coverImageUrl ? (
                 <div className="mt-4 overflow-hidden rounded-[26px] border border-white/10 bg-slate-950">
-                  <img
-                    src={coverImageUrl}
-                    alt="Capa do episodio"
-                    className="aspect-video w-full object-cover"
-                  />
+                  <div className="relative aspect-video w-full">
+                    <img
+                      src={coverImageUrl}
+                      alt="Capa do episodio"
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                    {/* CSS Text Overlay — apenas para imagens HTTP (não data URL, que já tem texto composto) */}
+                    {!coverImageUrl.startsWith('data:') && (
+                      <div className="absolute inset-0 flex flex-col justify-between bg-gradient-to-b from-black/35 via-transparent to-black/55">
+                        {/* Bible Reference — Top */}
+                        {bibleReference && (
+                          <div className="pt-5 text-center">
+                            <p
+                              className="inline-block font-serif text-[clamp(0.65rem,2vw,0.9rem)] font-bold text-[#ffd98e] drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]"
+                              style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+                            >
+                              {bibleReference}
+                            </p>
+                            <div className="mx-auto mt-1.5 w-12 border-t border-[#ffd98e]/30" />
+                          </div>
+                        )}
 
-                  <p className="break-all px-4 py-3 text-xs font-bold leading-5 text-slate-500">
-                    {coverImageUrl}
-                  </p>
+                        {/* Episode Title — Bottom */}
+                        <div className="pb-6 px-4 text-center">
+                          <p
+                            className="mx-auto max-w-[85%] font-sans text-[clamp(0.8rem,2.5vw,1.25rem)] font-black leading-[1.15] text-white"
+                            style={{
+                              textShadow:
+                                '0 3px 12px rgba(0,0,0,0.95), 0 1px 3px rgba(0,0,0,0.85)',
+                            }}
+                          >
+                            {title}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Mostra URL apenas se for HTTP (não data:base64) */}
+                  {!coverImageUrl.startsWith('data:') && (
+                    <p className="break-all px-4 py-3 text-xs font-bold leading-5 text-slate-500">
+                      {coverImageUrl}
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-slate-950/70 p-5 text-sm font-bold text-slate-400">
