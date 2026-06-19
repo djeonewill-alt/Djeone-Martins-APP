@@ -31,7 +31,14 @@ const compatibleAudioTypes = [
 ]
 
 const compatibleAudioExtensions = ['mp3', 'm4a', 'mp4', 'aac']
-const allowedFolders = ['audio', 'recordings']
+const allowedFolders = ['audio', 'recordings', 'images']
+
+const validImageTypes = [
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+]
 
 type PresignedUploadRequest = {
   fileName?: unknown
@@ -144,7 +151,15 @@ function validateRequestBody(body: PresignedUploadRequest) {
     return { error: 'Nome do arquivo ausente.' }
   }
 
-  if (!validAudioTypes.includes(contentType)) {
+  const isImage = folder === 'images'
+
+  if (isImage && !validImageTypes.includes(contentType)) {
+    return {
+      error: `Tipo de imagem invalido: ${contentType || 'sem tipo'}. Use JPG, PNG ou WEBP.`,
+    }
+  }
+
+  if (!isImage && !validAudioTypes.includes(contentType)) {
     return {
       error: `Tipo de audio invalido: ${contentType || 'sem tipo'}.`,
     }
@@ -156,7 +171,7 @@ function validateRequestBody(body: PresignedUploadRequest) {
 
   if (sizeBytes > MAX_AUDIO_SIZE_BYTES) {
     return {
-      error: 'Arquivo de audio muito grande. Envie um arquivo de ate 250 MB.',
+      error: 'Arquivo muito grande. Envie um arquivo de ate 250 MB.',
     }
   }
 

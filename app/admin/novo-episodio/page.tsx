@@ -1136,16 +1136,80 @@ export default function NovoEpisodio() {
     setUploading(true)
 
     try {
+      const MAX_DIRECT_UPLOAD_BYTES = 4 * 1024 * 1024 // 4 MB — fica abaixo do limite de 4.5 MB da Vercel Hobby
+
+      // Para imagens grandes, usa presigned upload que ignora o limite de body da Vercel
+      if (file.size > MAX_DIRECT_UPLOAD_BYTES) {
+        const adminSecret = process.env.NEXT_PUBLIC_ADMIN_API_SECRET || ''
+
+        const presignedRes = await fetch('/api/r2/presigned-upload', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-admin-password': adminSecret,
+          },
+          body: JSON.stringify({
+            fileName: file.name,
+            contentType: file.type,
+            sizeBytes: file.size,
+            folder: 'images',
+          }),
+        })
+
+        if (!presignedRes.ok) {
+          let presignedError = 'Erro ao preparar upload direto.'
+          try {
+            const presignedData = await presignedRes.json()
+            if (presignedData.error) presignedError = presignedData.error
+          } catch { /* resposta não-JSON */ }
+          throw new Error(presignedError)
+        }
+
+        const presignedData = await presignedRes.json()
+
+        const uploadRes = await fetch(presignedData.signedUrl, {
+          method: 'PUT',
+          body: file,
+          headers: {
+            'Content-Type': file.type || 'application/octet-stream',
+          },
+        })
+
+        if (!uploadRes.ok) {
+          throw new Error('Erro ao enviar imagem para o storage.')
+        }
+
+        setEpisodeImageUrl(presignedData.publicUrl)
+        setUseSeriesImage(false)
+        alert(successMessage)
+        return
+      }
+
+      // Upload direto via FormData (arquivos pequenos)
+      const adminSecret = process.env.NEXT_PUBLIC_ADMIN_API_SECRET || ''
       const uploadFormData = new FormData()
       uploadFormData.append('file', file)
       uploadFormData.append('type', 'cover')
 
       const response = await fetch('/api/upload-audio', {
         method: 'POST',
+        headers: {
+          'x-admin-password': adminSecret,
+        },
         body: uploadFormData,
       })
 
-      const data = await response.json()
+      // Proteção contra respostas não-JSON (ex: HTML de erro da Vercel)
+      let data: { url?: string; error?: string } = {}
+      try {
+        data = await response.json()
+      } catch {
+        const text = await response.text().catch(() => '')
+        if (text.includes('cadastro') || text.includes('redirect')) {
+          throw new Error('Sessão expirada. Recarregue a página e tente novamente.')
+        }
+        throw new Error(`Servidor retornou uma resposta inesperada (HTTP ${response.status}). A imagem pode ser muito grande ou o servidor está sobrecarregado. Tente uma imagem menor (até 4 MB).`)
+      }
 
       if (data.url) {
         setEpisodeImageUrl(data.url)
