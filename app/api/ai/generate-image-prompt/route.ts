@@ -233,7 +233,6 @@ function buildPrompt(params: {
   transcriptionText: string
   format: ImagePromptFormat
   includeTextOverlay: boolean
-  hasExplicitMarineScene: boolean
 }) {
   return `
 You are a premium cinematic biblical art director for a Christian devotional audio app.
@@ -250,7 +249,6 @@ Base the visual concept on the real episode content:
 - Specificity reason: ${params.specificityReason || 'Not provided'}
 - Format: ${params.format}
 - Include text overlay version: ${params.includeTextOverlay ? 'yes' : 'no'}
-- Explicit marine/shipwreck scene detected by pre-check: ${params.hasExplicitMarineScene ? 'yes' : 'no'}
 
 Transcription excerpt:
 ${params.transcriptionText || 'Not provided'}
@@ -337,32 +335,42 @@ Editorial rules:
 6. If it mentions Bethany or Lazarus, prioritize simple house, stone village, open door, grief and hope, path out of the tomb, life breaking darkness.
 7. If it mentions a donkey or entry into Jerusalem, prioritize ancient road, young donkey, branches, city in background, humility of the King, contrast with a war horse.
 8. If it mentions grain of wheat, prioritize grain falling into soil, open earth, sprout emerging, golden light, death and fruitfulness.
-9. Prefer a background without text for app production. Text can be applied later by the app.
+9. COMPOSITION RULE — TEXT EMBEDDED IN THE IMAGE (CRITICAL):
+   Every image MUST be generated as a FINAL, PUBLICATION-READY cinematic poster.
+   The episode title and bible reference MUST be visibly embedded directly in the art,
+   like a professional movie poster. Never generate a blank background expecting CSS overlay.
+   Never instruct the image model to leave space for external text.
+   - The bible reference must appear at the top center in an elegant serif font, gold color.
+   - The episode title must appear at the bottom center in bold white sans-serif font.
+   - The text must be clearly legible, correctly spelled, and harmoniously integrated
+     with the visual composition.
+   - Extract the EXACT title and reference from the context JSON above — never invent or
+     translate them. These values are fixed and must be used verbatim.
 
-Marine and shipwreck rule:
-If the title, description, selected quote, source excerpt, or transcription explicitly mentions sea, boat, ship, shipwreck, water, waves, storm, swimming, dry land, soldiers/prisoners in Acts 27, centurion, or Paul on a sea journey, then allow and prefer sea, broken ship, Roman ship, waves, shoreline, beach, broken wood, survivors, soldiers, centurion, prisoners, Paul, and dry land.
-In that case, do not replace the scene with an ancient house, Bethany, open doorway, peaceful village road, wheat field, temple, or generic Judean village.
-Build the visual prompt around shipwreck, survival, deliverance, providence, and reaching dry land.
-If these marine elements are not explicit, keep ocean, sea, boat, ship, waves, storm, water, and shipwreck in the negative prompt.
+Transcription-first scene rule (CRITICAL):
+You are a biblical series art director. Your task is to read the episode transcription below
+and extract the EXACT moment, setting, and main characters that are being described in the audio.
+Based STRICTLY on what is being said in the transcription, describe a cinematic scene.
 
-Composition clarity rule:
-Avoid ambiguous or dominating visual phrases such as "standing over Paul", "hovering over Paul", "dominating Paul", or "standing above the prisoners".
-Prefer clear protective composition:
-- the centurion between soldiers and prisoners;
-- the centurion near Paul in a protective posture;
-- Paul preserved among survivors;
-- soldiers restrained or prevented from violence;
-- survivors moving toward dry land;
-- dry land as the visual symbol of deliverance.
+NEVER presume a future event or cliché that is not described in the text.
+If the transcription describes the beginning of a journey, draw preparation and departure.
+If it describes a moment of prayer, draw prayer.
+If it describes creation, draw creation.
+If it describes a storm and shipwreck, draw a storm and shipwreck.
+If it describes calm waters and boarding a ship, draw calm waters and boarding.
+If it describes Moses at the Red Sea, draw Moses at the Red Sea.
 
-For Acts 27 / shipwreck, use language like:
-"The Roman centurion stands near Paul, positioned between the soldiers and the prisoners, acting as a protective authority."
-or:
-"The centurion stands at the shoreline, restraining violence and preserving Paul and the prisoners."
+Do NOT jump ahead in the biblical narrative. Do NOT use clichés.
+Read what the transcription actually says and build the visual prompt from that,
+and ONLY from that. The transcription is the ultimate authority over any prior knowledge
+of the biblical story.
 
-  Dynamic negative prompt rule:
-- If the episode is not about sea/shipwreck, the negative_prompt must include: ocean, sea, boat, ship, waves, storm, water, shipwreck.
-- If the episode is about sea/shipwreck, the negative_prompt must NOT include those marine terms. Instead include: generic ancient house, unrelated stone doorway, peaceful village road, random desert, modern clothing, fantasy armor, theatrical drama, fake text, unreadable letters.
+Negative prompt rules:
+- Include in negative_prompt any elements that would contradict what the transcription describes.
+- If the transcription describes calm water, put storm and shipwreck in negative_prompt.
+- If the transcription describes a storm, put calm sea in negative_prompt.
+- Always include in negative_prompt: modern clothing, fantasy armor, theatrical drama, fake text,
+  unreadable letters, brand logos, watermarks, cartoon style, anime, illustration.
 
 Return valid JSON only, exactly with this shape:
 ${IMAGE_PROMPT_SCHEMA}
@@ -572,7 +580,6 @@ export async function POST(request: NextRequest) {
         transcriptionText,
         format,
         includeTextOverlay,
-        hasExplicitMarineScene: explicitMarineScene,
       }),
       schema: IMAGE_PROMPT_SCHEMA,
       validate: (raw) => {
@@ -605,21 +612,23 @@ export async function POST(request: NextRequest) {
         // Prompt gerado pelo DeepSeek + sufixo de qualidade
         const sceneDiagnosis = promptData.background_prompt || 'Abstract emotional landscape. Volumetric light. Deep spiritual atmosphere.'
 
-        // Capas (episode_cover / series_cover): COM tipografia integrada na imagem
-        const textOverlayInstructions = [
-          'Cinematic movie poster typography design:',
-          bibleReference
-            ? `At the very top center, the text "${bibleReference}" is elegantly written in golden serif letters.`
-            : '',
-          `At the very bottom center, the main title "${title || 'Devocional'}" is written in massive, bold, white sans-serif letters with a cinematic shadow.`,
-          'The text must be flawlessly spelled, highly legible, and perfectly integrated into the composition.',
-        ].filter(Boolean).join(' ')
+        // Capas (episode_cover / series_cover): IMAGEM LIMPA (sem texto).
+        // O título e a referência bíblica serão aplicados via CSS overlay
+        // no frontend, garantindo tipografia perfeita e sem erros de IA.
+        const negativeSpaceInstructions = [
+          'IMPORTANT: This is a CLEAN BACKGROUND image with NO text overlay.',
+          'Leave the center area free of detailed elements — use deep shadows,',
+          'dark tones, or smooth textures for a clean central "safe zone"',
+          'where white typography will be readable when applied later by the app.',
+          'Do NOT generate any letters, words, titles, or text in the image.',
+          'Generate only the cinematic scene and lighting — no typography.',
+        ].join(' ')
 
         // O background_prompt do DeepSeek já inclui a seção [8] FECHAMENTO DE ESTILO
         // com "Style: High-end streaming series..." — não duplicar.
         const cleanFluxPrompt = [
           sceneDiagnosis,
-          textOverlayInstructions,
+          negativeSpaceInstructions,
         ].join('\n\n')
 
         console.log('DEBUG_COVER_PROMPT:', cleanFluxPrompt)

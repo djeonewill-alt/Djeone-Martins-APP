@@ -203,6 +203,11 @@ export default function AdminAgendaPage() {
   const [publishError, setPublishError] = useState('')
   const [publishSuccess, setPublishSuccess] = useState('')
 
+  // Delete state
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+
   // Filter state
   const [searchText, setSearchText] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
@@ -1117,7 +1122,39 @@ export default function AdminAgendaPage() {
                     </div>
                     <h3 className="repo-title">{ep.title}</h3>
                     <p className="repo-date">Criado em {formatDate(ep.created_at)}</p>
-                    <Link href={`/admin/episodios/${ep.id}`} className="repo-edit-link">Abrir edição</Link>
+                    <div className="repo-card-actions">
+                      <Link href={`/admin/episodios/${ep.id}`} className="repo-edit-link">Abrir edição</Link>
+                      <button
+                        type="button"
+                        className="repo-delete-button"
+                        onClick={async () => {
+                          if (deleteConfirm !== ep.id) {
+                            setDeleteConfirm(ep.id)
+                            return
+                          }
+                          setDeleteConfirm(null)
+                          setDeleting(true)
+                          setDeleteError('')
+                          try {
+                            const res = await fetch(`/api/admin/episodes/${ep.id}/delete`, { method: 'DELETE' })
+                            if (!res.ok) {
+                              const data = await res.json()
+                              throw new Error(data.error || 'Erro ao deletar')
+                            }
+                            setRepositoryEpisodes((prev) => prev.filter((e) => e.id !== ep.id))
+                          } catch (err) {
+                            setDeleteError(err instanceof Error ? err.message : 'Erro ao deletar')
+                          } finally {
+                            setDeleting(false)
+                          }
+                        }}
+                        disabled={deleting && deleteConfirm === ep.id}
+                        title={deleteConfirm === ep.id ? 'Clique novamente para confirmar exclusão' : 'Excluir episódio'}
+                      >
+                        {deleting && deleteConfirm === ep.id ? 'Excluindo...' : deleteConfirm === ep.id ? '⚠️ Confirmar exclusão' : '🗑️'}
+                      </button>
+                    </div>
+                    {deleteError && <p className="repo-delete-error">{deleteError}</p>}
                   </div>
                 ))}
               </div>
@@ -1581,8 +1618,12 @@ const styles = `
   .repo-title { font-size: 0.95rem; font-weight: 900; letter-spacing: -0.03em; line-height: 1.3; margin-bottom: 6px; }
   .repo-date { font-size: 0.7rem; color: #94a3b8; font-weight: 600; margin-bottom: 12px; }
 
+  .repo-card-actions { display: flex; gap: 8px; margin-top: 4px; align-items: center; }
   .repo-edit-link { display: inline-block; padding: 8px 16px; border-radius: 12px; background: rgba(59, 130, 246, 0.14); border: 1px solid rgba(96, 165, 250, 0.2); color: #93c5fd; font-size: 0.75rem; font-weight: 900; text-decoration: none; transition: background 0.2s ease; }
   .repo-edit-link:hover { background: rgba(59, 130, 246, 0.25); }
+  .repo-delete-button { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border-radius: 10px; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.18); color: #fca5a5; font-size: 0.85rem; cursor: pointer; transition: background 0.2s ease; flex-shrink: 0; }
+  .repo-delete-button:hover { background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.35); }
+  .repo-delete-error { font-size: 0.7rem; font-weight: 700; color: #fca5a5; margin-top: 8px; }
 
   .modal-overlay { position: fixed; inset: 0; background: rgba(2, 6, 23, 0.7); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 24px; }
 

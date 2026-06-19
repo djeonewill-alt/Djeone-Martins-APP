@@ -167,3 +167,12 @@ export type AppSetting = {
   value: string;
   updated_at?: string | null;
 };
+
+export type Mantenedor = {
+  id: string;
+  created_at?: string | null;
+  nome: string;
+  whatsapp?: string | null;
+  email?: string | null;
+  valor_mensal?: number | null;
+};

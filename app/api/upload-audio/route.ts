@@ -4,6 +4,11 @@ import { createSupabaseServerClient } from '@/lib/supabase/server'
 
 export const runtime = 'nodejs'
 
+// NOTA: Vercel Hobby impõe limite de ~4.5 MB no body da requisição.
+// config.api.bodyParser é ignorado no App Router (Next.js 16+).
+// Para arquivos > 4.5 MB, use upload via presigned URL: /api/r2/presigned-upload
+// que já está implementado no frontend (uploadAudioDirectToR2).
+
 const MAX_AUDIO_SIZE_BYTES = 250 * 1024 * 1024
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
 

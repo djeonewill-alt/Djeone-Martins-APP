@@ -258,6 +258,13 @@ export default function AdminDashboardPage() {
       tone: "rose",
     },
     {
+      title: "Mantenedores",
+      description: "Acompanhar mantenedores, termômetro de arrecadação e fichas do evento.",
+      href: "/admin/mantenedores",
+      icon: "💛",
+      tone: "gold",
+    },
+    {
       title: "Interesses Premium",
       description: "Ver áreas que os usuários querem fortalecer nas futuras jornadas.",
       href: "/admin/premium-interesses",
