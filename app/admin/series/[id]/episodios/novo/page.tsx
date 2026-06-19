@@ -67,6 +67,12 @@ export default function NovoEpisodioCatalogoPage() {
   const [uploadingCover, setUploadingCover] = useState(false)
   const [coverUploadError, setCoverUploadError] = useState('')
 
+  const [isGeneratingCompatibleAudio, setIsGeneratingCompatibleAudio] = useState(false)
+  const [audioUrlCompatible, setAudioUrlCompatible] = useState('')
+  const [audioCompatibleType, setAudioCompatibleType] = useState('')
+  const [audioCompatibilityWarning, setAudioCompatibilityWarning] = useState('')
+  const [uploadedAudioContentType, setUploadedAudioContentType] = useState('')
+
   useEffect(() => {
     loadPodcast()
   }, [podcastId])
@@ -236,6 +242,50 @@ export default function NovoEpisodioCatalogoPage() {
       alert(message)
     } finally {
       setUploadingCover(false)
+    }
+  }
+
+  async function handleGenerateCompatibleAudio() {
+    if (!audioUrl) {
+      alert('Envie o áudio primeiro.')
+      return
+    }
+
+    if (isGeneratingCompatibleAudio) return
+
+    setIsGeneratingCompatibleAudio(true)
+    setUploadError('')
+
+    try {
+      const response = await fetch('/api/admin/audio/convert-to-mp3', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceUrl: audioUrl }),
+      })
+      const data = await response.json()
+
+      if (!response.ok || !data.success || !data.compatibleUrl) {
+        throw new Error(data.error || 'Não foi possível converter o áudio.')
+      }
+
+      setAudioUrl(data.compatibleUrl)
+      setAudioUrlCompatible(data.compatibleUrl)
+      setAudioCompatibleType('audio/mpeg')
+      setUploadedAudioContentType('audio/mpeg')
+      setAudioCompatibilityWarning('')
+
+      const sizeMb = typeof data.sizeMb === 'number'
+        ? data.sizeMb.toFixed(2)
+        : ((data.sizeBytes || 0) / 1024 / 1024).toFixed(2)
+
+      alert(`MP3 compatível gerado. Tamanho: ${sizeMb} MB.`)
+    } catch (error) {
+      console.error('Erro ao gerar MP3:', error)
+      const message = error instanceof Error ? error.message : 'Erro ao converter áudio.'
+      setUploadError(message)
+      alert(message)
+    } finally {
+      setIsGeneratingCompatibleAudio(false)
     }
   }
 
@@ -630,6 +680,29 @@ export default function NovoEpisodioCatalogoPage() {
                     <p className="mt-3 break-all text-xs font-bold leading-5 text-emerald-100/70">
                       {audioUrl}
                     </p>
+
+                    <div className="mt-4">
+                      <button
+                        type="button"
+                        onClick={handleGenerateCompatibleAudio}
+                        disabled={uploadingAudio || isGeneratingCompatibleAudio}
+                        className="rounded-2xl border border-green-300/30 bg-green-500/15 px-5 py-3 text-sm font-black text-green-100 active:scale-[0.98] disabled:opacity-50"
+                      >
+                        {isGeneratingCompatibleAudio
+                          ? 'Convertendo para MP3...'
+                          : 'Gerar MP3 compatível (iPhone/Safari)'}
+                      </button>
+                      {audioCompatibilityWarning && (
+                        <p className="mt-2 text-xs font-bold text-yellow-200">
+                          {audioCompatibilityWarning}
+                        </p>
+                      )}
+                      {audioUrlCompatible && (
+                        <p className="mt-2 text-xs font-bold text-green-200">
+                          MP3 compatível pronto.
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
