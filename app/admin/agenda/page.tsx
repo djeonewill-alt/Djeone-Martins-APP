@@ -17,6 +17,7 @@ type EpisodeWithSeries = {
   status: string | null
   editorial_status: string | null
   calendar_scheduled_at: string | null
+  scheduled_publish_at?: string | null
   created_at: string | null
   // Supabase join can return object (has-one) or array (has-many)
   series: SeriesJoin
@@ -494,6 +495,7 @@ export default function AdminAgendaPage() {
         .update({
           editorial_status: 'calendar_scheduled',
           calendar_scheduled_at: isoOffset,
+          scheduled_publish_at: isoOffset,
         })
         .eq('id', modal.selectedEpisodeId)
         .eq('editorial_status', 'repository')
@@ -507,6 +509,7 @@ export default function AdminAgendaPage() {
           ...scheduledEp,
           editorial_status: 'calendar_scheduled',
           calendar_scheduled_at: isoOffset,
+          scheduled_publish_at: isoOffset,
         }
         setCalendarEpisodes((prev) =>
           [...prev, updatedEp].sort((a, b) => {
@@ -694,6 +697,7 @@ export default function AdminAgendaPage() {
           .update({
             editorial_status: 'calendar_scheduled',
             calendar_scheduled_at: isoOffset,
+            scheduled_publish_at: isoOffset,
           })
           .eq('id', episode.id)
           .eq('editorial_status', 'repository')
@@ -706,6 +710,7 @@ export default function AdminAgendaPage() {
           ...episode,
           editorial_status: 'calendar_scheduled',
           calendar_scheduled_at: isoOffset,
+          scheduled_publish_at: isoOffset,
         }
         setCalendarEpisodes((prev) =>
           [...prev, updatedEp].sort((a, b) => {
@@ -720,14 +725,14 @@ export default function AdminAgendaPage() {
         // Move existing scheduled episode to new date
         const { error } = await supabase
           .from('episodes')
-          .update({ calendar_scheduled_at: isoOffset })
+          .update({ calendar_scheduled_at: isoOffset, scheduled_publish_at: isoOffset })
           .eq('id', episode.id)
           .eq('editorial_status', 'calendar_scheduled')
 
         if (error) throw error
 
         // Update local state
-        const updatedEp: EpisodeWithSeries = { ...episode, calendar_scheduled_at: isoOffset }
+        const updatedEp: EpisodeWithSeries = { ...episode, calendar_scheduled_at: isoOffset, scheduled_publish_at: isoOffset }
         setCalendarEpisodes((prev) =>
           prev.map((e) => (e.id === episode.id ? updatedEp : e)).sort((a, b) => {
             if (!a.calendar_scheduled_at) return 1
@@ -780,13 +785,13 @@ export default function AdminAgendaPage() {
     try {
       const { error } = await supabase
         .from('episodes')
-        .update({ calendar_scheduled_at: isoOffset })
+        .update({ calendar_scheduled_at: isoOffset, scheduled_publish_at: isoOffset })
         .eq('id', ep.id)
         .eq('editorial_status', 'calendar_scheduled')
 
       if (error) throw error
 
-      const updatedEp: EpisodeWithSeries = { ...ep, calendar_scheduled_at: isoOffset }
+      const updatedEp: EpisodeWithSeries = { ...ep, calendar_scheduled_at: isoOffset, scheduled_publish_at: isoOffset }
       setCalendarEpisodes((prev) =>
         prev.map((e) => (e.id === ep.id ? updatedEp : e)).sort((a, b) => {
           if (!a.calendar_scheduled_at) return 1
@@ -818,6 +823,7 @@ export default function AdminAgendaPage() {
         .update({
           editorial_status: 'repository',
           calendar_scheduled_at: null,
+          scheduled_publish_at: null,
         })
         .eq('id', ep.id)
         .eq('editorial_status', 'calendar_scheduled')
@@ -825,7 +831,7 @@ export default function AdminAgendaPage() {
       if (error) throw error
 
       setCalendarEpisodes((prev) => prev.filter((e) => e.id !== ep.id))
-      const returnedEp: EpisodeWithSeries = { ...ep, editorial_status: 'repository', calendar_scheduled_at: null }
+      const returnedEp: EpisodeWithSeries = { ...ep, editorial_status: 'repository', calendar_scheduled_at: null, scheduled_publish_at: null }
       setRepositoryEpisodes((prev) => [returnedEp, ...prev])
       closeEditModal()
     } catch (err) {
