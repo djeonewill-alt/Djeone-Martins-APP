@@ -235,11 +235,14 @@ export async function GET(request: NextRequest) {
     })
 
     if (episodeIds.length > 0) {
+      // Busca daily_quotes vinculadas aos episódios publicados.
+      // Aceita quotes com status 'scheduled' (fluxo agendado direto)
+      // e 'draft' (fluxo repositório → calendário, salvas pelo handleSaveToRepository).
       const { data: quotesLinkedToEpisodes, error: linkedQuotesError } =
         await supabase
           .from('daily_quotes')
           .select('id, episode_id, quote_text, scheduled_publish_at')
-          .eq('status', 'scheduled')
+          .in('status', ['scheduled', 'draft'])
           .in('episode_id', episodeIds)
 
       if (linkedQuotesError) throw linkedQuotesError
@@ -252,6 +255,11 @@ export async function GET(request: NextRequest) {
     const quoteIdsArray = Array.from(quoteIds)
 
     if (quoteIdsArray.length > 0) {
+      // Publica as daily_quotes sem alterar o campo date.
+      // O date original é preservado para evitar conflito com a
+      // constraint daily_quotes_date_key (unique). O DailyQuoteCard
+      // busca com status='published' ordenado por published_at DESC,
+      // então o date original não quebra a renderização.
       const { error: quotesUpdateError } = await supabase
         .from('daily_quotes')
         .update({

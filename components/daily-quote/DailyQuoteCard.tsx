@@ -39,8 +39,6 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
 
   const loadDailyQuote = async () => {
     try {
-      const today = new Date().toISOString().split('T')[0]
-
       const { data, error } = await supabase
         .from('daily_quotes')
         .select(`
@@ -80,8 +78,8 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
             )
           )
         `)
-        .eq('date', today)
         .eq('status', 'published')
+        .order('published_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
