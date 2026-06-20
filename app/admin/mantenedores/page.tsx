@@ -73,9 +73,10 @@ export default function MantenedoresAdminPage() {
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [qrGenerating, setQrGenerating] = useState(false);
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const CADASTRO_URL = typeof window !== "undefined"
-    ? `${window.location.origin}/apoie`
-    : "/apoie";
+  const CADASTRO_URL =
+    process.env.NEXT_PUBLIC_APP_URL
+      ? `${process.env.NEXT_PUBLIC_APP_URL}/apoie`
+      : "https://app.djeonemartins.com.br/apoie";
 
   useEffect(() => {
     const stored = window.localStorage.getItem(ADMIN_STORAGE_KEY);
