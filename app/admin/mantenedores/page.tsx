@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import QRCode from "qrcode";
 
 type MantenedorRecord = {
   id: string;
@@ -66,6 +67,15 @@ export default function MantenedoresAdminPage() {
   const [manualValor, setManualValor] = useState("");
   const [manualSubmitting, setManualSubmitting] = useState(false);
   const [manualError, setManualError] = useState("");
+
+  // QR Code modal
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState("");
+  const [qrGenerating, setQrGenerating] = useState(false);
+  const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const CADASTRO_URL = typeof window !== "undefined"
+    ? `${window.location.origin}/apoie`
+    : "/apoie";
 
   useEffect(() => {
     const stored = window.localStorage.getItem(ADMIN_STORAGE_KEY);
@@ -179,6 +189,63 @@ export default function MantenedoresAdminPage() {
     }
   }
 
+  async function handleOpenQrModal() {
+    setShowQrModal(true);
+    setQrDataUrl("");
+
+    // Gera o QR Code no próximo tick para o canvas estar montado
+    setTimeout(async () => {
+      if (!qrCanvasRef.current) return;
+      setQrGenerating(true);
+
+      try {
+        const canvas = qrCanvasRef.current;
+        await QRCode.toCanvas(canvas, CADASTRO_URL, {
+          width: 280,
+          margin: 2,
+          color: {
+            dark: "#f8fafc",
+            light: "#0f172a",
+          },
+        });
+        setQrDataUrl(canvas.toDataURL("image/png"));
+      } catch (error) {
+        console.error("Erro ao gerar QR Code:", error);
+      } finally {
+        setQrGenerating(false);
+      }
+    }, 100);
+  }
+
+  async function handleCopyQrLink() {
+    try {
+      await navigator.clipboard.writeText(CADASTRO_URL);
+      alert("Link copiado: " + CADASTRO_URL);
+    } catch {
+      // Fallback para navegadores que não suportam clipboard API
+      const textArea = document.createElement("textarea");
+      textArea.value = CADASTRO_URL;
+      textArea.style.position = "fixed";
+      textArea.style.left = "-9999px";
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+      alert("Link copiado: " + CADASTRO_URL);
+    }
+  }
+
+  function handleDownloadQr() {
+    if (!qrDataUrl) return;
+
+    const link = document.createElement("a");
+    link.download = "qrcode-cadastro-mantenedores.png";
+    link.href = qrDataUrl;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
   if (!isLogged) {
     return (
       <main className="admin-page">
@@ -272,6 +339,14 @@ export default function MantenedoresAdminPage() {
         >
           + Adicionar Ficha Manual
         </button>
+
+        <button
+          type="button"
+          className="qr-btn"
+          onClick={handleOpenQrModal}
+        >
+          📱 Gerar QR Code
+        </button>
       </section>
 
       {/* Table */}
@@ -322,7 +397,7 @@ export default function MantenedoresAdminPage() {
         )}
       </section>
 
-      {/* Modal */}
+      {/* Modal de Ficha Manual */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div
@@ -391,6 +466,63 @@ export default function MantenedoresAdminPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de QR Code */}
+      {showQrModal && (
+        <div className="modal-overlay" onClick={() => setShowQrModal(false)}>
+          <div
+            className="modal-card qr-modal-card"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2>QR Code para Cadastro</h2>
+            <p>
+              Este QR Code direciona para a página de cadastro de mantenedores.
+              Use em eventos, cartazes ou projeções para captar novos leads.
+            </p>
+
+            <div className="qr-canvas-wrapper">
+              {qrGenerating && (
+                <p className="qr-generating-text">Gerando QR Code...</p>
+              )}
+              <canvas
+                ref={qrCanvasRef}
+                className="qr-canvas"
+                style={{ display: qrDataUrl ? "block" : "none" }}
+              />
+            </div>
+
+            <p className="qr-url-text">{CADASTRO_URL}</p>
+
+            <div className="qr-actions">
+              <button
+                type="button"
+                className="qr-action-btn"
+                onClick={handleCopyQrLink}
+              >
+                📋 Copiar link
+              </button>
+              <button
+                type="button"
+                className="qr-action-btn"
+                onClick={handleDownloadQr}
+                disabled={!qrDataUrl}
+              >
+                💾 Baixar QR Code (PNG)
+              </button>
+            </div>
+
+            <div className="modal-buttons" style={{ marginTop: 16 }}>
+              <button
+                type="button"
+                className="cancel-btn"
+                onClick={() => setShowQrModal(false)}
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -580,6 +712,17 @@ const styles = `
     font-size: 0.95rem;
   }
 
+  .qr-btn {
+    background: linear-gradient(135deg, rgba(168, 85, 247, 0.22), rgba(139, 92, 246, 0.14));
+    border-color: rgba(196, 181, 253, 0.28);
+    font-size: 0.95rem;
+  }
+
+  .qr-btn:hover {
+    border-color: rgba(196, 181, 253, 0.5);
+    background: linear-gradient(135deg, rgba(168, 85, 247, 0.30), rgba(139, 92, 246, 0.20));
+  }
+
   /* Table */
   .table-section {
     max-width: 1180px;
@@ -748,6 +891,78 @@ const styles = `
     background: rgba(51, 65, 85, 0.4);
     border-color: rgba(148, 163, 184, 0.18);
     color: #bfdbfe;
+  }
+
+  /* QR Code Modal */
+  .qr-modal-card {
+    width: min(100%, 480px);
+    text-align: center;
+  }
+
+  .qr-canvas-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 180px;
+    margin: 16px 0;
+    padding: 16px;
+    border-radius: 16px;
+    background: rgba(2, 6, 23, 0.5);
+    border: 1px solid rgba(148, 163, 184, 0.10);
+  }
+
+  .qr-generating-text {
+    color: #93c5fd;
+    font-weight: 800;
+    font-size: 0.9rem;
+  }
+
+  .qr-canvas {
+    width: 280px;
+    height: 280px;
+    border-radius: 12px;
+  }
+
+  .qr-url-text {
+    color: #94a3b8;
+    font-size: 0.78rem;
+    font-weight: 800;
+    word-break: break-all;
+    margin-bottom: 16px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: rgba(2, 6, 23, 0.4);
+    border: 1px solid rgba(148, 163, 184, 0.08);
+  }
+
+  .qr-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .qr-action-btn {
+    flex: 1;
+    min-width: 140px;
+    border: 1px solid rgba(196, 181, 253, 0.22);
+    background: rgba(139, 92, 246, 0.12);
+    color: #e9d5ff;
+    border-radius: 14px;
+    padding: 12px 16px;
+    font-weight: 900;
+    font-size: 0.88rem;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+  }
+
+  .qr-action-btn:hover {
+    background: rgba(139, 92, 246, 0.22);
+    border-color: rgba(196, 181, 253, 0.40);
+  }
+
+  .qr-action-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   @media (max-width: 768px) {
