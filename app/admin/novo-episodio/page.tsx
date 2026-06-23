@@ -926,9 +926,6 @@ export default function NovoEpisodio() {
 
     const uploadResponse = await fetch(presignData.signedUrl, {
       method: 'PUT',
-      headers: {
-        'Content-Type': presignData.contentType || contentType,
-      },
       body: file,
     })
 
@@ -986,7 +983,9 @@ export default function NovoEpisodio() {
         throw new Error(data.error || 'Erro ao fazer upload')
       }
     } catch (error) {
-      console.error('Erro no upload:', error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      const errorDetails = error instanceof Error && error.stack ? `\nStack: ${error.stack}` : ''
+      console.error(`[handleRecordingComplete] Erro no upload: ${errorMessage}${errorDetails}`)
       alert('❌ Erro ao enviar gravação. Tente novamente.')
     } finally {
       setUploading(false)
@@ -3780,6 +3779,24 @@ export default function NovoEpisodio() {
       )}
 
       <div className="admin-new-episode-polish" />
+
+      {/* BOTÃO DE RESGATE EMERGENCIAL — DELETAR APÓS USO */}
+      <button
+        onClick={() => {
+          if (!recordingBlob) return alert('Blob não encontrado no estado!');
+          const url = URL.createObjectURL(recordingBlob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'JOAO_16_RESGATADO.webm';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }}
+        style={{ position: 'fixed', top: '10px', left: '10px', zIndex: 99999, padding: '20px', background: 'red', color: 'white', fontWeight: 'bold', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '16px' }}
+      >
+        🔴 BAIXAR ÁUDIO RESGATADO (JOÃO 16)
+      </button>
 
 </div>
   )

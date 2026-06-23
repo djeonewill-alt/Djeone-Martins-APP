@@ -233,7 +233,6 @@ export async function POST(request: NextRequest) {
     const command = new PutObjectCommand({
       Bucket: R2_BUCKET_NAME,
       Key: key,
-      ContentType: validation.contentType,
     })
 
     const signedUrl = await getSignedUrl(r2Client, command, {
