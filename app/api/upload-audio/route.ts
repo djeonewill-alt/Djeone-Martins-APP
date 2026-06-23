@@ -210,13 +210,23 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
 
+    const requestedFolder = (formData.get('folder') as string | null) || ''
+    const safeFolder = ['audio', 'recordings', 'images'].includes(requestedFolder)
+      ? requestedFolder
+      : ''
+    const folderPrefix = safeFolder ? `${safeFolder}/` : ''
+
     const timestamp = Date.now()
     const originalExtension = file.name.split('.').pop() || 'bin'
     const safeExtension = originalExtension.toLowerCase().replace(/[^a-z0-9]/g, '')
     const safeType = type.replace(/[^a-z0-9-]/gi, '').toLowerCase()
     const fileName = `${safeType}-${timestamp}.${safeExtension}`
+    const key = folderPrefix ? `${folderPrefix}${fileName}` : fileName
+
+    const actualKey = key || fileName
 
     console.log('[upload-audio] iniciando upload', {
+      key: actualKey,
       fileName,
       originalName: file.name,
       type,
@@ -228,20 +238,20 @@ export async function POST(request: NextRequest) {
 
     const command = new PutObjectCommand({
       Bucket: bucketName,
-      Key: fileName,
+      Key: actualKey,
       Body: buffer,
       ContentType: file.type || 'application/octet-stream',
     })
 
     await s3Client.send(command)
 
-    const publicUrl = `${publicBaseUrl}/${fileName}`
+    const publicUrl = `${publicBaseUrl}/${actualKey}`
     const contentType = file.type || 'application/octet-stream'
     const isAudioCompatible =
       type === 'audio' && isCompatibleAudio(contentType, safeExtension)
 
     console.log('[upload-audio] upload concluído', {
-      fileName,
+      key: actualKey,
       publicUrl,
       size: file.size,
       mimeType: file.type,
@@ -249,6 +259,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       url: publicUrl,
+      key: actualKey,
       fileName,
       size: file.size,
       type: file.type,

@@ -903,48 +903,37 @@ export default function NovoEpisodio() {
     fileName: string,
     folder = 'recordings'
   ): Promise<AudioUploadResponse> => {
-    const contentType = (file.type || 'audio/webm').split(';')[0]
-
     const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || ''
-    const presignResponse = await fetch('/api/r2/presigned-upload', {
+
+    const formData = new FormData()
+    formData.append('file', file, fileName)
+    formData.append('type', 'audio')
+    formData.append('folder', folder)
+
+    const response = await fetch('/api/upload-audio', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
         'x-admin-password': adminPassword,
       },
-      body: JSON.stringify({
-        fileName,
-        contentType,
-        sizeBytes: file.size,
-        folder,
-      }),
+      body: formData,
     })
 
-    const presignData = (await presignResponse.json()) as PresignedUploadResponse
+    const data = await response.json()
 
-    if (!presignResponse.ok || !presignData.signedUrl || !presignData.publicUrl) {
-      throw new Error(presignData.error || 'Erro ao preparar upload direto.')
-    }
-
-    const uploadResponse = await fetch(presignData.signedUrl, {
-      method: 'PUT',
-      body: file,
-    })
-
-    if (!uploadResponse.ok) {
-      throw new Error('Erro ao enviar audio diretamente para o R2.')
+    if (!response.ok || !data.url) {
+      throw new Error(data.error || 'Erro ao enviar audio para o servidor.')
     }
 
     return {
-      url: presignData.publicUrl,
-      key: presignData.key,
-      type: presignData.contentType,
-      contentType: presignData.contentType,
-      extension: presignData.extension,
-      sizeBytes: presignData.sizeBytes,
-      compatibleAudioUrl: presignData.compatibleAudioUrl,
-      compatibleAudioType: presignData.compatibleAudioType,
-      isAudioCompatible: presignData.isAudioCompatible,
+      url: data.url,
+      key: data.key || '',
+      type: data.contentType || data.type || 'audio/webm',
+      contentType: data.contentType || data.type || 'audio/webm',
+      extension: data.extension || '',
+      sizeBytes: data.size || file.size,
+      compatibleAudioUrl: data.compatibleAudioUrl || null,
+      compatibleAudioType: data.compatibleAudioType || null,
+      isAudioCompatible: data.isAudioCompatible || false,
     }
   }
 
