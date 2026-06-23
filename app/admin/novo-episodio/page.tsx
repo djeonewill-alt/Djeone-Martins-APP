@@ -905,10 +905,12 @@ export default function NovoEpisodio() {
   ): Promise<AudioUploadResponse> => {
     const contentType = (file.type || 'audio/webm').split(';')[0]
 
+    const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || ''
     const presignResponse = await fetch('/api/r2/presigned-upload', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'x-admin-password': adminPassword,
       },
       body: JSON.stringify({
         fileName,
@@ -3779,24 +3781,6 @@ export default function NovoEpisodio() {
       )}
 
       <div className="admin-new-episode-polish" />
-
-      {/* BOTÃO DE RESGATE EMERGENCIAL — DELETAR APÓS USO */}
-      <button
-        onClick={() => {
-          if (!recordingBlob) return alert('Blob não encontrado no estado!');
-          const url = URL.createObjectURL(recordingBlob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = 'JOAO_16_RESGATADO.webm';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        }}
-        style={{ position: 'fixed', top: '10px', left: '10px', zIndex: 99999, padding: '20px', background: 'red', color: 'white', fontWeight: 'bold', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '16px' }}
-      >
-        🔴 BAIXAR ÁUDIO RESGATADO (JOÃO 16)
-      </button>
 
 </div>
   )

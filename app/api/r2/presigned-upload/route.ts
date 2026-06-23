@@ -87,8 +87,17 @@ async function getUploadAuthError(request: NextRequest) {
   }
 
   const headerPassword = request.headers.get('x-admin-password') || ''
+  const hasPasswordMatch = headerPassword === adminSecret
+  const hasSession = await isAdminSession()
 
-  if (headerPassword === adminSecret || (await isAdminSession())) {
+  console.log('[presigned-upload] auth check:', {
+    hasPasswordMatch,
+    hasSession,
+    headerPasswordPresent: typeof request.headers.get('x-admin-password') === 'string',
+    url: request.url,
+  })
+
+  if (hasPasswordMatch || hasSession) {
     return null
   }
 
