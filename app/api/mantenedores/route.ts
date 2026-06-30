@@ -1,16 +1,52 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
+function getAdminEmails(): string[] {
+  const raw = process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || 'djeonewill@gmail.com'
+  return raw
+    .toLowerCase()
+    .split(',')
+    .map((e) => e.trim())
+    .filter(Boolean)
+}
+
+async function requireAdmin() {
+  const supabase = await createSupabaseServerClient()
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
+
+  if (authError || !user?.email) {
+    return { authorized: false, status: 401, error: 'Autenticação necessária.' } as const
+  }
+
+  const isAdmin = getAdminEmails().includes(user.email.toLowerCase())
+
+  if (!isAdmin) {
+    return { authorized: false, status: 403, error: 'Acesso não autorizado.' } as const
+  }
+
+  return { authorized: true } as const
+}
 
 export async function GET() {
+  // ─── Verificação de autenticação ───────────────────────────
+  const auth = await requireAdmin()
+  if (!auth.authorized) {
+    return NextResponse.json(
+      { success: false, error: auth.error },
+      { status: auth.status },
+    )
+  }
+
+  const adminClient = createSupabaseAdminClient()
+
   try {
-    const { data, error } = await supabase
+    const { data, error } = await adminClient
       .from("mantenedores")
       .select("*")
       .order("created_at", { ascending: false });
@@ -51,6 +87,17 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  // ─── Verificação de autenticação ───────────────────────────
+  const auth = await requireAdmin()
+  if (!auth.authorized) {
+    return NextResponse.json(
+      { success: false, error: auth.error },
+      { status: auth.status },
+    )
+  }
+
+  const adminClient = createSupabaseAdminClient()
+
   try {
     const body = await request.json();
     const { nome, whatsapp, email, valor_mensal } = body ?? {};
@@ -74,7 +121,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await adminClient
       .from("mantenedores")
       .insert({
         nome: nome.trim(),

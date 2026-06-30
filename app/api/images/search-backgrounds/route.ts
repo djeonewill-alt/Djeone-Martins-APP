@@ -13,8 +13,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { createSupabaseAdminClient } from '@/lib/supabase/admin'
 import { generateAndUploadFluxImage } from '@/lib/ai/fal'
 import { generateFluxPrompt, buildFluxFinalPrompt } from '@/lib/ai/ImageOrchestrator'
 
@@ -42,20 +44,17 @@ type GeneratedBackground = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+function getAdminEmails(): string[] {
+  const raw = process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || 'djeonewill@gmail.com'
+  return raw
+    .toLowerCase()
+    .split(',')
+    .map((e) => e.trim())
+    .filter(Boolean)
+}
 
 function cleanText(value: string, maxLength = 12000) {
   return value.replace(/\s+/g, ' ').trim().slice(0, maxLength)
-}
-
-function normalizeText(text: string) {
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
 }
 
 function getStringArray(value: unknown) {
@@ -68,19 +67,22 @@ function getStringArray(value: unknown) {
 // Persistência no Supabase (histórico + vínculo com daily_quotes)
 // ---------------------------------------------------------------------------
 
-async function saveFluxBackgroundHistory(params: {
-  dailyQuoteId?: string
-  r2Url: string
-  promptUsed: string
-  themeKeywords: string[]
-  quoteText: string
-}): Promise<{ quoteBackgroundId: string }> {
+async function saveFluxBackgroundHistory(
+  adminClient: SupabaseClient,
+  params: {
+    dailyQuoteId?: string
+    r2Url: string
+    promptUsed: string
+    themeKeywords: string[]
+    quoteText: string
+  },
+): Promise<{ quoteBackgroundId: string }> {
   const now = new Date().toISOString()
   const today = now.split('T')[0]
   const theme = params.themeKeywords[0] || 'devocional'
 
   // 1. Insere novo registro em quote_backgrounds
-  const { data: background, error: backgroundError } = await supabase
+  const { data: background, error: backgroundError } = await adminClient
     .from('quote_backgrounds')
     .insert({
       image_url: params.r2Url,
@@ -113,7 +115,7 @@ async function saveFluxBackgroundHistory(params: {
 
   // 2. Atualiza a daily_quote com o background_image_url
   if (params.dailyQuoteId) {
-    const { error: quoteUpdateError } = await supabase
+    const { error: quoteUpdateError } = await adminClient
       .from('daily_quotes')
       .update({
         background_image_url: params.r2Url,
@@ -129,7 +131,7 @@ async function saveFluxBackgroundHistory(params: {
   }
 
   // 3. Insere no histórico de imagens
-  const { error: historyError } = await supabase
+  const { error: historyError } = await adminClient
     .from('daily_quote_image_history')
     .insert([
       {
@@ -158,6 +160,31 @@ async function saveFluxBackgroundHistory(params: {
 // ---------------------------------------------------------------------------
 
 export async function POST(request: NextRequest) {
+  // ─── 1. Verificação de autenticação ───────────────────────────
+  const supabase = await createSupabaseServerClient()
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
+
+  if (authError || !user?.email) {
+    return NextResponse.json(
+      { success: false, error: 'Autenticação necessária.' },
+      { status: 401 },
+    )
+  }
+
+  const isAdmin = getAdminEmails().includes(user.email.toLowerCase())
+
+  if (!isAdmin) {
+    return NextResponse.json(
+      { success: false, error: 'Acesso não autorizado.' },
+      { status: 403 },
+    )
+  }
+
+  const adminClient = createSupabaseAdminClient()
+
   try {
     const body = await request.json()
 
@@ -179,7 +206,7 @@ export async function POST(request: NextRequest) {
     if (!queryToUse) {
       return NextResponse.json(
         { error: 'Envie quoteText ou query para gerar a imagem.' },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -230,7 +257,7 @@ export async function POST(request: NextRequest) {
     let quoteBackgroundId: string | null = null
 
     try {
-      const saved = await saveFluxBackgroundHistory({
+      const saved = await saveFluxBackgroundHistory(adminClient, {
         dailyQuoteId: dailyQuoteId || undefined,
         r2Url: fluxResult.r2Url,
         promptUsed: fluxVisualPrompt,
@@ -305,7 +332,7 @@ export async function POST(request: NextRequest) {
           warning_reason: 'Erro na geração FLUX',
         },
       },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }

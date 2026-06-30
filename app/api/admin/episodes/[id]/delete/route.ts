@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { createSupabaseAdminClient } from '@/lib/supabase/admin'
 
 export const runtime = 'nodejs'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-)
+function getAdminEmails(): string[] {
+  const raw = process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || 'djeonewill@gmail.com'
+  return raw
+    .toLowerCase()
+    .split(',')
+    .map((e) => e.trim())
+    .filter(Boolean)
+}
 
 export async function DELETE(
   request: NextRequest,
@@ -15,8 +20,34 @@ export async function DELETE(
   const { id } = await params
 
   try {
-    // 1. Buscar o episódio para verificar se existe
-    const { data: episode, error: fetchError } = await supabase
+    // ─── 1. Verificação de autenticação ───────────────────────────
+    const supabase = await createSupabaseServerClient()
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+
+    if (authError || !user?.email) {
+      return NextResponse.json(
+        { success: false, error: 'Autenticação necessária.' },
+        { status: 401 },
+      )
+    }
+
+    const isAdmin = getAdminEmails().includes(user.email.toLowerCase())
+
+    if (!isAdmin) {
+      return NextResponse.json(
+        { success: false, error: 'Acesso não autorizado.' },
+        { status: 403 },
+      )
+    }
+
+    // ─── 2. Operações de banco com service_role (bypass RLS) ──────
+    const adminClient = createSupabaseAdminClient()
+
+    // Buscar o episódio para verificar se existe
+    const { data: episode, error: fetchError } = await adminClient
       .from('episodes')
       .select('id, title, audio_url, cover_image_url')
       .eq('id', id)
@@ -29,8 +60,8 @@ export async function DELETE(
       )
     }
 
-    // 2. Deletar daily_quotes vinculadas
-    const { error: quotesError } = await supabase
+    // Deletar daily_quotes vinculadas
+    const { error: quotesError } = await adminClient
       .from('daily_quotes')
       .delete()
       .eq('episode_id', id)
@@ -40,8 +71,8 @@ export async function DELETE(
       // Não quebra — o importante é deletar o episódio
     }
 
-    // 3. Deletar o episódio
-    const { error: deleteError } = await supabase
+    // Deletar o episódio
+    const { error: deleteError } = await adminClient
       .from('episodes')
       .delete()
       .eq('id', id)

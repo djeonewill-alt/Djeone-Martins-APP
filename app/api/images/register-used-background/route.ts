@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { createSupabaseAdminClient } from '@/lib/supabase/admin'
+
+function getAdminEmails(): string[] {
+  const raw = process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || 'djeonewill@gmail.com'
+  return raw
+    .toLowerCase()
+    .split(',')
+    .map((e) => e.trim())
+    .filter(Boolean)
+}
 
 type RegisterImageBody = {
   dailyQuoteId?: string
@@ -29,19 +36,22 @@ function getPrimaryTheme(themeKeywords: string[]) {
   return firstTheme || 'devocional'
 }
 
-async function findOrCreateQuoteBackground(params: {
-  quoteBackgroundId?: string | null
-  sourceImageUrl: string
-  sourceImageProvider: string
-  sourcePageUrl?: string | null
-  pexelsPhotoId?: string | null
-  photographer?: string | null
-  photographerUrl?: string | null
-  queryUsed?: string | null
-  themeKeywords: string[]
-}) {
+async function findOrCreateQuoteBackground(
+  adminClient: SupabaseClient,
+  params: {
+    quoteBackgroundId?: string | null
+    sourceImageUrl: string
+    sourceImageProvider: string
+    sourcePageUrl?: string | null
+    pexelsPhotoId?: string | null
+    photographer?: string | null
+    photographerUrl?: string | null
+    queryUsed?: string | null
+    themeKeywords: string[]
+  },
+) {
   if (params.quoteBackgroundId) {
-    const { data: existingById, error: existingByIdError } = await supabase
+    const { data: existingById, error: existingByIdError } = await adminClient
       .from('quote_backgrounds')
       .select('id, use_count')
       .eq('id', params.quoteBackgroundId)
@@ -57,7 +67,7 @@ async function findOrCreateQuoteBackground(params: {
   }
 
   if (params.pexelsPhotoId) {
-    const { data: existingByPexels, error: existingByPexelsError } = await supabase
+    const { data: existingByPexels, error: existingByPexelsError } = await adminClient
       .from('quote_backgrounds')
       .select('id, use_count')
       .eq('pexels_photo_id', params.pexelsPhotoId)
@@ -72,7 +82,7 @@ async function findOrCreateQuoteBackground(params: {
     }
   }
 
-  const { data: existingByUrl, error: existingByUrlError } = await supabase
+  const { data: existingByUrl, error: existingByUrlError } = await adminClient
     .from('quote_backgrounds')
     .select('id, use_count')
     .eq('image_url', params.sourceImageUrl)
@@ -88,7 +98,7 @@ async function findOrCreateQuoteBackground(params: {
 
   const theme = getPrimaryTheme(params.themeKeywords)
 
-  const { data: createdBackground, error: createError } = await supabase
+  const { data: createdBackground, error: createError } = await adminClient
     .from('quote_backgrounds')
     .insert([
       {
@@ -124,6 +134,31 @@ async function findOrCreateQuoteBackground(params: {
 }
 
 export async function POST(request: NextRequest) {
+  // ─── 1. Verificação de autenticação ───────────────────────────
+  const supabase = await createSupabaseServerClient()
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
+
+  if (authError || !user?.email) {
+    return NextResponse.json(
+      { success: false, error: 'Autenticação necessária.' },
+      { status: 401 },
+    )
+  }
+
+  const isAdmin = getAdminEmails().includes(user.email.toLowerCase())
+
+  if (!isAdmin) {
+    return NextResponse.json(
+      { success: false, error: 'Acesso não autorizado.' },
+      { status: 403 },
+    )
+  }
+
+  const adminClient = createSupabaseAdminClient()
+
   try {
     const body = (await request.json()) as RegisterImageBody
 
@@ -142,18 +177,18 @@ export async function POST(request: NextRequest) {
     if (!dailyQuoteId) {
       return NextResponse.json(
         { error: 'dailyQuoteId é obrigatório.' },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
     if (!sourceImageUrl) {
       return NextResponse.json(
         { error: 'sourceImageUrl é obrigatório.' },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
-    const quoteBackground = await findOrCreateQuoteBackground({
+    const quoteBackground = await findOrCreateQuoteBackground(adminClient, {
       quoteBackgroundId: body.quoteBackgroundId || null,
       sourceImageUrl,
       sourceImageProvider,
@@ -168,7 +203,7 @@ export async function POST(request: NextRequest) {
     const today = new Date().toISOString().split('T')[0]
     const now = new Date().toISOString()
 
-    const { error: updateBackgroundError } = await supabase
+    const { error: updateBackgroundError } = await adminClient
       .from('quote_backgrounds')
       .update({
         last_used_date: today,
@@ -181,7 +216,7 @@ export async function POST(request: NextRequest) {
       throw updateBackgroundError
     }
 
-    const { error: updateQuoteError } = await supabase
+    const { error: updateQuoteError } = await adminClient
       .from('daily_quotes')
       .update({
         quote_background_id: quoteBackground.id,
@@ -192,7 +227,7 @@ export async function POST(request: NextRequest) {
       throw updateQuoteError
     }
 
-    const { error: historyError } = await supabase
+    const { error: historyError } = await adminClient
       .from('daily_quote_image_history')
       .insert([
         {
@@ -232,7 +267,7 @@ export async function POST(request: NextRequest) {
             ? error.message
             : 'Erro ao registrar imagem usada.',
       },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }
