@@ -39,6 +39,26 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
 
   const loadDailyQuote = async () => {
     try {
+      // Step 1: Find today's episode (same logic as TabHoje — show_on_today=true)
+      const { data: todayEpisode, error: episodeError } = await supabase
+        .from('episodes')
+        .select('id')
+        .or('status.eq.published,status.is.null')
+        .or('editorial_status.is.null,editorial_status.eq.published')
+        .eq('show_on_today', true)
+        .order('published_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (episodeError) throw episodeError
+
+      if (!todayEpisode) {
+        setQuote(null)
+        return
+      }
+
+      // Step 2: Fetch the daily_quote linked to that episode
       const { data, error } = await supabase
         .from('daily_quotes')
         .select(`
@@ -78,6 +98,7 @@ export default function DailyQuoteCard({ className = '' }: DailyQuoteCardProps) 
             )
           )
         `)
+        .eq('episode_id', todayEpisode.id)
         .eq('status', 'published')
         .order('published_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
