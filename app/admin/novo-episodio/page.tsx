@@ -2018,6 +2018,23 @@ export default function NovoEpisodio() {
       return
     }
 
+    if (
+      !enableDailyQuote &&
+      (quoteSuggestions.length > 0 || cardOptions.length > 0 || (generatedFluxImageUrl && generatedFluxImageUrl.length > 0))
+    ) {
+      const proceed = window.confirm(
+        '⚠️ Você gerou sugestões e/ou imagens para a Palavra do Dia, mas a opção "Ativar Palavra do Dia" está desmarcada. Esse trabalho será DESCARTADO e não poderá ser recuperado depois. Deseja realmente continuar sem salvar a Palavra do Dia?'
+      )
+      if (!proceed) return
+    }
+
+    if (enableDailyQuote && selectedDailyQuote.trim().length === 0) {
+      const proceed = window.confirm(
+        'Você ativou a Palavra do Dia mas não selecionou nenhuma sugestão. Este episódio será salvo SEM Palavra do Dia. Deseja continuar mesmo assim?'
+      )
+      if (!proceed) return
+    }
+
     setSavingToRepository(true)
 
     try {
@@ -2261,9 +2278,26 @@ export default function NovoEpisodio() {
       return
     }
 
+    if (
+      !enableDailyQuote &&
+      (quoteSuggestions.length > 0 || cardOptions.length > 0 || (generatedFluxImageUrl && generatedFluxImageUrl.length > 0))
+    ) {
+      const proceed = window.confirm(
+        '⚠️ Você gerou sugestões e/ou imagens para a Palavra do Dia, mas a opção "Ativar Palavra do Dia" está desmarcada. Esse trabalho será DESCARTADO e não poderá ser recuperado depois. Deseja realmente continuar sem salvar a Palavra do Dia?'
+      )
+      if (!proceed) return
+    }
+
     if (enableDailyQuote && selectedDailyQuote.trim().length > 0 && selectedDailyQuote.trim().length < 20) {
       alert('❌ A Palavra do Dia está muito curta.')
       return
+    }
+
+    if (enableDailyQuote && selectedDailyQuote.trim().length === 0) {
+      const proceed = window.confirm(
+        'Você ativou a Palavra do Dia mas não selecionou nenhuma sugestão. O episódio será salvo SEM Palavra do Dia. Deseja continuar mesmo assim?'
+      )
+      if (!proceed) return
     }
 
     setLoading(true)
