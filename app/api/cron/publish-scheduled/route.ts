@@ -200,10 +200,19 @@ export async function GET(request: NextRequest) {
     const episodeIds = episodesToPublish.map((episode) => episode.id)
 
     if (episodeIds.length > 0) {
+      // Unset show_on_today on all other episodes so only the newly
+      // published one(s) appear in the "Hoje" tab.
+      await supabase
+        .from('episodes')
+        .update({ show_on_today: false })
+        .eq('show_on_today', true)
+        .not('id', 'in', `(${episodeIds.map((id) => `'${id}'`).join(',')})`)
+
       const { error: episodesUpdateError } = await supabase
         .from('episodes')
         .update({
           status: 'published',
+          editorial_status: 'published',
           scheduled_publish_at: null,
           published_at: now,
           show_on_today: true,
