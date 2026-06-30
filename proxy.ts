@@ -46,7 +46,11 @@ export async function proxy(request: NextRequest) {
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const adminEmail = (process.env.ADMIN_EMAIL || "djeonewill@gmail.com").toLowerCase();
+  const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || "djeonewill@gmail.com")
+    .toLowerCase()
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean);
 
   if (!supabaseUrl || !supabaseAnonKey) {
     return NextResponse.next();
@@ -103,7 +107,7 @@ export async function proxy(request: NextRequest) {
   if (user && isAdmin) {
     const userEmail = (user.email || "").toLowerCase();
 
-    if (userEmail !== adminEmail) {
+    if (!ADMIN_EMAILS.includes(userEmail)) {
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = "/";
       redirectUrl.searchParams.set("admin", "denied");
@@ -120,6 +124,4 @@ export const config = {
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|css|js|map)$).*)",
   ],
 };
-
-
 
