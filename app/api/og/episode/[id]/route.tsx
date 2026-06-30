@@ -1,8 +1,9 @@
 import { ImageResponse } from 'next/og'
+import sharp from 'sharp'
 
 import { PUBLIC_EPISODE_EDITORIAL_FILTER } from '@/lib/episodes/publicVisibility'
 
-export const runtime = 'edge'
+export const runtime = 'nodejs'
 
 type Props = {
   params?: Promise<{ id: string }> | { id: string }
@@ -72,6 +73,31 @@ async function loadEpisode(id: string) {
   return episodes[0] || null
 }
 
+/**
+ * Converts a WebP image URL to a PNG data URL (base64) for next/og compatibility.
+ * next/og ImageResponse does not support WebP image URLs — it only accepts PNG/JPEG.
+ *
+ * Falls back to null (which uses the gradient) if conversion fails.
+ */
+async function convertCoverToPngDataUrl(coverUrl: string): Promise<string | null> {
+  try {
+    const response = await fetch(coverUrl, { signal: AbortSignal.timeout(10000) })
+    if (!response.ok) return null
+
+    const arrayBuffer = await response.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+
+    // Convert to PNG via sharp (handles WebP → PNG transparently)
+    const pngBuffer = await sharp(buffer).png().toBuffer()
+
+    const base64 = pngBuffer.toString('base64')
+    return `data:image/png;base64,${base64}`
+  } catch {
+    // If conversion fails (network error, invalid image), return null to use gradient
+    return null
+  }
+}
+
 export async function GET(request: Request, { params }: Props) {
   try {
     const resolvedParams = await params
@@ -102,8 +128,9 @@ export async function GET(request: Request, { params }: Props) {
       episode.cover_image_url ||
       episode.series?.cover_image_url ||
       ''
+    // WebP images are not supported by next/og — convert to PNG data URL
     const cover = rawCover
-      ? new URL(rawCover, new URL(request.url).origin).toString()
+      ? (await convertCoverToPngDataUrl(rawCover)) || ''
       : ''
     const metaItems = [bibleReference, episodeLabel, duration].filter(Boolean)
 
