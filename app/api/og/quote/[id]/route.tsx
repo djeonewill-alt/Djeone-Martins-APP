@@ -111,7 +111,7 @@ async function buildOgImage(
 
   <!-- top: line + title -->
   <rect x="540" y="56" width="120" height="1" rx="0.5" fill="url(#goldLine)"/>
-  <text x="600" y="98" text-anchor="middle" font-family="Arial, sans-serif"
+  <text x="600" y="98" text-anchor="middle" font-family="sans-serif"
         font-size="20" font-weight="900" fill="#fff4d6"
         letter-spacing="10" text-rendering="geometricPrecision">
     PALAVRA DO DIA
@@ -122,7 +122,7 @@ async function buildOgImage(
     .map((line, i) => {
       const y = H / 2 - ((quoteLines.length - 1) * lineHeight) / 2 + i * lineHeight + 10
       return `<text x="600" y="${y.toFixed(0)}" text-anchor="middle"
-        font-family="Georgia, serif" font-size="${fontSize}" font-weight="700"
+        font-family="serif" font-size="${fontSize}" font-weight="700"
         fill="#fffdf5" text-rendering="geometricPrecision">
         ${escapeXml(line)}
       </text>`
@@ -133,14 +133,14 @@ async function buildOgImage(
   <rect x="540" y="${H - 110}" width="120" height="1" rx="0.5" fill="url(#goldLine)"/>
 
   <!-- bottom: name -->
-  <text x="600" y="${H - 74}" text-anchor="middle" font-family="Georgia, serif"
+  <text x="600" y="${H - 74}" text-anchor="middle" font-family="serif"
         font-size="32" font-weight="700" fill="#fffdf5"
         text-rendering="geometricPrecision">
     Pr. Djeone Martins
   </text>
 
   <!-- bottom: subtitle -->
-  <text x="600" y="${H - 44}" text-anchor="middle" font-family="Arial, sans-serif"
+  <text x="600" y="${H - 44}" text-anchor="middle" font-family="sans-serif"
         font-size="14" font-weight="900" fill="#fff4d6"
         letter-spacing="6" text-rendering="geometricPrecision">
     DEVOCIONAL DIÁRIO
