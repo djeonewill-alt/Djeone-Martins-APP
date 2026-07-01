@@ -82,8 +82,6 @@ async function buildOgImage(
   const W = 1200
   const H = 630
 
-  console.log('[OG Quote] sharp input buffer size:', backgroundBuffer.length)
-
   // ---- text wrapping ---------------------------------------------------
   const maxCharsPerLine = 35
   const quoteLines = wrapText(quoteText, maxCharsPerLine)
@@ -152,15 +150,11 @@ async function buildOgImage(
   // ---- composite -------------------------------------------------------
   const svgBuffer = Buffer.from(svgOverlay)
 
-  const result = await sharp(backgroundBuffer)
+  return sharp(backgroundBuffer)
     .resize(W, H, { fit: 'cover', position: 'centre' })
     .composite([{ input: svgBuffer, top: 0, left: 0 }])
     .jpeg({ quality: 85, progressive: true })
     .toBuffer()
-
-  console.log('[OG Quote] jpeg output size:', result.length)
-
-  return result
 }
 
 export async function GET(_request: Request, props: { params: Promise<{ id: string }> }) {
@@ -226,31 +220,21 @@ export async function GET(_request: Request, props: { params: Promise<{ id: stri
   let backgroundBuffer: Buffer | null = null
 
   if (backgroundImageUrl) {
-    console.log('[OG Quote] backgroundImageUrl:', backgroundImageUrl)
     try {
       const response = await fetch(backgroundImageUrl, {
         signal: AbortSignal.timeout(10000),
       })
-      console.log('[OG Quote] fetch status:', response.status, 'ok:', response.ok)
       if (response.ok) {
         const arrayBuffer = await response.arrayBuffer()
-        console.log('[OG Quote] arrayBuffer size:', arrayBuffer.byteLength)
         backgroundBuffer = Buffer.from(arrayBuffer)
-        console.log('[OG Quote] Buffer.from size:', backgroundBuffer.byteLength)
-      } else {
-        console.log('[OG Quote] fetch failed with status:', response.status)
       }
-    } catch (err) {
-      console.log('[OG Quote] fetch error:', err instanceof Error ? err.message : String(err))
+    } catch {
       // Fallback: use solid gradient background (handled below)
     }
-  } else {
-    console.log('[OG Quote] backgroundImageUrl is empty — using gradient fallback')
   }
 
   // ---- if no image, create a gradient background via SVG + sharp -------
   if (!backgroundBuffer) {
-    console.log('[OG Quote] using gradient fallback (no background loaded)')
     const gradientSvg = `
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630">
   <defs>
@@ -267,8 +251,6 @@ export async function GET(_request: Request, props: { params: Promise<{ id: stri
       .png()
       .toBuffer()
   }
-
-  console.log('[OG Quote] backgroundBuffer size before buildOgImage:', backgroundBuffer?.length)
 
   // ---- render final image ----------------------------------------------
   const jpegBuffer = await buildOgImage(backgroundBuffer, quoteText)
