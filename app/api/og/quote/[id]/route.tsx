@@ -234,14 +234,14 @@ export async function GET(_request: Request, props: { params: Promise<{ id: stri
       console.log('[OG Quote] fetch status:', response.status, 'ok:', response.ok)
       if (response.ok) {
         const arrayBuffer = await response.arrayBuffer()
-        console.log('[OG Quote] buffer size:', arrayBuffer.byteLength)
+        console.log('[OG Quote] arrayBuffer size:', arrayBuffer.byteLength)
         backgroundBuffer = Buffer.from(arrayBuffer)
-        console.log('[OG Quote] fetched bytes:', backgroundBuffer.byteLength)
+        console.log('[OG Quote] Buffer.from size:', backgroundBuffer.byteLength)
       } else {
         console.log('[OG Quote] fetch failed with status:', response.status)
       }
     } catch (err) {
-      console.log('[OG Quote] fetch error:', err)
+      console.log('[OG Quote] fetch error:', err instanceof Error ? err.message : String(err))
       // Fallback: use solid gradient background (handled below)
     }
   } else {
