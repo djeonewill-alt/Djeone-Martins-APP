@@ -1,4 +1,5 @@
 ﻿import { ImageResponse } from 'next/og'
+import sharp from 'sharp'
 import { createSupabaseAdminClient } from '@/lib/supabase/admin'
 import { isPublicEpisodeVisible } from '@/lib/episodes/publicVisibility'
 
@@ -10,7 +11,7 @@ type RouteProps = {
   params: Promise<RouteParams>
 }
 
-export const runtime = 'edge'
+export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 type QuoteOgData = {
@@ -53,11 +54,38 @@ function getQuoteFontSize(text: string) {
   return 66
 }
 
+/**
+ * Converts a remote image URL (WebP/PNG/JPEG) to a PNG data URL (base64)
+ * for next/og compatibility.  ImageResponse does not reliably fetch WebP
+ * images in production — converting to a data URL avoids the runtime fetch.
+ *
+ * Falls back to null (which uses the gradient) if conversion fails.
+ */
+async function convertCoverToPngDataUrl(imageUrl: string): Promise<string | null> {
+  try {
+    const response = await fetch(imageUrl, { signal: AbortSignal.timeout(10000) })
+    if (!response.ok) return null
+
+    const arrayBuffer = await response.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+
+    // Convert to PNG via sharp (handles WebP → PNG transparently)
+    const pngBuffer = await sharp(buffer).png().toBuffer()
+
+    const base64 = pngBuffer.toString('base64')
+    return `data:image/png;base64,${base64}`
+  } catch {
+    // If conversion fails, return null to use gradient
+    return null
+  }
+}
+
 export async function GET(_request: Request, { params }: RouteProps) {
   const { id } = await params
 
   let quoteText = 'Receba uma Palavra do Dia para fortalecer sua fé.'
   let backgroundImageUrl = ''
+  let backgroundDataUrl: string | null = null
 
   if (isUuid(id)) {
     try {
@@ -115,6 +143,11 @@ export async function GET(_request: Request, { params }: RouteProps) {
     }
   }
 
+  // Convert remote image to PNG data URL for next/og compatibility
+  if (backgroundImageUrl) {
+    backgroundDataUrl = await convertCoverToPngDataUrl(backgroundImageUrl)
+  }
+
   const fittedQuote = fitText(quoteText)
   const quoteFontSize = getQuoteFontSize(fittedQuote)
 
@@ -132,9 +165,9 @@ export async function GET(_request: Request, { params }: RouteProps) {
           fontFamily: 'Arial, sans-serif',
         }}
       >
-        {backgroundImageUrl ? (
+        {backgroundDataUrl ? (
           <img
-            src={backgroundImageUrl}
+            src={backgroundDataUrl}
             width="1200"
             height="630"
             alt=""
@@ -239,7 +272,7 @@ export async function GET(_request: Request, { params }: RouteProps) {
               textShadow: '0 4px 14px rgba(0,0,0,0.94)',
             }}
           >
-            {`“${fittedQuote}”`}
+            {`"${fittedQuote}"`}
           </div>
 
           <div
