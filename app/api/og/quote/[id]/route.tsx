@@ -220,17 +220,23 @@ export async function GET(_request: Request, props: { params: Promise<{ id: stri
   let backgroundBuffer: Buffer | null = null
 
   if (backgroundImageUrl) {
+    console.log('[OG Quote] backgroundImageUrl:', backgroundImageUrl)
     try {
       const response = await fetch(backgroundImageUrl, {
         signal: AbortSignal.timeout(10000),
       })
+      console.log('[OG Quote] fetch status:', response?.status, 'ok:', response?.ok)
       if (response.ok) {
         const arrayBuffer = await response.arrayBuffer()
         backgroundBuffer = Buffer.from(arrayBuffer)
+        console.log('[OG Quote] fetched bytes:', backgroundBuffer.byteLength)
       }
-    } catch {
+    } catch (err) {
+      console.error('[OG Quote] fetch error:', err)
       // Fallback: use solid gradient background (handled below)
     }
+  } else {
+    console.log('[OG Quote] backgroundImageUrl is empty — using gradient fallback')
   }
 
   // ---- if no image, create a gradient background via SVG + sharp -------
