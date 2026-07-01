@@ -1,15 +1,6 @@
-﻿import { ImageResponse } from 'next/og'
-import sharp from 'sharp'
+﻿import sharp from 'sharp'
 import { createSupabaseAdminClient } from '@/lib/supabase/admin'
 import { isPublicEpisodeVisible } from '@/lib/episodes/publicVisibility'
-
-type RouteParams = {
-  id: string
-}
-
-type RouteProps = {
-  params: Promise<RouteParams>
-}
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -39,56 +30,138 @@ function cleanText(value?: string | null) {
   return (value || '').replace(/\s+/g, ' ').trim()
 }
 
-function fitText(value: string, maxLength = 145) {
-  const text = cleanText(value)
+/**
+ * Splits text into lines of at most maxChars, preferring
+ * word boundaries.
+ */
+function wrapText(text: string, maxChars: number): string[] {
+  const words = text.split(' ')
+  const lines: string[] = []
+  let current = ''
 
-  if (text.length <= maxLength) return text
-
-  return `${text.slice(0, maxLength - 3)}...`
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word
+    if (candidate.length <= maxChars) {
+      current = candidate
+    } else {
+      if (current) lines.push(current)
+      current = word
+    }
+  }
+  if (current) lines.push(current)
+  return lines
 }
 
-function getQuoteFontSize(text: string) {
-  if (text.length > 125) return 48
-  if (text.length > 95) return 54
-  if (text.length > 70) return 60
-  return 66
+const AMP = '&'
+const LT = '<'
+const GT = '>'
+const QUOT = '"'
+
+/**
+ * Escapes XML special characters for SVG embedding.
+ */
+function escapeXml(str: string): string {
+  return str
+    .replace(/&/g, AMP)
+    .replace(/</g, LT)
+    .replace(/>/g, GT)
+    .replace(/"/g, QUOT)
 }
 
 /**
- * Converts a remote image URL (WebP/PNG/JPEG) to a PNG data URL (base64)
- * for next/og compatibility.  ImageResponse does not reliably fetch WebP
- * images in production — converting to a data URL avoids the runtime fetch.
+ * Builds the full SVG overlay containing the dark gradient,
+ * title, quote text, and credits — then composites it on top
+ * of the background buffer via sharp.
  *
- * Falls back to null (which uses the gradient) if conversion fails.
+ * All coordinates assume a 1200×630 canvas.
  */
-async function convertCoverToPngDataUrl(imageUrl: string): Promise<string | null> {
-  try {
-    const response = await fetch(imageUrl, { signal: AbortSignal.timeout(10000) })
-    if (!response.ok) return null
+async function buildOgImage(
+  backgroundBuffer: Buffer,
+  quoteText: string
+): Promise<Buffer> {
+  const W = 1200
+  const H = 630
 
-    const arrayBuffer = await response.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
+  // ---- text wrapping ---------------------------------------------------
+  const maxCharsPerLine = 35
+  const quoteLines = wrapText(quoteText, maxCharsPerLine)
+  const fontSize = quoteLines.length > 3 ? 36 : quoteLines.length > 2 ? 42 : 48
+  const lineHeight = Math.round(fontSize * 1.25)
 
-    // Convert to PNG via sharp (handles WebP → PNG transparently)
-    const pngBuffer = await sharp(buffer)
-      .resize(1200, 630, { fit: 'cover', position: 'centre' })
-      .png({ compressionLevel: 9, effort: 10 })
-      .toBuffer()
+  // ---- build SVG overlay -----------------------------------------------
+  const svgOverlay = `
+<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
+  <defs>
+    <linearGradient id="topFade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(2,6,23,0.48)"/>
+      <stop offset="40%" stop-color="rgba(2,6,23,0.10)"/>
+      <stop offset="70%" stop-color="rgba(2,6,23,0.08)"/>
+      <stop offset="100%" stop-color="rgba(2,6,23,0.48)"/>
+    </linearGradient>
+    <linearGradient id="goldLine" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="rgba(217,188,107,0)"/>
+      <stop offset="50%" stop-color="rgba(217,188,107,0.65)"/>
+      <stop offset="100%" stop-color="rgba(217,188,107,0)"/>
+    </linearGradient>
+  </defs>
 
-    const base64 = pngBuffer.toString('base64')
-    return `data:image/png;base64,${base64}`
-  } catch {
-    // If conversion fails, return null to use gradient
-    return null
-  }
+  <!-- dark overlay -->
+  <rect x="0" y="0" width="${W}" height="${H}" fill="rgba(2,6,23,0.45)"/>
+  <rect x="0" y="0" width="${W}" height="${H}" fill="url(#topFade)"/>
+
+  <!-- top: line + title -->
+  <rect x="540" y="56" width="120" height="1" rx="0.5" fill="url(#goldLine)"/>
+  <text x="600" y="98" text-anchor="middle" font-family="Arial, sans-serif"
+        font-size="20" font-weight="900" fill="#fff4d6"
+        letter-spacing="10" text-rendering="geometricPrecision">
+    PALAVRA DO DIA
+  </text>
+
+  <!-- quote text -->
+  ${quoteLines
+    .map((line, i) => {
+      const y = H / 2 - ((quoteLines.length - 1) * lineHeight) / 2 + i * lineHeight + 10
+      return `<text x="600" y="${y.toFixed(0)}" text-anchor="middle"
+        font-family="Georgia, serif" font-size="${fontSize}" font-weight="700"
+        fill="#fffdf5" text-rendering="geometricPrecision">
+        ${escapeXml(line)}
+      </text>`
+    })
+    .join('\n  ')}
+
+  <!-- bottom: line -->
+  <rect x="540" y="${H - 110}" width="120" height="1" rx="0.5" fill="url(#goldLine)"/>
+
+  <!-- bottom: name -->
+  <text x="600" y="${H - 74}" text-anchor="middle" font-family="Georgia, serif"
+        font-size="32" font-weight="700" fill="#fffdf5"
+        text-rendering="geometricPrecision">
+    Pr. Djeone Martins
+  </text>
+
+  <!-- bottom: subtitle -->
+  <text x="600" y="${H - 44}" text-anchor="middle" font-family="Arial, sans-serif"
+        font-size="14" font-weight="900" fill="#fff4d6"
+        letter-spacing="6" text-rendering="geometricPrecision">
+    DEVOCIONAL DIÁRIO
+  </text>
+</svg>`.trim()
+
+  // ---- composite -------------------------------------------------------
+  const svgBuffer = Buffer.from(svgOverlay)
+
+  return sharp(backgroundBuffer)
+    .resize(W, H, { fit: 'cover', position: 'centre' })
+    .composite([{ input: svgBuffer, top: 0, left: 0 }])
+    .jpeg({ quality: 85, progressive: true })
+    .toBuffer()
 }
 
-export async function GET(_request: Request, { params }: RouteProps) {
-  const { id } = await params
+export async function GET(_request: Request, props: { params: Promise<{ id: string }> }) {
+  const { id } = await props.params
 
   let quoteText = 'Receba uma Palavra do Dia para fortalecer sua fé.'
   let backgroundImageUrl = ''
-  let backgroundDataUrl: string | null = null
 
   if (isUuid(id)) {
     try {
@@ -107,9 +180,7 @@ export async function GET(_request: Request, { params }: RouteProps) {
           episode:episodes (
             editorial_status,
             cover_image_url,
-            series:series (
-              cover_image_url
-            )
+            series:series (cover_image_url)
           )
         `)
         .eq('id', id)
@@ -132,7 +203,6 @@ export async function GET(_request: Request, { params }: RouteProps) {
       if (quote?.quote_text) {
         quoteText = cleanText(quote.quote_text)
 
-        // Ordem melhorada: background > source > episode cover > series cover > card (último fallback)
         backgroundImageUrl =
           cleanText(quote.background_image_url) ||
           cleanText(quote.source_image_url) ||
@@ -146,194 +216,51 @@ export async function GET(_request: Request, { params }: RouteProps) {
     }
   }
 
-  // Convert remote image to PNG data URL for next/og compatibility
+  // ---- fetch background image ------------------------------------------
+  let backgroundBuffer: Buffer | null = null
+
   if (backgroundImageUrl) {
-    backgroundDataUrl = await convertCoverToPngDataUrl(backgroundImageUrl)
+    try {
+      const response = await fetch(backgroundImageUrl, {
+        signal: AbortSignal.timeout(10000),
+      })
+      if (response.ok) {
+        const arrayBuffer = await response.arrayBuffer()
+        backgroundBuffer = Buffer.from(arrayBuffer)
+      }
+    } catch {
+      // Fallback: use solid gradient background (handled below)
+    }
   }
 
-  const fittedQuote = fitText(quoteText)
-  const quoteFontSize = getQuoteFontSize(fittedQuote)
+  // ---- if no image, create a gradient background via SVG + sharp -------
+  if (!backgroundBuffer) {
+    const gradientSvg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#020617"/>
+      <stop offset="48%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e3a8a"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+</svg>`.trim()
+    backgroundBuffer = await sharp(Buffer.from(gradientSvg))
+      .resize(1200, 630)
+      .png()
+      .toBuffer()
+  }
 
-  return new ImageResponse(
-    (
-      <div
-        style={{
-          width: '1200px',
-          height: '630px',
-          display: 'flex',
-          position: 'relative',
-          overflow: 'hidden',
-          background: '#020617',
-          color: '#ffffff',
-          fontFamily: 'Arial, sans-serif',
-        }}
-      >
-        {backgroundDataUrl ? (
-          <img
-            src={backgroundDataUrl}
-            width="1200"
-            height="630"
-            alt=""
-            style={{
-              position: 'absolute',
-              inset: 0,
-              width: 1200,
-              height: 630,
-              objectFit: 'cover',
-              objectPosition: 'center center',
-              display: 'flex',
-            }}
-          />
-        ) : (
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              display: 'flex',
-              background:
-                'linear-gradient(135deg, #020617 0%, #0f172a 48%, #1e3a8a 100%)',
-            }}
-          />
-        )}
+  // ---- render final image ----------------------------------------------
+  const jpegBuffer = await buildOgImage(backgroundBuffer, quoteText)
 
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            background: 'rgba(2,6,23,0.62)',
-          }}
-        />
-
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            background:
-              'linear-gradient(180deg, rgba(2,6,23,0.44) 0%, rgba(2,6,23,0.10) 52%, rgba(2,6,23,0.54) 100%)',
-          }}
-        />
-
-        <div
-          style={{
-            position: 'absolute',
-            left: 80,
-            top: 48,
-            right: 80,
-            bottom: 48,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            textAlign: 'center',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 14,
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                width: 120,
-                height: 1,
-                background:
-                  'linear-gradient(90deg, rgba(217,188,107,0), rgba(217,188,107,0.95), rgba(217,188,107,0))',
-              }}
-            />
-
-            <div
-              style={{
-                display: 'flex',
-                fontSize: 18,
-                fontWeight: 900,
-                letterSpacing: 10,
-                color: '#fff4d6',
-                textShadow: '0 3px 10px rgba(0,0,0,0.92)',
-                textTransform: 'uppercase',
-              }}
-            >
-              PALAVRA DO DIA
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: 'flex',
-              maxWidth: 900,
-              fontSize: quoteFontSize,
-              lineHeight: 1.18,
-              fontWeight: 700,
-              letterSpacing: -0.2,
-              color: '#fffdf5',
-              fontFamily: 'Georgia, serif',
-              textShadow: '0 4px 14px rgba(0,0,0,0.94)',
-            }}
-          >
-            {`"${fittedQuote}"`}
-          </div>
-
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 12,
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                width: 120,
-                height: 1,
-                background:
-                  'linear-gradient(90deg, rgba(217,188,107,0), rgba(217,188,107,0.95), rgba(217,188,107,0))',
-              }}
-            />
-
-            <div
-              style={{
-                display: 'flex',
-                fontSize: 36,
-                fontWeight: 700,
-                color: '#fffdf5',
-                fontFamily: 'Georgia, serif',
-                textShadow: '0 3px 12px rgba(0,0,0,0.92)',
-              }}
-            >
-              Pr. Djeone Martins
-            </div>
-
-            <div
-              style={{
-                display: 'flex',
-                fontSize: 15,
-                fontWeight: 900,
-                letterSpacing: 6,
-                color: '#fff4d6',
-                textShadow: '0 3px 10px rgba(0,0,0,0.90)',
-                textTransform: 'uppercase',
-              }}
-            >
-              DEVOCIONAL DIÁRIO
-            </div>
-          </div>
-        </div>
-      </div>
-    ),
-    {
-      width: 1200,
-      height: 630,
-      headers: {
-        'Content-Type': 'image/png',
-        'Cache-Control':
-          'public, max-age=300, s-maxage=86400, stale-while-revalidate=604800',
-      },
-    }
-  )
+  return new Response(new Uint8Array(jpegBuffer), {
+    status: 200,
+    headers: {
+      'Content-Type': 'image/jpeg',
+      'Cache-Control':
+        'public, max-age=300, s-maxage=86400, stale-while-revalidate=604800',
+    },
+  })
 }
