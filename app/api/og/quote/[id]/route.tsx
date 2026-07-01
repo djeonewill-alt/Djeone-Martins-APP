@@ -82,6 +82,8 @@ async function buildOgImage(
   const W = 1200
   const H = 630
 
+  console.log('[OG Quote] sharp input buffer size:', backgroundBuffer.length)
+
   // ---- text wrapping ---------------------------------------------------
   const maxCharsPerLine = 35
   const quoteLines = wrapText(quoteText, maxCharsPerLine)
@@ -150,11 +152,15 @@ async function buildOgImage(
   // ---- composite -------------------------------------------------------
   const svgBuffer = Buffer.from(svgOverlay)
 
-  return sharp(backgroundBuffer)
+  const result = await sharp(backgroundBuffer)
     .resize(W, H, { fit: 'cover', position: 'centre' })
     .composite([{ input: svgBuffer, top: 0, left: 0 }])
     .jpeg({ quality: 85, progressive: true })
     .toBuffer()
+
+  console.log('[OG Quote] jpeg output size:', result.length)
+
+  return result
 }
 
 export async function GET(_request: Request, props: { params: Promise<{ id: string }> }) {
@@ -261,6 +267,8 @@ export async function GET(_request: Request, props: { params: Promise<{ id: stri
       .png()
       .toBuffer()
   }
+
+  console.log('[OG Quote] backgroundBuffer size before buildOgImage:', backgroundBuffer?.length)
 
   // ---- render final image ----------------------------------------------
   const jpegBuffer = await buildOgImage(backgroundBuffer, quoteText)
