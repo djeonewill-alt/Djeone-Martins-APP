@@ -70,7 +70,10 @@ async function convertCoverToPngDataUrl(imageUrl: string): Promise<string | null
     const buffer = Buffer.from(arrayBuffer)
 
     // Convert to PNG via sharp (handles WebP → PNG transparently)
-    const pngBuffer = await sharp(buffer).png().toBuffer()
+    const pngBuffer = await sharp(buffer)
+      .resize(1200, 630, { fit: 'cover', position: 'centre' })
+      .png({ compressionLevel: 9, effort: 10 })
+      .toBuffer()
 
     const base64 = pngBuffer.toString('base64')
     return `data:image/png;base64,${base64}`
