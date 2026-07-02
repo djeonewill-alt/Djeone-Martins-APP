@@ -1,6 +1,7 @@
 ﻿import sharp from 'sharp'
 import { readFileSync } from 'fs'
 import { join } from 'path'
+import { loadSync } from 'opentype.js'
 import { createSupabaseAdminClient } from '@/lib/supabase/admin'
 import { isPublicEpisodeVisible } from '@/lib/episodes/publicVisibility'
 
@@ -71,29 +72,48 @@ function escapeXml(str: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Embedded Inter font (WOFF2 → base64) so sharp can render text on Linux
+// Font loading (TTF → opentype.js)
+// Fonts are loaded ONCE at module initialisation and kept in memory.
+// opentype.js is pure JavaScript — no native bindings, works on Vercel.
 // ---------------------------------------------------------------------------
-const FONT_DIR = join(process.cwd(), 'node_modules', '@fontsource', 'inter', 'files')
-const interRegular = readFileSync(join(FONT_DIR, 'inter-latin-400-normal.woff2')).toString('base64')
-const interBold = readFileSync(join(FONT_DIR, 'inter-latin-700-normal.woff2')).toString('base64')
+const FONT_DIR = join(process.cwd(), 'lib', 'fonts')
+const fontRegular = loadSync(join(FONT_DIR, 'Inter-Regular.ttf'))
+const fontBold = loadSync(join(FONT_DIR, 'Inter-Bold.ttf'))
 
-const FONT_STYLE = `<style>
-    @font-face {
-      font-family: 'Inter';
-      font-weight: 400;
-      src: url('data:font/woff2;base64,${interRegular}') format('woff2');
-    }
-    @font-face {
-      font-family: 'Inter';
-      font-weight: 700;
-      src: url('data:font/woff2;base64,${interBold}') format('woff2');
-    }
-  </style>`
+/**
+ * Converts a string of text into an SVG <path> element (self-closing).
+ *
+ * @param text     — The text to render
+ * @param cx       — Horizontal centre of the text in SVG pixels
+ * @param y        — Baseline Y coordinate
+ * @param fontSize — Font size in SVG pixels
+ * @param font     — opentype.Font instance
+ * @param spaced   — If true, inserts two spaces between every character
+ *                   (used to simulate letter-spacing)
+ */
+function textToSvgPath(
+  text: string,
+  cx: number,
+  y: number,
+  fontSize: number,
+  font: ReturnType<typeof loadSync>,
+  spaced = false
+): string {
+  const str = spaced ? text.split('').join('  ') : text
+  const textWidth = font.getAdvanceWidth(str, fontSize)
+  const x = cx - textWidth / 2
+  const path = font.getPath(str, x, y, fontSize)
+  return path.toPathData(2)
+}
 
 /**
  * Builds the full SVG overlay containing the dark gradient,
  * title, quote text, and credits — then composites it on top
  * of the background buffer via sharp.
+ *
+ * All text is rendered as SVG <path> elements (vector outlines),
+ * which requires zero system fonts — works identically on Windows,
+ * macOS, and Linux (Vercel).
  *
  * All coordinates assume a 1200×630 canvas.
  */
@@ -114,7 +134,6 @@ async function buildOgImage(
   const svgOverlay = `
 <svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
   <defs>
-    ${FONT_STYLE}
     <linearGradient id="topFade" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="rgba(2,6,23,0.48)"/>
       <stop offset="40%" stop-color="rgba(2,6,23,0.10)"/>
@@ -132,23 +151,17 @@ async function buildOgImage(
   <rect x="0" y="0" width="${W}" height="${H}" fill="rgba(2,6,23,0.45)"/>
   <rect x="0" y="0" width="${W}" height="${H}" fill="url(#topFade)"/>
 
-  <!-- top: line + title -->
+  <!-- top: line -->
   <rect x="540" y="56" width="120" height="1" rx="0.5" fill="url(#goldLine)"/>
-  <text x="600" y="98" text-anchor="middle" font-family="Inter"
-        font-size="20" font-weight="700" fill="#fff4d6"
-        letter-spacing="10" text-rendering="geometricPrecision">
-    PALAVRA DO DIA
-  </text>
 
-  <!-- quote text -->
+  <!-- top: title PALAVRA DO DIA (letter-spaced simulation via character spacing) -->
+  <path d="${textToSvgPath('PALAVRA DO DIA', 600, 98, 20, fontBold, true)}" fill="#fff4d6"/>
+
+  <!-- quote text (one path per line) -->
   ${quoteLines
     .map((line, i) => {
       const y = H / 2 - ((quoteLines.length - 1) * lineHeight) / 2 + i * lineHeight + 10
-      return `<text x="600" y="${y.toFixed(0)}" text-anchor="middle"
-        font-family="Inter" font-size="${fontSize}" font-weight="700"
-        fill="#fffdf5" text-rendering="geometricPrecision">
-        ${escapeXml(line)}
-      </text>`
+      return `<path d="${textToSvgPath(line, 600, y, fontSize, fontBold)}" fill="#fffdf5"/>`
     })
     .join('\n  ')}
 
@@ -156,18 +169,10 @@ async function buildOgImage(
   <rect x="540" y="${H - 110}" width="120" height="1" rx="0.5" fill="url(#goldLine)"/>
 
   <!-- bottom: name -->
-  <text x="600" y="${H - 74}" text-anchor="middle" font-family="Inter"
-        font-size="32" font-weight="700" fill="#fffdf5"
-        text-rendering="geometricPrecision">
-    Pr. Djeone Martins
-  </text>
+  <path d="${textToSvgPath('Pr. Djeone Martins', 600, H - 74, 32, fontBold)}" fill="#fffdf5"/>
 
-  <!-- bottom: subtitle -->
-  <text x="600" y="${H - 44}" text-anchor="middle" font-family="Inter"
-        font-size="14" font-weight="700" fill="#fff4d6"
-        letter-spacing="6" text-rendering="geometricPrecision">
-    DEVOCIONAL DIÁRIO
-  </text>
+  <!-- bottom: subtitle DEVOCIONAL DIÁRIO (letter-spaced) -->
+  <path d="${textToSvgPath('DEVOCIONAL DIARIO', 600, H - 44, 14, fontBold, true)}" fill="#fff4d6"/>
 </svg>`.trim()
 
   // ---- composite -------------------------------------------------------
