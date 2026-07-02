@@ -1,4 +1,6 @@
 ﻿import sharp from 'sharp'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import { createSupabaseAdminClient } from '@/lib/supabase/admin'
 import { isPublicEpisodeVisible } from '@/lib/episodes/publicVisibility'
 
@@ -68,6 +70,26 @@ function escapeXml(str: string): string {
     .replace(/"/g, QUOT)
 }
 
+// ---------------------------------------------------------------------------
+// Embedded Inter font (WOFF2 → base64) so sharp can render text on Linux
+// ---------------------------------------------------------------------------
+const FONT_DIR = join(process.cwd(), 'node_modules', '@fontsource', 'inter', 'files')
+const interRegular = readFileSync(join(FONT_DIR, 'inter-latin-400-normal.woff2')).toString('base64')
+const interBold = readFileSync(join(FONT_DIR, 'inter-latin-700-normal.woff2')).toString('base64')
+
+const FONT_STYLE = `<style>
+    @font-face {
+      font-family: 'Inter';
+      font-weight: 400;
+      src: url('data:font/woff2;base64,${interRegular}') format('woff2');
+    }
+    @font-face {
+      font-family: 'Inter';
+      font-weight: 700;
+      src: url('data:font/woff2;base64,${interBold}') format('woff2');
+    }
+  </style>`
+
 /**
  * Builds the full SVG overlay containing the dark gradient,
  * title, quote text, and credits — then composites it on top
@@ -92,6 +114,7 @@ async function buildOgImage(
   const svgOverlay = `
 <svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
   <defs>
+    ${FONT_STYLE}
     <linearGradient id="topFade" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="rgba(2,6,23,0.48)"/>
       <stop offset="40%" stop-color="rgba(2,6,23,0.10)"/>
@@ -111,8 +134,8 @@ async function buildOgImage(
 
   <!-- top: line + title -->
   <rect x="540" y="56" width="120" height="1" rx="0.5" fill="url(#goldLine)"/>
-  <text x="600" y="98" text-anchor="middle" font-family="sans-serif"
-        font-size="20" font-weight="900" fill="#fff4d6"
+  <text x="600" y="98" text-anchor="middle" font-family="Inter"
+        font-size="20" font-weight="700" fill="#fff4d6"
         letter-spacing="10" text-rendering="geometricPrecision">
     PALAVRA DO DIA
   </text>
@@ -122,7 +145,7 @@ async function buildOgImage(
     .map((line, i) => {
       const y = H / 2 - ((quoteLines.length - 1) * lineHeight) / 2 + i * lineHeight + 10
       return `<text x="600" y="${y.toFixed(0)}" text-anchor="middle"
-        font-family="serif" font-size="${fontSize}" font-weight="700"
+        font-family="Inter" font-size="${fontSize}" font-weight="700"
         fill="#fffdf5" text-rendering="geometricPrecision">
         ${escapeXml(line)}
       </text>`
@@ -133,15 +156,15 @@ async function buildOgImage(
   <rect x="540" y="${H - 110}" width="120" height="1" rx="0.5" fill="url(#goldLine)"/>
 
   <!-- bottom: name -->
-  <text x="600" y="${H - 74}" text-anchor="middle" font-family="serif"
+  <text x="600" y="${H - 74}" text-anchor="middle" font-family="Inter"
         font-size="32" font-weight="700" fill="#fffdf5"
         text-rendering="geometricPrecision">
     Pr. Djeone Martins
   </text>
 
   <!-- bottom: subtitle -->
-  <text x="600" y="${H - 44}" text-anchor="middle" font-family="sans-serif"
-        font-size="14" font-weight="900" fill="#fff4d6"
+  <text x="600" y="${H - 44}" text-anchor="middle" font-family="Inter"
+        font-size="14" font-weight="700" fill="#fff4d6"
         letter-spacing="6" text-rendering="geometricPrecision">
     DEVOCIONAL DIÁRIO
   </text>
