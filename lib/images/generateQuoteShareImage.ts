@@ -37,14 +37,6 @@ function cleanText(value?: string | null) {
   return (value || '').replace(/\s+/g, ' ').trim()
 }
 
-function fitText(value: string, maxLength = 150) {
-  const text = cleanText(value)
-
-  if (text.length <= maxLength) return text
-
-  return `${text.slice(0, maxLength - 3)}...`
-}
-
 function wrapText(value: string, maxCharsPerLine: number, maxLines: number) {
   const words = value.split(/\s+/).filter(Boolean)
   const lines: string[] = []
@@ -64,36 +56,22 @@ function wrapText(value: string, maxCharsPerLine: number, maxLines: number) {
 
   if (current) lines.push(current)
 
-  if (lines.length <= maxLines) return lines
-
-  const visible = lines.slice(0, maxLines)
-  visible[maxLines - 1] = `${visible[maxLines - 1].replace(/\.*$/, '')}...`
-
-  return visible
+  // Não trunca com reticências — retorna todas as linhas.
+  // O controle de overflow é feito reduzindo a fonte no caller.
+  return lines
 }
 
 function getTypography(width: number, quoteText: string) {
   const isLarge = width >= 1000
-  const lineCountHint = quoteText.length > 120 ? 4 : quoteText.length > 80 ? 3 : 2
 
   return {
     eyebrowSize: isLarge ? 25 : 17,
-    quoteSize: isLarge
-      ? quoteText.length > 125
-        ? 50
-        : quoteText.length > 90
-          ? 58
-          : 66
-      : quoteText.length > 125
-        ? 34
-        : quoteText.length > 90
-          ? 39
-          : 45,
-    quoteLineHeight: isLarge ? 1.14 : 1.12,
+    quoteSize: isLarge ? 58 : 39,
+    quoteLineHeight: isLarge ? 1.08 : 1.10,
+    quoteSizeMin: isLarge ? 38 : 26,
     brandSize: isLarge ? 35 : 24,
     referenceSize: isLarge ? 24 : 17,
-    maxCharsPerLine: 28,
-    maxLines: Math.max(3, lineCountHint + 1),
+    maxCharsPerLine: 30,
   }
 }
 
@@ -176,21 +154,48 @@ function createOverlaySvg(params: {
   bibleReference?: string | null
 }) {
   const { width, height } = params
-  const quoteText = fitText(params.quoteText)
+  const quoteText = cleanText(params.quoteText)
   const reference = cleanText(params.bibleReference) || 'Devocional Diario'
   const typography = getTypography(width, quoteText)
-  const quoteLines = wrapText(quoteText, typography.maxCharsPerLine, typography.maxLines)
-  const lineHeight = Math.round(typography.quoteSize * typography.quoteLineHeight)
-  const quoteBlockHeight = quoteLines.length * lineHeight
-  const quoteStartY = Math.round(height / 2 - quoteBlockHeight / 2 + typography.quoteSize * 0.8)
   const sidePadding = Math.round(width * 0.09)
   const lineWidth = Math.round(width * 0.15)
+
+  // Ajuste progressivo: reduz fonte até o texto caber na área segura.
+  // Área segura: entre y=0.22*h e y=0.75*h, margem de 10px em cada borda.
+  const safeTop = Math.round(height * 0.22)
+  const safeBottom = Math.round(height * 0.75)
+  const maxAvailableHeight = safeBottom - safeTop - 20
+
+  let fontSize = typography.quoteSize
+  let quoteLines: string[] = []
+  let lineHeight: number = 0
+  let quoteBlockHeight: number = 0
+
+  while (fontSize >= typography.quoteSizeMin) {
+    lineHeight = Math.round(fontSize * typography.quoteLineHeight)
+    quoteLines = wrapText(quoteText, typography.maxCharsPerLine, 99) // sem limite de linhas
+    quoteBlockHeight = quoteLines.length * lineHeight
+
+    if (quoteBlockHeight <= maxAvailableHeight) break
+
+    fontSize -= 2
+  }
+
+  // Se mesmo na fonte mínima não couber, trunca a última linha com reticências
+  if (quoteBlockHeight > maxAvailableHeight) {
+    const maxLines = Math.floor(maxAvailableHeight / lineHeight)
+    quoteLines = quoteLines.slice(0, maxLines)
+    quoteLines[maxLines - 1] = `${quoteLines[maxLines - 1].replace(/\.*$/, '')}...`
+    quoteBlockHeight = quoteLines.length * lineHeight
+  }
+
+  const quoteStartY = safeTop + Math.round((maxAvailableHeight - quoteBlockHeight) / 2) + Math.round(fontSize * 0.8)
 
   // Converter cada linha da frase em path SVG
   const quotePaths = quoteLines
     .map((line, index) => {
       const y = quoteStartY + index * lineHeight
-      const pathData = textToSvgPath(line, width / 2, y, typography.quoteSize)
+      const pathData = textToSvgPath(line, width / 2, y, fontSize)
       return `<path d="${pathData}" fill="#fffdf5"/>`
     })
     .join('\n        ')
