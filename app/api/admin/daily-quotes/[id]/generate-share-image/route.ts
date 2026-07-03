@@ -51,7 +51,11 @@ type DailyQuoteRecord = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value
+  )
+}
 
 function getAdminSecret() {
   return process.env.ADMIN_API_SECRET || ''
@@ -112,7 +116,7 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
 
   const { id } = await params
 
-  if (!uuidPattern.test(id)) {
+  if (!isUuid(id)) {
     return NextResponse.json({ error: 'ID da Palavra invalido.' }, { status: 400 })
   }
 
