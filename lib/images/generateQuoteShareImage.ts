@@ -1,15 +1,15 @@
 ﻿import { readFileSync } from 'fs'
 import { join } from 'path'
+import { parse } from 'opentype.js'
 import sharp from 'sharp'
 
 // ---------------------------------------------------------------------------
-// Fonte embutida — Inter-Bold.ttf via base64, autossuficiente em qualquer SO
+// Fonte local carregada via opentype.js — texto viram paths SVG,
+// autossuficiente em qualquer sistema operacional (Windows, macOS, Linux, Vercel).
 // ---------------------------------------------------------------------------
-const interBoldBase64 = readFileSync(
-  join(process.cwd(), 'lib', 'fonts', 'Inter-Bold.ttf')
-).toString('base64')
-
-const FONT_FAMILY = 'InterBold, sans-serif'
+const fontBold = parse(
+  readFileSync(join(process.cwd(), 'lib', 'fonts', 'Inter-Bold.ttf'))
+)
 
 export type QuoteShareImageInput = {
   quoteText: string
@@ -35,15 +35,6 @@ const qualities = [84, 78, 72, 66]
 
 function cleanText(value?: string | null) {
   return (value || '').replace(/\s+/g, ' ').trim()
-}
-
-function escapeXml(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;')
 }
 
 function fitText(value: string, maxLength = 150) {
@@ -106,6 +97,58 @@ function getTypography(width: number, quoteText: string) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Conversão de texto em paths SVG via opentype.js
+// Mesma estratégia de app/api/og/quote/[id]/route.tsx — independe de
+// @font-face, font-family ou fontes do sistema operacional.
+// ---------------------------------------------------------------------------
+
+/**
+ * Converte uma string em um path SVG centrado horizontalmente.
+ *
+ * Usa charToGlyph + glyph.getPath() para evitar processamento Bidi/GSUB do
+ * opentype.js v2 que causa crash com este font.
+ */
+function textToSvgPath(
+  text: string,
+  cx: number,
+  y: number,
+  fontSize: number,
+  spaced = false
+): string {
+  const str = spaced ? [...text].join('  ') : text
+  const scale = (1 / fontBold.unitsPerEm) * fontSize
+  const chars = [...str]
+  let totalAdvance = 0
+
+  for (const char of chars) {
+    const glyph = fontBold.charToGlyph(char)
+    totalAdvance += (glyph?.advanceWidth ?? 0) * scale
+  }
+
+  const x = cx - totalAdvance / 2
+  let cursor = 0
+
+  const pathDataParts: string[] = []
+  for (const char of chars) {
+    const glyph = fontBold.charToGlyph(char)
+    if (!glyph) {
+      cursor += 0
+      continue
+    }
+    const glyphPath = glyph.getPath(x + cursor, y, fontSize)
+    const pathData = glyphPath.toPathData(2)
+    if (pathData) pathDataParts.push(pathData)
+    cursor += (glyph.advanceWidth ?? 0) * scale
+  }
+
+  return pathDataParts.join(' ')
+}
+
+// ---------------------------------------------------------------------------
+// Templates SVG (base + overlay)
+// ---------------------------------------------------------------------------
+
 function createFallbackBaseSvg(width: number, height: number) {
   return Buffer.from(`
     <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
@@ -142,23 +185,45 @@ function createOverlaySvg(params: {
   const quoteStartY = Math.round(height / 2 - quoteBlockHeight / 2 + typography.quoteSize * 0.8)
   const sidePadding = Math.round(width * 0.09)
   const lineWidth = Math.round(width * 0.15)
-  const quoteTspans = quoteLines
+
+  // Converter cada linha da frase em path SVG
+  const quotePaths = quoteLines
     .map((line, index) => {
       const y = quoteStartY + index * lineHeight
-      return `<tspan x="${width / 2}" y="${y}">${escapeXml(line)}</tspan>`
+      const pathData = textToSvgPath(line, width / 2, y, typography.quoteSize)
+      return `<path d="${pathData}" fill="#fffdf5"/>`
     })
-    .join('')
+    .join('\n        ')
+
+  // Eyebrow — "PALAVRA DO DIA" com espaçamento simulado
+  const eyebrowPath = textToSvgPath(
+    'PALAVRA DO DIA',
+    width / 2,
+    Math.round(height * 0.19),
+    typography.eyebrowSize,
+    true
+  )
+
+  // Brand — "Pr. Djeone Martins"
+  const brandPath = textToSvgPath(
+    'Pr. Djeone Martins',
+    width / 2,
+    Math.round(height * 0.84),
+    typography.brandSize
+  )
+
+  // Referência com espaçamento
+  const referencePath = textToSvgPath(
+    reference.toUpperCase(),
+    width / 2,
+    Math.round(height * 0.91),
+    typography.referenceSize,
+    true
+  )
 
   return Buffer.from(`
     <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <style>
-          @font-face {
-            font-family: 'InterBold';
-            src: url(data:font/ttf;base64,${interBoldBase64}) format('truetype');
-            font-weight: 700;
-          }
-        </style>
         <linearGradient id="vignette" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stop-color="#020617" stop-opacity="0.68"/>
           <stop offset="0.48" stop-color="#020617" stop-opacity="0.34"/>
@@ -175,13 +240,13 @@ function createOverlaySvg(params: {
       <rect width="${width}" height="${height}" fill="rgba(2,6,23,0.38)"/>
       <rect width="${width}" height="${height}" fill="url(#vignette)"/>
       <rect width="${width}" height="${height}" fill="url(#centerLight)"/>
-      <g text-anchor="middle" filter="url(#shadow)">
+      <g filter="url(#shadow)">
         <line x1="${width / 2 - lineWidth / 2}" y1="${Math.round(height * 0.13)}" x2="${width / 2 + lineWidth / 2}" y2="${Math.round(height * 0.13)}" stroke="#d9bc6b" stroke-width="2" stroke-opacity="0.88"/>
-        <text x="${width / 2}" y="${Math.round(height * 0.19)}" fill="#fff4d6" font-family="${FONT_FAMILY}" font-size="${typography.eyebrowSize}" font-weight="900" letter-spacing="${width >= 1000 ? 9 : 6}">PALAVRA DO DIA</text>
-        <text fill="#fffdf5" font-family="${FONT_FAMILY}" font-size="${typography.quoteSize}" font-weight="700">${quoteTspans}</text>
+        <path d="${eyebrowPath}" fill="#fff4d6"/>
+        ${quotePaths}
         <line x1="${width / 2 - lineWidth / 2}" y1="${Math.round(height * 0.77)}" x2="${width / 2 + lineWidth / 2}" y2="${Math.round(height * 0.77)}" stroke="#d9bc6b" stroke-width="2" stroke-opacity="0.88"/>
-        <text x="${width / 2}" y="${Math.round(height * 0.84)}" fill="#fffdf5" font-family="${FONT_FAMILY}" font-size="${typography.brandSize}" font-weight="700">Pr. Djeone Martins</text>
-        <text x="${width / 2}" y="${Math.round(height * 0.91)}" fill="#fff4d6" font-family="${FONT_FAMILY}" font-size="${typography.referenceSize}" font-weight="900" letter-spacing="${width >= 1000 ? 5 : 3}">${escapeXml(reference.toUpperCase())}</text>
+        <path d="${brandPath}" fill="#fffdf5"/>
+        <path d="${referencePath}" fill="#fff4d6"/>
       </g>
       <rect x="${sidePadding}" y="${Math.round(height * 0.08)}" width="${width - sidePadding * 2}" height="${Math.round(height * 0.84)}" rx="${width >= 1000 ? 34 : 24}" fill="none" stroke="rgba(255,255,255,0.16)" stroke-width="1"/>
     </svg>
