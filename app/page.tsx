@@ -1,20 +1,22 @@
 ﻿'use client'
 
 import { useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
 import Header from '@/components/Header'
 import BottomNav from '@/components/BottomNav'
 import TabHoje from '@/components/tabs/TabHoje'
-import TabLeitura from '@/components/tabs/TabLeitura'
-import TabOracao from '@/components/tabs/TabOracao'
-import TabVoce from '@/components/tabs/TabVoce'
-import TabMais from '@/components/tabs/TabMais'
-import TabSettings from '@/components/tabs/TabSettings'
-import TabSeries from '@/components/tabs/TabSeries'
-import TabOferta from '@/components/tabs/TabOferta'
-import TabFavoritos from '@/components/tabs/favorites/TabFavoritos'
 import BetaOnboarding from '@/components/tester/BetaOnboarding'
 import { useBetaTester } from '@/lib/beta/betaTester'
 import { trackAppEvent } from '@/lib/analytics/client'
+
+const TabLeitura = dynamic(() => import('@/components/tabs/TabLeitura'))
+const TabOracao = dynamic(() => import('@/components/tabs/TabOracao'))
+const TabVoce = dynamic(() => import('@/components/tabs/TabVoce'))
+const TabMais = dynamic(() => import('@/components/tabs/TabMais'))
+const TabSettings = dynamic(() => import('@/components/tabs/TabSettings'))
+const TabSeries = dynamic(() => import('@/components/tabs/TabSeries'))
+const TabOferta = dynamic(() => import('@/components/tabs/TabOferta'))
+const TabFavoritos = dynamic(() => import('@/components/tabs/favorites/TabFavoritos'))
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('hoje')

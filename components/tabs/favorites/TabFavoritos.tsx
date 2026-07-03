@@ -68,8 +68,10 @@ export default function TabFavoritos() {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
-          <div className="text-4xl mb-2">⏳</div>
-          <p className="text-gray-600">Carregando favoritos...</p>
+          <div className="relative mx-auto mb-3 h-10 w-10">
+            <div className="absolute inset-0 animate-spin rounded-full border-[3px] border-transparent border-t-blue-400 border-r-blue-400/40" />
+          </div>
+          <p className="text-sm font-medium text-slate-400">Carregando favoritos...</p>
         </div>
       </div>
     )
