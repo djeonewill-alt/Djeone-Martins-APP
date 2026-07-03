@@ -903,8 +903,66 @@ export default function NovoEpisodio() {
     fileName: string,
     folder = 'recordings'
   ): Promise<AudioUploadResponse> => {
+    const MAX_DIRECT_UPLOAD_BYTES = 4 * 1024 * 1024 // 4 MB — abaixo do limite de 4.5 MB da Vercel Hobby
     const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || ''
 
+    // Arquivos grandes usam presigned upload para ignorar limite da Vercel
+    if (file.size > MAX_DIRECT_UPLOAD_BYTES) {
+      const presignedRes = await fetch('/api/r2/presigned-upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-password': adminPassword,
+        },
+        body: JSON.stringify({
+          fileName,
+          contentType: file.type || 'audio/webm',
+          sizeBytes: file.size,
+          folder,
+        }),
+      })
+
+      let presignedData: PresignedUploadResponse = {}
+      try {
+        presignedData = await presignedRes.json()
+      } catch {
+        // Resposta não-JSON (ex: HTML de erro da Vercel)
+      }
+
+      if (!presignedRes.ok || !presignedData.signedUrl) {
+        const errorMsg =
+          presignedRes.status === 413
+            ? 'Arquivo muito grande para upload direto. Tente uma gravacao mais curta.'
+            : presignedData.error || `Erro ao preparar upload (HTTP ${presignedRes.status}).`
+        throw new Error(errorMsg)
+      }
+
+      const uploadRes = await fetch(presignedData.signedUrl, {
+        method: 'PUT',
+        body: file,
+        headers: {
+          'Content-Type': file.type || 'audio/webm',
+        },
+      })
+
+      if (!uploadRes.ok) {
+        throw new Error(`Erro ao enviar audio para o R2 (HTTP ${uploadRes.status}). Tente novamente.`)
+      }
+
+      return {
+        url: presignedData.publicUrl || '',
+        key: presignedData.key || '',
+        type: file.type || 'audio/webm',
+        contentType: file.type || 'audio/webm',
+        extension: presignedData.extension || '',
+        sizeBytes: file.size,
+        compatibleAudioUrl: presignedData.compatibleAudioUrl || null,
+        compatibleAudioType: presignedData.compatibleAudioType || null,
+        isAudioCompatible: presignedData.isAudioCompatible || false,
+      }
+    }
+
+    // Arquivos pequenos: upload direto via /api/upload-audio
     const formData = new FormData()
     formData.append('file', file, fileName)
     formData.append('type', 'audio')
@@ -918,10 +976,26 @@ export default function NovoEpisodio() {
       body: formData,
     })
 
-    const data = await response.json()
+    let data: AudioUploadResponse = {}
+    try {
+      data = await response.json()
+    } catch {
+      // Resposta não-JSON — provavelmente erro do servidor (ex: 413 HTML da Vercel)
+      if (response.status === 413) {
+        throw new Error(
+          'Arquivo de audio muito grande para envio direto (limite de 4.5 MB da Vercel). ' +
+          'Tente uma gravacao mais curta ou entre em contato com o suporte.'
+        )
+      }
+      throw new Error(`Erro no servidor (HTTP ${response.status}). Tente novamente.`)
+    }
 
     if (!response.ok || !data.url) {
-      throw new Error(data.error || 'Erro ao enviar audio para o servidor.')
+      const errorMsg =
+        response.status === 413
+          ? 'Arquivo de audio muito grande para envio direto (limite de 4.5 MB da Vercel). Tente uma gravacao mais curta.'
+          : data.error || 'Erro ao enviar audio para o servidor.'
+      throw new Error(errorMsg)
     }
 
     return {
@@ -930,7 +1004,7 @@ export default function NovoEpisodio() {
       type: data.contentType || data.type || 'audio/webm',
       contentType: data.contentType || data.type || 'audio/webm',
       extension: data.extension || '',
-      sizeBytes: data.size || file.size,
+      sizeBytes: data.sizeBytes || file.size,
       compatibleAudioUrl: data.compatibleAudioUrl || null,
       compatibleAudioType: data.compatibleAudioType || null,
       isAudioCompatible: data.isAudioCompatible || false,
