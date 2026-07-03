@@ -1,7 +1,7 @@
 ﻿import sharp from 'sharp'
-import { readFileSync } from 'fs'
 import { join } from 'path'
-import { loadSync } from 'opentype.js'
+import { readFileSync } from 'fs'
+import { parse } from 'opentype.js'
 import { createSupabaseAdminClient } from '@/lib/supabase/admin'
 import { isPublicEpisodeVisible } from '@/lib/episodes/publicVisibility'
 
@@ -73,15 +73,34 @@ function escapeXml(str: string): string {
 
 // ---------------------------------------------------------------------------
 // Font loading (TTF → opentype.js)
-// Fonts are loaded ONCE at module initialisation and kept in memory.
+// Lazy-loaded with caching so failures are caught and logged per-request
+// instead of crashing the module at import time.
 // opentype.js is pure JavaScript — no native bindings, works on Vercel.
 // ---------------------------------------------------------------------------
 const FONT_DIR = join(process.cwd(), 'lib', 'fonts')
-const fontRegular = loadSync(join(FONT_DIR, 'Inter-Regular.ttf'))
-const fontBold = loadSync(join(FONT_DIR, 'Inter-Bold.ttf'))
+
+let _fontBoldCache: ReturnType<typeof parse> | null | undefined
+
+function getFontBold(): ReturnType<typeof parse> {
+  if (_fontBoldCache !== undefined) return _fontBoldCache as ReturnType<typeof parse>
+
+  try {
+    _fontBoldCache = parse(readFileSync(join(FONT_DIR, 'Inter-Bold.ttf')))
+    console.log('[OG-Quote] Inter-Bold.ttf loaded successfully')
+  } catch (err) {
+    console.error('[OG-Quote] Failed to load Inter-Bold.ttf:', err)
+    _fontBoldCache = null
+  }
+
+  return _fontBoldCache as ReturnType<typeof parse>
+}
 
 /**
  * Converts a string of text into an SVG <path> element (self-closing).
+ *
+ * Uses charToGlyph + glyph.getPath() to bypass opentype.js v2's Bidi/GSUB
+ * processing which crashes with "substitutionType : 62 lookupType: 6 -
+ * substFormat: 2 is not yet supported" on this font.
  *
  * @param text     — The text to render
  * @param cx       — Horizontal centre of the text in SVG pixels
@@ -96,14 +115,38 @@ function textToSvgPath(
   cx: number,
   y: number,
   fontSize: number,
-  font: ReturnType<typeof loadSync>,
+  font: ReturnType<typeof parse>,
   spaced = false
 ): string {
   const str = spaced ? text.split('').join('  ') : text
-  const textWidth = font.getAdvanceWidth(str, fontSize)
-  const x = cx - textWidth / 2
-  const path = font.getPath(str, x, y, fontSize)
-  return path.toPathData(2)
+  const scale = (1 / font.unitsPerEm) * fontSize
+  const chars = [...str]
+  let totalAdvance = 0
+
+  // Calculate total advance width using charToGlyph (safe, no Bidi)
+  for (const char of chars) {
+    const glyph = font.charToGlyph(char)
+    totalAdvance += (glyph?.advanceWidth ?? 0) * scale
+  }
+
+  const x = cx - totalAdvance / 2
+  let cursor = 0
+
+  // Build SVG path data by concatenating glyph outlines
+  const pathDataParts: string[] = []
+  for (const char of chars) {
+    const glyph = font.charToGlyph(char)
+    if (!glyph) {
+      cursor += 0 // char without glyph (space, etc.) — skip path but advance if needed
+      continue
+    }
+    const glyphPath = glyph.getPath(x + cursor, y, fontSize)
+    const pathData = glyphPath.toPathData(2)
+    if (pathData) pathDataParts.push(pathData)
+    cursor += (glyph.advanceWidth ?? 0) * scale
+  }
+
+  return pathDataParts.join(' ')
 }
 
 /**
@@ -129,6 +172,13 @@ async function buildOgImage(
   const quoteLines = wrapText(quoteText, maxCharsPerLine)
   const fontSize = quoteLines.length > 3 ? 36 : quoteLines.length > 2 ? 42 : 48
   const lineHeight = Math.round(fontSize * 1.25)
+
+  // ---- build SVG overlay -----------------------------------------------
+  // ---- font ------------------------------------------------------------
+  const fontBold = getFontBold()
+  if (!fontBold) {
+    throw new Error('Font Inter-Bold.ttf failed to load — cannot render OG image text.')
+  }
 
   // ---- build SVG overlay -----------------------------------------------
   const svgOverlay = `
