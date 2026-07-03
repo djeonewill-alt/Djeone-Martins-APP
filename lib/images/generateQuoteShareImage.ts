@@ -154,7 +154,14 @@ function createOverlaySvg(params: {
   bibleReference?: string | null
 }) {
   const { width, height } = params
-  const quoteText = cleanText(params.quoteText)
+  let quoteText = cleanText(params.quoteText)
+
+  // Adiciona aspas duplas retas se o texto não já as tiver
+  const startsWithQuote = /^[""'""''«»]/.test(quoteText)
+  const endsWithQuote = /[""'""''«»]$/.test(quoteText)
+  if (!startsWithQuote) quoteText = '"' + quoteText
+  if (!endsWithQuote) quoteText = quoteText + '"'
+
   const reference = cleanText(params.bibleReference) || 'Devocional Diario'
   const typography = getTypography(width, quoteText)
   const sidePadding = Math.round(width * 0.09)
