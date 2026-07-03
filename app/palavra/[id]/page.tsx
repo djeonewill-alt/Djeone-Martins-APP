@@ -126,8 +126,6 @@ export async function generateMetadata({
   const baseUrl = getPublicAppUrl()
 
   const pageUrl = `${baseUrl}/palavra/${id}?share=quote-og-v26`
-  const dynamicQuoteOgUrl = `${baseUrl}/api/og/quote/${id}?v=quote-og-v26`
-  const ogImageUrl = dynamicQuoteOgUrl
   const title = 'Palavra do Dia | Pr. Djeone Martins'
   const description = buildDescription(quote)
 
@@ -141,6 +139,9 @@ export async function generateMetadata({
       },
     }
   }
+
+  const dynamicQuoteOgUrl = `${baseUrl}/api/og/quote/${id}?v=quote-og-v26`
+  const ogImageUrl = quote.share_image_url || dynamicQuoteOgUrl
 
   return {
     title,
