@@ -1,4 +1,15 @@
-﻿import sharp from 'sharp'
+﻿import { readFileSync } from 'fs'
+import { join } from 'path'
+import sharp from 'sharp'
+
+// ---------------------------------------------------------------------------
+// Fonte embutida — Inter-Bold.ttf via base64, autossuficiente em qualquer SO
+// ---------------------------------------------------------------------------
+const interBoldBase64 = readFileSync(
+  join(process.cwd(), 'lib', 'fonts', 'Inter-Bold.ttf')
+).toString('base64')
+
+const FONT_FAMILY = 'InterBold, sans-serif'
 
 export type QuoteShareImageInput = {
   quoteText: string
@@ -141,6 +152,13 @@ function createOverlaySvg(params: {
   return Buffer.from(`
     <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
       <defs>
+        <style>
+          @font-face {
+            font-family: 'InterBold';
+            src: url(data:font/ttf;base64,${interBoldBase64}) format('truetype');
+            font-weight: 700;
+          }
+        </style>
         <linearGradient id="vignette" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stop-color="#020617" stop-opacity="0.68"/>
           <stop offset="0.48" stop-color="#020617" stop-opacity="0.34"/>
@@ -159,11 +177,11 @@ function createOverlaySvg(params: {
       <rect width="${width}" height="${height}" fill="url(#centerLight)"/>
       <g text-anchor="middle" filter="url(#shadow)">
         <line x1="${width / 2 - lineWidth / 2}" y1="${Math.round(height * 0.13)}" x2="${width / 2 + lineWidth / 2}" y2="${Math.round(height * 0.13)}" stroke="#d9bc6b" stroke-width="2" stroke-opacity="0.88"/>
-        <text x="${width / 2}" y="${Math.round(height * 0.19)}" fill="#fff4d6" font-family="Arial, sans-serif" font-size="${typography.eyebrowSize}" font-weight="900" letter-spacing="${width >= 1000 ? 9 : 6}">PALAVRA DO DIA</text>
-        <text fill="#fffdf5" font-family="Georgia, Times New Roman, serif" font-size="${typography.quoteSize}" font-weight="700">${quoteTspans}</text>
+        <text x="${width / 2}" y="${Math.round(height * 0.19)}" fill="#fff4d6" font-family="${FONT_FAMILY}" font-size="${typography.eyebrowSize}" font-weight="900" letter-spacing="${width >= 1000 ? 9 : 6}">PALAVRA DO DIA</text>
+        <text fill="#fffdf5" font-family="${FONT_FAMILY}" font-size="${typography.quoteSize}" font-weight="700">${quoteTspans}</text>
         <line x1="${width / 2 - lineWidth / 2}" y1="${Math.round(height * 0.77)}" x2="${width / 2 + lineWidth / 2}" y2="${Math.round(height * 0.77)}" stroke="#d9bc6b" stroke-width="2" stroke-opacity="0.88"/>
-        <text x="${width / 2}" y="${Math.round(height * 0.84)}" fill="#fffdf5" font-family="Georgia, Times New Roman, serif" font-size="${typography.brandSize}" font-weight="700">Pr. Djeone Martins</text>
-        <text x="${width / 2}" y="${Math.round(height * 0.91)}" fill="#fff4d6" font-family="Arial, sans-serif" font-size="${typography.referenceSize}" font-weight="900" letter-spacing="${width >= 1000 ? 5 : 3}">${escapeXml(reference.toUpperCase())}</text>
+        <text x="${width / 2}" y="${Math.round(height * 0.84)}" fill="#fffdf5" font-family="${FONT_FAMILY}" font-size="${typography.brandSize}" font-weight="700">Pr. Djeone Martins</text>
+        <text x="${width / 2}" y="${Math.round(height * 0.91)}" fill="#fff4d6" font-family="${FONT_FAMILY}" font-size="${typography.referenceSize}" font-weight="900" letter-spacing="${width >= 1000 ? 5 : 3}">${escapeXml(reference.toUpperCase())}</text>
       </g>
       <rect x="${sidePadding}" y="${Math.round(height * 0.08)}" width="${width - sidePadding * 2}" height="${Math.round(height * 0.84)}" rx="${width >= 1000 ? 34 : 24}" fill="none" stroke="rgba(255,255,255,0.16)" stroke-width="1"/>
     </svg>
