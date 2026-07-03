@@ -97,7 +97,7 @@
 |---|---|
 | Palavra do Dia (OG WhatsApp) | Validado pelo Gestor — thumbnail carrega, sem tofu, frase completa, aspas. |
 | Geração de share image | JPEG otimizado via opentype.js paths, alvo <300 KB, máx 400 KB. Testado em produção. |
-| Upload de gravação longa | Presigned upload R2 para >4 MB. Testado em produção (69 KB, HTTP 200). |
+| Upload de gravação longa | Fato: Blob de ~10 MB falhava com HTTP 413. Correção: >4 MB usam presigned R2. Validação: Gestor confirmou funcionamento. |
 | Loading PWA | Spinner moderno, lazy-load de tabs. Validado pelo Gestor. |
 | Novo Episódio | Fluxo completo: gravação → upload → transcrição → frases → cards → publicação. |
 | Agenda | Drag-and-drop, publicação agendada via cron. |
